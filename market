@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Initialize the MarketPulse database
+# This script sets up the database with initial schemas and tables
+
+set -e
+
+echo "🗃️  Initializing MarketPulse Database..."
+
+# Wait for PostgreSQL to be ready
+echo "⏳ Waiting for PostgreSQL..."
+until pg_isready -h localhost -p 5432 -U marketpulse; do
+  sleep 1
+done
+
+echo "✅ PostgreSQL is ready!"
+
+# Create database and user if they don't exist
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    CREATE SCHEMA IF NOT EXISTS marketpulse;
+    CREATE SCHEMA IF NOT EXISTS market_data;
+    CREATE SCHEMA IF NOT EXISTS analysis;
+    
+    -- Grant permissions
+    GRANT ALL PRIVILEGES ON SCHEMA marketpulse TO marketpulse;
+    GRANT ALL PRIVILEGES ON SCHEMA market_data TO marketpulse;
+    GRANT ALL PRIVILEGES ON SCHEMA analysis TO marketpulse;
+    
+    -- Create initial tables
+    \i /docker-entrypoint-initdb.d/01-create-tables.sql
+    
+    -- Insert initial data
+    \i /docker-entrypoint-initdb.d/02-initial-data.sql
+    
+    -- Create indexes
+    \i /docker-entrypoint-initdb.d/03-create-indexes.sql
+EOSQL
+
+echo "✅ Database initialization completed!"
