@@ -25,6 +25,16 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+# Check Python version
+python3_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+required_version="3.8"
+if [[ "$python3_version" < "$required_version" ]]; then
+    echo "❌ Python version $python3_version detected. MarketPulse requires Python $required_version or higher."
+    echo "Please upgrade Python or use pyenv/conda to manage versions."
+    exit 1
+fi
+echo "✅ Python $python3_version detected (compatible)"
+
 echo "✅ Prerequisites check passed"
 
 # Create virtual environment

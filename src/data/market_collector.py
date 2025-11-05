@@ -3,16 +3,15 @@ Orchestrates data collection from multiple APIs and provides market internals an
 """
 
 import asyncio
-import schedule
 import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from loguru import logger
 
-from ..api import AlpacaClient
+from ..api.alpaca_client import AlpacaClient
 from ..core.config import get_settings
 from ..core.database import DatabaseManager
-from ..llm import LLMManager
+from ..llm.llm_client import LLMManager
 
 
 class MarketPulseCollector:
@@ -61,34 +60,56 @@ class MarketPulseCollector:
         logger.info("📊 Starting market internals collection...")
         
         try:
-            # Collect data from Alpaca
+            # Collect raw data from Alpaca
             if not self.alpaca_client:
                 async with AlpacaClient(self.settings) as client:
+                    raw_data = await client.get_multiple_bars(list(self.symbols.values()), '1Min', 60)
                     internals = await client.get_market_internals()
             else:
                 async with self.alpaca_client as client:
+                    raw_data = await client.get_multiple_bars(list(self.symbols.values()), '1Min', 60)
                     internals = await client.get_market_internals()
             
             if not internals:
                 logger.warning("⚠️ No market internals data collected")
                 return {}
             
-            # Store in database
             timestamp = datetime.now()
-            for symbol, data in internals.items():
-                if isinstance(data, dict) and 'price' in data:
-                    internals_record = {
-                        'timestamp': timestamp,
-                        'advance_decline_ratio': self._calculate_ad_line(internals),
-                        'volume_flow': data.get('volume', 0),
-                        'momentum_score': self._calculate_momentum(internals),
-                        'volatility_regime': self._classify_volatility(internals),
-                        'correlation_strength': self._calculate_correlation(internals),
-                        'support_level': self._calculate_support(internals),
-                        'resistance_level': self._calculate_resistance(internals)
-                    }
-                    
-                    self.db_manager.save_market_internals(symbol, internals_record)
+            
+            # Save price data for each symbol
+            for symbol, df in raw_data.items():
+                if df is not None and not df.empty:
+                    price_list = []
+                    for _, row in df.iterrows():
+                        price_list.append({
+                            'timestamp': row.name,
+                            'open': float(row['open']),
+                            'high': float(row['high']),
+                            'low': float(row['low']),
+                            'close': float(row['close']),
+                            'volume': int(row['volume'])
+                        })
+                    self.db_manager.save_price_data(symbol, '1Min', price_list)
+            
+            # Calculate and save internals
+            internals_record = {
+                'timestamp': timestamp,
+                'advance_decline_ratio': self._calculate_ad_line(internals),
+                'volume_flow': internals.get('volume_flow', {}).get('total_volume_60min', 0),
+                'momentum_score': self._calculate_momentum(internals),
+                'volatility_regime': self._classify_volatility(internals),
+                'correlation_strength': self._calculate_correlation(internals),
+                'support_level': self._calculate_support(internals),
+                'resistance_level': self._calculate_resistance(internals)
+            }
+            
+            # Save overall market internals (using 'MARKET' as symbol)
+            self.db_manager.save_market_internals('MARKET', internals_record)
+            
+            # Get AI analysis
+            ai_analysis = await self.analyze_with_ai(internals, 'quick')
+            if ai_analysis:
+                self.db_manager.save_llm_insight('MARKET', 'quick', internals, ai_analysis)
             
             logger.success("✅ Market internals collected and stored")
             return internals
@@ -253,16 +274,16 @@ class MarketPulseCollector:
         logger.info("📡 Performing initial market data collection...")
         await self.collect_market_internals()
         
-        # Schedule regular collections
-        schedule.every(self.settings.internals_interval // 60).minutes.do(
-            lambda: asyncio.create_task(self.collect_market_internals())
-        )
+        # Periodic collection using asyncio
+        interval_seconds = self.settings.internals_interval
+        next_run = time.time() + interval_seconds
         
-        # Run monitoring loop
         try:
             while self.running:
-                schedule.run_pending()
-                await asyncio.sleep(1)
+                await asyncio.sleep(max(0, next_run - time.time()))
+                if self.running:
+                    await self.collect_market_internals()
+                next_run += interval_seconds
                 
         except KeyboardInterrupt:
             logger.info("⏹️ Monitoring stopped by user")

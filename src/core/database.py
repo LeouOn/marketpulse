@@ -1,6 +1,4 @@
-"""MarketPulse Database Models
-SQLAlchemy models for market data storage
-"""
+from loguru import logger
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
@@ -179,6 +177,29 @@ class DatabaseManager:
             session.commit()
         except Exception as e:
             session.rollback()
+            raise e
+        finally:
+            session.close()
+    
+    def save_llm_insight(self, symbol: str, analysis_type: str, input_data: dict, analysis_result: str, model_used: str = 'lm_studio_fast', confidence_score: float = 0.8):
+        """Save LLM insight to database"""
+        session = self.get_session()
+        try:
+            insight_record = LLMInsight(
+                symbol=symbol,
+                timestamp=datetime.now(),
+                analysis_type=analysis_type,
+                model_used=model_used,
+                input_data=input_data,
+                analysis_result=analysis_result,
+                confidence_score=confidence_score
+            )
+            session.merge(insight_record)
+            session.commit()
+            logger.info(f"💾 LLM insight saved for {symbol}")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"❌ Error saving LLM insight: {e}")
             raise e
         finally:
             session.close()

@@ -1,13 +1,7 @@
-"""MarketPulse - API Integration Layer
-Handles data collection from multiple sources: Alpaca, Rithmic, Coinbase
+"""MarketPulse API module
+Contains API client implementations for market data providers
 """
 
 from .alpaca_client import AlpacaClient
-from .rithmic_client import RithmicClient  
-from .coinbase_client import CoinbaseClient
 
-__all__ = [
-    'AlpacaClient',
-    'RithmicClient', 
-    'CoinbaseClient'
-]
+__all__ = ['AlpacaClient']

@@ -1,5 +1,5 @@
-# MarketPulse Windows Setup Script
-# Sets up the development environment for MarketPulse on Windows
+REM MarketPulse Windows Setup Script
+REM Sets up the development environment for MarketPulse on Windows
 
 @echo off
 echo 🚀 Setting up MarketPulse development environment...
@@ -20,7 +20,36 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo ✅ Prerequisites check passed
+REM Check if Python is installed
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ❌ Python is not installed. Please install Python 3.8+ first.
+    pause
+    exit /b 1
+)
+
+REM Check Python version
+for /f "tokens=2" %%i in ('python --version 2^>^&1') do set "py_version=%%i"
+echo Python version: %py_version%
+
+REM Extract major and minor versions
+set "major=%py_version:~0,1%"
+for /f "tokens=2 delims=." %%a in ("%py_version%") do set "minor=%%a"
+
+REM Version comparison: require major=3 and minor>=8
+if not "%major%"=="3" (
+    echo ❌ Python major version %major% not supported. MarketPulse requires Python 3.8+.
+    echo Please install Python 3.8 or higher.
+    pause
+    exit /b 1
+)
+if %minor% LSS 8 (
+    echo ❌ Python version 3.%minor% detected. MarketPulse requires Python 3.8 or higher.
+    echo Please upgrade Python or use pyenv/conda to manage versions.
+    pause
+    exit /b 1
+)
+echo ✅ Python %py_version% detected (compatible)
 
 REM Create virtual environment
 echo 📦 Creating Python virtual environment...
@@ -73,7 +102,7 @@ if not exist .env (
     echo ℹ️ Environment file already exists
 )
 
-REM Create __init__.py files for package structure
+REM Create __init__.py files for existing package structure
 echo 📁 Creating Python package structure...
 if not exist src\__init__.py (
     echo. > src\__init__.py
@@ -87,14 +116,8 @@ if not exist src\api\__init__.py (
 if not exist src\data\__init__.py (
     echo. > src\data\__init__.py
 )
-if not exist src\analysis\__init__.py (
-    echo. > src\analysis\__init__.py
-)
 if not exist src\llm\__init__.py (
     echo. > src\llm\__init__.py
-)
-if not exist src\alerts\__init__.py (
-    echo. > src\alerts\__init__.py
 )
 
 echo ✅ Package structure created
