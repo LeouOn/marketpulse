@@ -1,0 +1,15 @@
+{
+  "timestamp": 1762801765.467784,
+  "results": {
+    "lm_studio_connection": false,
+    "market_analysis": false,
+    "model_performance": false,
+    "openrouter_fallback": false,
+    "llm_manager": false
+  },
+  "summary": {
+    "passed": 0,
+    "total": 5,
+    "success_rate": "0.0%"
+  }
+}

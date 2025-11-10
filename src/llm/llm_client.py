@@ -18,13 +18,31 @@ class LMStudioClient:
         self.settings = settings or get_settings()
         self.base_url = self.settings.llm.primary.base_url
         self.timeout = self.settings.llm.primary.timeout
+        self.model = getattr(self.settings.llm.primary, 'model', 'aquif-3.5-max-42b-a3b-i1')
         self.session = None
         
-        # Available models for different purposes
-        self.models = {
-            'fast': 'qwen3-30b-a3b',        # 59 tok/s - quick analysis
-            'analyst': 'glm-4.5-air',       # 19 tok/s - deep analysis  
-            'reviewer': 'glm-4.6-air',      # 12 tok/s - post-trade review
+        # Model capabilities and purposes
+        self.model_capabilities = {
+            'fast_analysis': {
+                'purpose': 'Quick market analysis and data validation',
+                'max_tokens': 150,
+                'temperature': 0.3
+            },
+            'deep_analysis': {
+                'purpose': 'Comprehensive market analysis',
+                'max_tokens': 400,
+                'temperature': 0.5
+            },
+            'trade_review': {
+                'purpose': 'Trade setup review and validation',
+                'max_tokens': 250,
+                'temperature': 0.4
+            },
+            'data_validation': {
+                'purpose': 'Sanity checks and data interpretation validation',
+                'max_tokens': 100,
+                'temperature': 0.2
+            }
         }
     
     async def __aenter__(self):
@@ -224,6 +242,193 @@ focusing on risk management, execution quality, and learning opportunities."""
         if response and 'choices' in response:
             return response['choices'][0]['message']['content']
         return None
+    
+    async def validate_data_interpretation(self, data: Dict[str, Any], data_type: str = "market_internals") -> Dict[str, Any]:
+        """
+        Perform sanity checks on data interpretation using LLM
+        
+        Args:
+            data: The data to validate
+            data_type: Type of data ('market_internals', 'price_data', 'technical_indicators')
+            
+        Returns:
+            Dictionary with validation results
+        """
+        try:
+            system_prompt = """You are a data validation expert. Analyze the provided data and verify:
+1. Data completeness and structure
+2. Reasonable value ranges
+3. Logical consistency
+4. Potential data quality issues
+5. Missing critical information
+            
+Respond with a JSON object containing:
+- is_valid: boolean
+- issues: list of issues found (if any)
+- confidence: confidence score (0-100)
+- recommendations: suggestions for improvement
+- summary: brief summary of data quality"""
+
+            if data_type == "market_internals":
+                user_prompt = f"""Validate this market internals data for logical consistency:
+
+{json.dumps(data, indent=2)}
+
+Check for:
+- Reasonable price ranges (SPY: $300-600, QQQ: $200-500, VIX: $10-80)
+- Reasonable percentage changes (±10% max for most assets)
+- Consistent volume figures
+- Missing critical symbols (SPY, QQQ, VIX)
+- Timestamp validity
+
+Return validation results in JSON format."""
+            
+            elif data_type == "price_data":
+                user_prompt = f"""Validate this price data for quality issues:
+
+{json.dumps(data, indent=2)}
+
+Check for:
+- OHLC consistency (High >= max(Open, Close), Low <= min(Open, Close))
+- Reasonable price movements between candles
+- Volume consistency
+- Missing or null values
+- Timestamp ordering
+
+Return validation results in JSON format."""
+            
+            else:
+                user_prompt = f"""Validate this technical indicator data:
+
+{json.dumps(data, indent=2)}
+
+Check for:
+- Reasonable indicator values
+- Consistency with price data
+- Missing calculations
+- Outlier detection
+
+Return validation results in JSON format."""
+
+            messages = [{'role': 'user', 'content': user_prompt}]
+            
+            response = await self.generate_completion(
+                model='fast_analysis',
+                messages=messages,
+                system_prompt=system_prompt,
+                max_tokens=200,
+                temperature=0.1
+            )
+            
+            if response and 'choices' in response:
+                content = response['choices'][0]['message']['content']
+                try:
+                    # Try to parse as JSON
+                    validation_result = json.loads(content)
+                    return validation_result
+                except json.JSONDecodeError:
+                    # If not JSON, create structured response
+                    return {
+                        'is_valid': True,
+                        'issues': [],
+                        'confidence': 80,
+                        'recommendations': ['Manual review recommended'],
+                        'summary': 'Validation completed (non-JSON response)',
+                        'raw_response': content
+                    }
+            
+            return {
+                'is_valid': False,
+                'issues': ['No response from LLM'],
+                'confidence': 0,
+                'recommendations': ['Check LLM connection'],
+                'summary': 'Validation failed - no LLM response'
+            }
+            
+        except Exception as e:
+            logger.error(f"Data validation error: {e}")
+            return {
+                'is_valid': False,
+                'issues': [f'Validation error: {str(e)}'],
+                'confidence': 0,
+                'recommendations': ['Retry validation'],
+                'summary': f'Validation failed with error: {str(e)}'
+            }
+    
+    async def interpret_text_chart_data(self, chart_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Interpret text-encoded chart data and provide analysis
+        
+        Args:
+            chart_data: Dictionary containing chart data in text format
+                       {
+                           'symbol': 'NQ',
+                           'timeframe': '5m',
+                           'candles': [
+                               {'time': '10:00', 'open': 15000, 'high': 15025, 'low': 14995, 'close': 15020, 'volume': 1250},
+                               ...
+                           ],
+                           'indicators': {
+                               'sma_20': 15010,
+                               'rsi': 65.5,
+                               'volume_ma': 1100
+                           }
+                       }
+        """
+        system_prompt = """You are a technical analyst. Interpret the provided chart data and identify:
+1. Trend direction and strength
+2. Key support/resistance levels
+3. Volume patterns
+4. Indicator signals
+5. Potential trade setups
+6. Risk points
+
+Be concise and actionable. Focus on what matters for trading decisions."""
+
+        # Format chart data for analysis
+        chart_summary = f"""
+Symbol: {chart_data.get('symbol', 'Unknown')}
+Timeframe: {chart_data.get('timeframe', 'Unknown')}
+Periods analyzed: {len(chart_data.get('candles', []))}
+
+RECENT PRICE ACTION:
+{self._format_recent_candles(chart_data.get('candles', [])[-5:])}
+
+TECHNICAL INDICATORS:
+{json.dumps(chart_data.get('indicators', {}), indent=2)}
+
+KEY LEVELS:
+- Current Price: {chart_data.get('candles', [])[-1]['close'] if chart_data.get('candles') else 'N/A'}
+- Period High: {max(c['high'] for c in chart_data.get('candles', [])) if chart_data.get('candles') else 'N/A'}
+- Period Low: {min(c['low'] for c in chart_data.get('candles', [])) if chart_data.get('candles') else 'N/A'}
+
+Provide technical analysis focusing on actionable insights."""
+
+        messages = [{'role': 'user', 'content': chart_summary}]
+        
+        response = await self.generate_completion(
+            model='deep_analysis',
+            messages=messages,
+            system_prompt=system_prompt,
+            max_tokens=300,
+            temperature=0.4
+        )
+        
+        if response and 'choices' in response:
+            return response['choices'][0]['message']['content']
+        return None
+    
+    def _format_recent_candles(self, candles: List[Dict]) -> str:
+        """Format recent candles for LLM analysis"""
+        if not candles:
+            return "No candle data available"
+        
+        formatted = []
+        for i, candle in enumerate(candles):
+            direction = "🟢" if candle['close'] >= candle['open'] else "🔴"
+            formatted.append(f"  {direction} Candle {i+1}: O={candle['open']:.2f} H={candle['high']:.2f} L={candle['low']:.2f} C={candle['close']:.2f} V={candle.get('volume', 0)}")
+        
+        return "\n".join(formatted)
     
     def get_model_status(self) -> Dict[str, Any]:
         """Get status of available models"""

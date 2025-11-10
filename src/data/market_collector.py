@@ -37,22 +37,22 @@ class MarketPulseCollector:
     
     async def initialize(self):
         """Initialize the market collector"""
-        logger.info("🚀 Initializing MarketPulse Collector...")
+        logger.info("Initializing MarketPulse Collector...")
         
         try:
             # Initialize database
             self.db_manager.create_engine()
             self.db_manager.create_tables()
-            logger.success("✅ Database initialized")
+            logger.success("Database initialized")
             
             # Initialize API clients
             self.alpaca_client = AlpacaClient(self.settings)
-            logger.success("✅ API clients initialized")
+            logger.success("API clients initialized")
             
             return True
             
         except Exception as e:
-            logger.error(f"❌ Failed to initialize MarketPulse: {e}")
+            logger.error(f"Failed to initialize MarketPulse: {e}")
             return False
     
     async def collect_market_internals(self) -> Dict[str, Any]:
@@ -206,7 +206,7 @@ class MarketPulseCollector:
         
         lines = []
         lines.append("=" * 70)
-        lines.append(f"📈 MarketPulse Market Internals - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"MarketPulse Market Internals - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         lines.append("=" * 70)
         
         # Overall Market Health

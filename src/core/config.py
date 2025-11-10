@@ -87,14 +87,14 @@ class MarketSettings(BaseSettings):
         timezone: str = "UTC"
         trading_hours: str = "24/7"
         tick_size: float = 1.0
-        tick_value: float = "varies"
+        tick_value: float = 1.0
     
     class ETHConfig(BaseSettings):
         symbol: str = "ETH-USD"
         timezone: str = "UTC"
         trading_hours: str = "24/7"
         tick_size: float = 0.01
-        tick_value: str = "varies"
+        tick_value: float = 0.01
     
     nq: NQConfig = Field(default_factory=NQConfig)
     btc: BTCConfig = Field(default_factory=BTCConfig)
@@ -176,41 +176,119 @@ class Settings(BaseSettings):
                 # Get environment variables for interpolation
                 env_vars = dict(os.environ)
                 
-                # Update settings from YAML data
-                for section, values in yaml_data.items():
-                    if hasattr(self, section):
-                        section_obj = getattr(self, section)
-                        if hasattr(section_obj, 'model_dump'):
-                            # It's a Pydantic model
-                            updated_values = self._interpolate_dict(values, env_vars)
-                            for key, value in updated_values.items():
-                                if hasattr(section_obj, key):
-                                    setattr(section_obj, key, value)
-                        else:
-                            # It's a regular attribute
-                            updated_values = self._interpolate_dict(values, env_vars)
-                            for key, value in updated_values.items():
-                                setattr(section_obj, key, value)
+                # Update API keys section
+                if 'api_keys' in yaml_data:
+                    api_keys_data = self._interpolate_dict(yaml_data['api_keys'], env_vars)
                     
-                    # Handle convenience aliases
-                    if section == 'markets':
-                        if 'nq' in values:
-                            self.nq_symbol = values['nq'].get('symbol', self.nq_symbol)
-                        if 'btc' in values:
-                            self.btc_symbol = values['btc'].get('symbol', self.btc_symbol)
-                        if 'eth' in values:
-                            self.eth_symbol = values['eth'].get('symbol', self.eth_symbol)
+                    # Update Alpaca config
+                    if 'alpaca' in api_keys_data:
+                        for key, value in api_keys_data['alpaca'].items():
+                            if hasattr(self.api_keys.alpaca, key):
+                                setattr(self.api_keys.alpaca, key, value)
                     
-                    if section == 'analysis':
-                        if 'internals_interval' in values:
-                            self.internals_interval = values['internals_interval']
-                            self.analysis.internals_interval = values['internals_interval']
-                        if 'llm_analysis_interval' in values:
-                            self.llm_analysis_interval = values['llm_analysis_interval']
-                            self.analysis.llm_analysis_interval = values['llm_analysis_interval']
+                    # Update Rithmic config
+                    if 'rithmic' in api_keys_data:
+                        for key, value in api_keys_data['rithmic'].items():
+                            if hasattr(self.api_keys.rithmic, key):
+                                setattr(self.api_keys.rithmic, key, value)
+                    
+                    # Update Coinbase config
+                    if 'coinbase' in api_keys_data:
+                        for key, value in api_keys_data['coinbase'].items():
+                            if hasattr(self.api_keys.coinbase, key):
+                                setattr(self.api_keys.coinbase, key, value)
+                    
+                    # Update OpenRouter config
+                    if 'openrouter' in api_keys_data:
+                        for key, value in api_keys_data['openrouter'].items():
+                            if hasattr(self.api_keys.openrouter, key):
+                                setattr(self.api_keys.openrouter, key, value)
                 
+                # Update LLM section
+                if 'llm' in yaml_data:
+                    llm_data = self._interpolate_dict(yaml_data['llm'], env_vars)
+                    
+                    if 'primary' in llm_data:
+                        for key, value in llm_data['primary'].items():
+                            if hasattr(self.llm.primary, key):
+                                setattr(self.llm.primary, key, value)
+                    
+                    if 'fallback' in llm_data:
+                        for key, value in llm_data['fallback'].items():
+                            if hasattr(self.llm.fallback, key):
+                                setattr(self.llm.fallback, key, value)
+                
+                # Update Markets section
+                if 'markets' in yaml_data:
+                    markets_data = self._interpolate_dict(yaml_data['markets'], env_vars)
+                    
+                    if 'nq' in markets_data:
+                        for key, value in markets_data['nq'].items():
+                            if hasattr(self.markets.nq, key):
+                                setattr(self.markets.nq, key, value)
+                        self.nq_symbol = markets_data['nq'].get('symbol', self.nq_symbol)
+                    
+                    if 'btc' in markets_data:
+                        for key, value in markets_data['btc'].items():
+                            if hasattr(self.markets.btc, key):
+                                setattr(self.markets.btc, key, value)
+                        self.btc_symbol = markets_data['btc'].get('symbol', self.btc_symbol)
+                    
+                    if 'eth' in markets_data:
+                        for key, value in markets_data['eth'].items():
+                            if hasattr(self.markets.eth, key):
+                                setattr(self.markets.eth, key, value)
+                        self.eth_symbol = markets_data['eth'].get('symbol', self.eth_symbol)
+                
+                # Update Analysis section
+                if 'analysis' in yaml_data:
+                    analysis_data = self._interpolate_dict(yaml_data['analysis'], env_vars)
+                    
+                    if 'internals_interval' in analysis_data:
+                        self.internals_interval = analysis_data['internals_interval']
+                        self.analysis.internals_interval = analysis_data['internals_interval']
+                    
+                    if 'llm_analysis_interval' in analysis_data:
+                        self.llm_analysis_interval = analysis_data['llm_analysis_interval']
+                        self.analysis.llm_analysis_interval = analysis_data['llm_analysis_interval']
+                    
+                    if 'alert_thresholds' in analysis_data:
+                        for key, value in analysis_data['alert_thresholds'].items():
+                            if hasattr(self.analysis.alert_thresholds, key):
+                                setattr(self.analysis.alert_thresholds, key, value)
+                
+                # Update Database section
+                if 'database' in yaml_data:
+                    db_data = self._interpolate_dict(yaml_data['database'], env_vars)
+                    
+                    if 'host' in db_data:
+                        self.database_host = db_data['host']
+                    if 'port' in db_data:
+                        self.database_port = db_data['port']
+                    if 'database' in db_data:
+                        self.database_name = db_data['database']
+                    if 'username' in db_data:
+                        self.database_user = db_data['username']
+                    if 'password' in db_data:
+                        self.database_password = db_data['password']
+                
+                # Update Logging section
+                if 'logging' in yaml_data:
+                    logging_data = self._interpolate_dict(yaml_data['logging'], env_vars)
+                    
+                    if 'level' in logging_data:
+                        self.logging.level = logging_data['level']
+                    if 'format' in logging_data:
+                        self.logging.format = logging_data['format']
+                    if 'rotation' in logging_data:
+                        self.logging.rotation = logging_data['rotation']
+                    if 'retention' in logging_data:
+                        self.logging.retention = logging_data['retention']
+            
             except Exception as e:
                 print(f"Warning: Could not load YAML config: {e}")
+                import traceback
+                traceback.print_exc()
     
     def _interpolate_dict(self, obj: Any, env_vars: Dict[str, str]) -> Any:
         """Recursively interpolate environment variables in a dictionary"""

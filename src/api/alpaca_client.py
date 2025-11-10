@@ -79,17 +79,26 @@ class AlpacaClient:
             else:
                 start_time = now - timedelta(hours=limit)
             
-            # Alpaca API endpoint
-            url = f"{self.base_url}/v2/stocks/{symbol}/bars"
+            # Use data.alpaca.markets for market data (not paper-api)
+            data_base_url = "https://data.alpaca.markets"
+            url = f"{data_base_url}/v2/stocks/{symbol}/bars"
+            
+            # Format dates in RFC3339 format (without microseconds)
             params = {
                 'timeframe': timeframe,
-                'start': start_time.isoformat(),
-                'end': now.isoformat(),
+                'start': start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'end': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
                 'limit': limit,
                 'adjustment': 'raw'
             }
             
-            async with self.session.get(url, params=params) as response:
+            # Use data API key for authentication
+            headers = {
+                'APCA-API-KEY-ID': self.api_key,
+                'APCA-API-SECRET-KEY': self.secret_key
+            }
+            
+            async with self.session.get(url, params=params, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
                     
@@ -146,7 +155,7 @@ class AlpacaClient:
         This is the core function for getting regular market condition updates
         """
         try:
-            logger.info("📊 Collecting market internals from Alpaca...")
+            logger.info("🗂️ Collecting market internals from Alpaca...")
             
             # Get current market data for key symbols
             data = await self.get_multiple_bars(self.key_symbols, '1Min', 60)
@@ -161,7 +170,7 @@ class AlpacaClient:
             if 'SPY' in data and not data['SPY'].empty:
                 spy_latest = data['SPY'].iloc[-1]
                 spy_prev = data['SPY'].iloc[-2] if len(data['SPY']) > 1 else spy_latest
-                
+               
                 internals['spy'] = {
                     'price': float(spy_latest['close']),
                     'change': float(spy_latest['close'] - spy_prev['close']),
@@ -214,36 +223,36 @@ class AlpacaClient:
     def format_internals_for_display(self, internals: Dict[str, Any]) -> str:
         """Format market internals for console display"""
         if not internals:
-            return "❌ No market data available"
+            return "No market data available"
         
         lines = []
         lines.append("=" * 60)
-        lines.append(f"📈 MARKET INTERNALS - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"MARKET INTERNALS - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         lines.append("=" * 60)
         
         # SPY (Market sentiment)
         if 'spy' in internals:
             spy = internals['spy']
-            change_emoji = "🟢" if spy['change'] >= 0 else "🔴"
-            lines.append(f"{change_emoji} SPY: ${spy['price']:.2f} | {spy['change']:+.2f} ({spy['change_pct']:+.2f}%)")
+            change_symbol = "+" if spy['change'] >= 0 else "-"
+            lines.append(f"SPY: ${spy['price']:.2f} | {change_symbol}{abs(spy['change']):.2f} ({change_symbol}{abs(spy['change_pct']):.2f}%)")
         
         # QQQ (Tech sentiment)  
         if 'qqq' in internals:
             qqq = internals['qqq']
-            change_emoji = "🟢" if qqq['change'] >= 0 else "🔴"
-            lines.append(f"{change_emoji} QQQ: ${qqq['price']:.2f} | {qqq['change']:+.2f} ({qqq['change_pct']:+.2f}%)")
+            change_symbol = "+" if qqq['change'] >= 0 else "-"
+            lines.append(f"QQQ: ${qqq['price']:.2f} | {change_symbol}{abs(qqq['change']):.2f} ({change_symbol}{abs(qqq['change_pct']):.2f}%)")
         
         # VIX (Volatility)
         if 'vix' in internals:
             vix = internals['vix']
             vol_regime = "HIGH" if vix['price'] > 20 else "NORMAL" if vix['price'] > 15 else "LOW"
-            vol_emoji = "🔴" if vix['change'] > 0 else "🟢"  # Higher VIX = red (bad)
-            lines.append(f"{vol_emoji} VIX: {vix['price']:.2f} ({vol_regime}) | {vix['change']:+.2f}")
+            change_symbol = "+" if vix['change'] > 0 else "-"
+            lines.append(f"VIX: {vix['price']:.2f} ({vol_regime}) | {change_symbol}{abs(vix['change']):.2f}")
         
         # Volume flow
         if 'volume_flow' in internals:
             vf = internals['volume_flow']
-            lines.append(f"📊 Volume: {vf['total_volume_60min']:,} (60min) | Symbols: {vf['symbols_tracked']}")
+            lines.append(f"Volume: {vf['total_volume_60min']:,} (60min) | Symbols: {vf['symbols_tracked']}")
         
         lines.append("=" * 60)
         return "\n".join(lines)

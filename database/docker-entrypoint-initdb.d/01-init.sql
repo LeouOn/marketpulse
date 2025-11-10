@@ -1,6 +1,10 @@
 -- MarketPulse Database Schema
 -- Main tables for market data storage and analysis
 
+-- Create schemas first
+CREATE SCHEMA IF NOT EXISTS market_data;
+CREATE SCHEMA IF NOT EXISTS analysis;
+
 -- Market Data Tables
 CREATE TABLE IF NOT EXISTS market_data.prices (
     id SERIAL PRIMARY KEY,
