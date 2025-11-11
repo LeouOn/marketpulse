@@ -2,22 +2,55 @@
 
 import { useState, useEffect } from 'react';
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, AlertCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { MarketDashboard as DashboardData, MarketSymbol } from '@/types/market';
 import { marketPulseAPI } from '@/lib/api';
+import { useMarketWebSocket } from '@/hooks/useMarketWebSocket';
+import { config } from '@/lib/config';
+import { PriceChart } from './price-chart';
+import { VolumeChart } from './volume-chart';
 
 export function MarketDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [usePolling, setUsePolling] = useState(!config.features.websocket);
 
-  const fetchData = async () => {
-    try {
-      const dashboardData = await marketPulseAPI.getDashboardData();
-      setData(dashboardData);
+  // WebSocket connection
+  const {
+    data: wsData,
+    connected: wsConnected,
+    error: wsError,
+    reconnecting: wsReconnecting,
+  } = useMarketWebSocket({
+    autoConnect: !usePolling,
+    onData: (newData) => {
+      setData(newData);
       setLastUpdate(new Date());
       setError(null);
+      setLoading(false);
+    },
+    onError: () => {
+      // Fallback to polling if WebSocket fails
+      if (!usePolling) {
+        console.warn('WebSocket failed, falling back to polling');
+        setUsePolling(true);
+      }
+    },
+  });
+
+  // Polling fallback
+  const fetchData = async () => {
+    try {
+      const response = await marketPulseAPI.getDashboardData();
+      if (response.success && response.data) {
+        setData(response.data);
+        setLastUpdate(new Date());
+        setError(null);
+      } else {
+        setError(response.error || 'Failed to fetch data');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
     } finally {
@@ -26,10 +59,13 @@ export function MarketDashboard() {
   };
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 30000); // Update every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
+    // Use polling if WebSocket is disabled or failed
+    if (usePolling) {
+      fetchData();
+      const interval = setInterval(fetchData, config.polling.interval);
+      return () => clearInterval(interval);
+    }
+  }, [usePolling]);
 
   if (loading) {
     return (
@@ -103,11 +139,33 @@ export function MarketDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header with last update time */}
+      {/* Header with last update time and connection status */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <Activity className="w-4 h-4" />
-          <span>Last updated: {lastUpdate?.toLocaleTimeString()}</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Activity className="w-4 h-4" />
+            <span>Last updated: {lastUpdate?.toLocaleTimeString()}</span>
+          </div>
+          {!usePolling && (
+            <div className="flex items-center gap-2 text-sm">
+              {wsConnected ? (
+                <>
+                  <Wifi className="w-4 h-4 text-green-400" />
+                  <span className="text-green-400">Live</span>
+                </>
+              ) : wsReconnecting ? (
+                <>
+                  <Activity className="w-4 h-4 text-yellow-400 animate-pulse" />
+                  <span className="text-yellow-400">Reconnecting...</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-4 h-4 text-red-400" />
+                  <span className="text-red-400">Disconnected</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <button
           onClick={fetchData}
@@ -123,6 +181,30 @@ export function MarketDashboard() {
         {renderSymbolCard(data.symbols.qqq, 'QQQ (Tech)')}
         {renderSymbolCard(data.symbols.vix, 'VIX (Volatility)')}
       </div>
+
+      {/* Price Charts */}
+      {config.features.charts && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
+            <PriceChart symbol="SPY" timeframe="5Min" limit={100} height={300} />
+          </div>
+          <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
+            <PriceChart symbol="QQQ" timeframe="5Min" limit={100} height={300} />
+          </div>
+        </div>
+      )}
+
+      {/* Volume Charts */}
+      {config.features.charts && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
+            <VolumeChart symbol="SPY" timeframe="5Min" limit={50} height={200} />
+          </div>
+          <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
+            <VolumeChart symbol="QQQ" timeframe="5Min" limit={50} height={200} />
+          </div>
+        </div>
+      )}
 
       {/* Market Analysis */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

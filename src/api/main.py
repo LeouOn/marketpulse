@@ -26,6 +26,7 @@ from src.core.config import get_settings
 from src.data.market_collector import MarketPulseCollector
 from src.core.database import DatabaseManager
 from src.llm.llm_client import LLMManager
+from src.core.cache import cache_manager
 
 app = FastAPI(
     title="MarketPulse API",
@@ -76,7 +77,21 @@ class ChartAnalysisRequest(BaseModel):
 async def startup_event():
     """Initialize the application on startup"""
     logger.info("Starting MarketPulse API...")
+
+    # Initialize cache manager
+    cache_connected = await cache_manager.connect()
+    if cache_connected:
+        logger.info("Redis cache enabled")
+    else:
+        logger.warning("Redis cache unavailable - running without cache")
+
     await collector.initialize()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    logger.info("Shutting down MarketPulse API...")
+    await cache_manager.disconnect()
 
 @app.get("/")
 async def root():
@@ -109,14 +124,24 @@ async def get_market_internals():
 async def get_dashboard_data():
     """Get dashboard data with AI analysis"""
     try:
+        # Try to get from cache first
+        cached_data = await cache_manager.get_dashboard_data()
+        if cached_data:
+            logger.debug("Serving dashboard data from cache")
+            return MarketResponse(
+                success=True,
+                data=cached_data,
+                timestamp=datetime.now().isoformat()
+            )
+
         internals = await collector.collect_market_internals()
-        
+
         # Calculate market bias
         market_bias = "NEUTRAL"
         if 'spy' in internals and 'qqq' in internals:
             spy_trend = internals['spy']['change']
             qqq_trend = internals['qqq']['change']
-            
+
             if spy_trend > 0 and qqq_trend > 0:
                 market_bias = "BULLISH"
             elif spy_trend < 0 and qqq_trend < 0:
@@ -144,6 +169,9 @@ async def get_dashboard_data():
             "aiAnalysis": ai_analysis
         }
 
+        # Cache the dashboard data (30 second TTL)
+        await cache_manager.set_dashboard_data(dashboard_data, ttl=30)
+
         return MarketResponse(
             success=True,
             data=dashboard_data,
@@ -165,10 +193,20 @@ async def get_historical_data(
 ):
     """Get historical price data for a symbol"""
     try:
+        # Try to get from cache first
+        cached_data = await cache_manager.get_historical_data(symbol, timeframe, limit)
+        if cached_data:
+            logger.debug(f"Serving historical data for {symbol} from cache")
+            return MarketResponse(
+                success=True,
+                data={"symbol": symbol, "data": cached_data},
+                timestamp=datetime.now().isoformat()
+            )
+
         from src.api.alpaca_client import AlpacaClient
         async with AlpacaClient(settings) as client:
             data = await client.get_bars(symbol, timeframe, limit)
-            
+
             if data is not None:
                 historical_data = []
                 for _, row in data.iterrows():
@@ -180,7 +218,12 @@ async def get_historical_data(
                         "close": float(row['close']),
                         "volume": int(row['volume'])
                     })
-                
+
+                # Cache historical data (5 minute TTL)
+                await cache_manager.set_historical_data(
+                    symbol, timeframe, limit, historical_data, ttl=300
+                )
+
                 return MarketResponse(
                     success=True,
                     data={"symbol": symbol, "data": historical_data},

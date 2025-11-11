@@ -23,6 +23,24 @@ services:
     networks:
       - marketpulse-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: marketpulse-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - marketpulse-network
+    command: redis-server --appendonly yes
+
   api:
     build:
       context: .
@@ -32,9 +50,12 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://marketpulse:marketpulse_password@postgres:5432/marketpulse
+      - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - .:/app
@@ -50,3 +71,4 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:
