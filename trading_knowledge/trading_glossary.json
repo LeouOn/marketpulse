@@ -1,0 +1,129 @@
+{
+  "FVG": "Fair Value Gap - An imbalance in price where there is a gap between candles with no overlapping prices. Typically identified when a candle's wick doesn't fully overlap with adjacent candles. FVGs act as magnets for price and often get filled before major moves continue.",
+  
+  "CVD": "Cumulative Volume Delta - Running total of the difference between buying and selling volume. Calculated as (Buy Volume - Sell Volume) cumulatively. Divergences between CVD and price can signal potential reversals or confirm trends.",
+  
+  "ICT": "Inner Circle Trader - A trading methodology developed by Michael Huddleston focusing on market structure, liquidity, and institutional order flow. Key concepts include OTE (Optimal Trade Entry), liquidity sweeps, and market maker patterns.",
+  
+  "OTE": "Optimal Trade Entry - A specific Fibonacci retracement level (typically 62-79%) where ICT traders look for entries in the direction of higher timeframe bias.",
+  
+  "Liquidity Sweep": "When price moves beyond a recent high or low to trigger stop losses and grab liquidity before reversing in the opposite direction. Often seen at support/resistance levels.",
+  
+  "Order Block": "A consolidation area before a strong impulsive move, representing potential institutional order placement. Acts as support/resistance on retests.",
+  
+  "Kill Zone": "Specific time windows with high probability for institutional activity. Primary kill zones: 02:00-04:00 EST (London open) and 09:30-10:30 EST (NY open).",
+  
+  "PO3": "Power of 3 - ICT concept involving three phases: accumulation, manipulation, and distribution. Used to identify potential market turning points.",
+  
+  "BPR": "Break and Retest - Price breaks a level, then returns to test it before continuing. Common entry pattern.",
+  
+  "funding_rate": "Periodic payment between long and short traders in perpetual futures. Positive = longs pay shorts, negative = shorts pay longs. Paid every 8 hours on most exchanges (00:00, 08:00, 16:00 UTC).",
+  
+  "overnight_margin": "Additional margin requirement to hold positions overnight. Varies by broker but typically 2-4 hours before market close. Forces position closure for undercapitalized traders.",
+  
+  "liquidation_cascade": "Chain reaction of liquidations where one forced liquidation pushes price further, triggering more liquidations. Creates extreme volatility and V-shaped reversals.",
+  
+  "perpetual_futures": "Futures contracts with no expiration date, using funding rate mechanism to peg to spot price. Common in crypto markets.",
+  
+  "margin_call": "When account equity falls below maintenance margin, requiring additional funds or position reduction.",
+  
+  "VWAP": "Volume Weighted Average Price - Average price weighted by volume. Institutional benchmark for fair value.",
+  
+  "delta": "Net difference between buying and selling volume at each price level. Positive delta = more buyers, negative = more sellers.",
+  
+  "footprint_chart": "Chart showing volume at each price level within a candle, revealing buying/selling pressure distribution.",
+  
+  "imbalance": "Significant difference between buy and sell volume at a price level, often indicating institutional activity.",
+  
+  "liquidity_void": "Area on chart with little trading activity, often created by gaps or fast moves. Acts as price magnet.",
+  
+  "mitigation": "When price returns to fill a Fair Value Gap or test an Order Block. Completes the market structure.",
+  
+  "premium": "When futures trade above spot price, indicating bullish sentiment or cost of carry.",
+  
+  "discount": "When futures trade below spot price, indicating bearish sentiment.",
+  
+  "contango": "Futures curve where longer-dated contracts trade at premium to near-dated. Normal in commodities.",
+  
+  "backwardation": "Futures curve where near-dated contracts trade at premium to longer-dated. Indicates supply shortage or high demand for immediate delivery.",
+  
+  "open_interest": "Total number of outstanding derivative contracts. Increasing OI with price = new money entering, decreasing OI = positions closing.",
+  
+  "basis": "Difference between futures and spot price. Basis trading exploits convergence at expiration.",
+  
+  "time_based_stop": "Stop loss based on time rather than price. If trade doesn't work within X minutes/hours, exit regardless of P&L.",
+  
+  "tick": "Minimum price movement. NQ = 0.25 points ($5 per tick for MNQ).",
+  
+  "point_value": "Dollar value of one point move. MNQ = $20 per point, MES = $5 per point.",
+  
+  "session_close": "Official market close time. Equities: 16:00 EST, Crypto: never (24/7).",
+  
+  "settlement": "Official closing price for margin calculations. Usually VWAP of last 30 seconds.",
+  
+  "rollover": "Switching from expiring contract to next front month. Creates volume patterns.",
+  
+  "front_month": "Most actively traded contract month with highest volume and open interest.",
+  
+  "back_month": "Less active contract months further from expiration.",
+  
+  "calendar_spread": "Simultaneous long/short of different expiration months. Exploits term structure changes.",
+  
+  "term_structure": "Relationship between futures prices across different expiration dates.",
+  
+  "cost_of_carry": "Storage, financing, and insurance costs built into futures prices.",
+  
+  "convergence": "Futures price approaching spot price as expiration nears. Basis goes to zero.",
+  
+  "delivery": "Physical or cash settlement of futures contract at expiration.",
+  
+  "cash_settled": "Futures settled in cash rather than physical delivery (most financial futures).",
+  
+  "physical_delivery": "Actual exchange of underlying commodity (oil, gold, agricultural products).",
+  
+  "position_limit": "Maximum number of contracts a trader can hold, set by exchanges.",
+  
+  "reportable_position": "Position size requiring reporting to regulators (usually 25+ contracts).",
+  
+  "speculator": "Trader taking directional risk for profit, not hedging underlying exposure.",
+  
+  "hedger": "Trader using futures to offset risk in underlying business (farmers, manufacturers).",
+  
+  "COT_report": "Commitments of Traders report showing positioning of hedgers, speculators, small traders.",
+  
+  "smart_money": "Institutional traders with superior information and execution. Often tracked via COT reports.",
+  
+  "dumb_money": "Retail traders who tend to be wrong at extremes. Contrarian indicator.",
+  
+  "sentiment": "Overall market attitude (bullish/bearish). Measured by surveys, positioning, put/call ratios.",
+  
+  "contrarian": "Trading against the crowd, based on belief that extremes in sentiment signal reversals.",
+  
+  "mean_reversion": "Strategy betting that prices return to average. Works in range-bound markets.",
+  
+  "momentum": "Strategy following trend. Works in trending markets, fails at reversals.",
+  
+  "breakout": "Entering when price breaks key level. Risk: false breakouts and liquidity grabs.",
+  
+  "fade": "Trading against the move, expecting reversal. High risk, requires precise timing.",
+  
+  "scalp": "Very short-term trades for small profits. Requires low commissions and fast execution.",
+  
+  "swing_trade": "Holding positions for days to weeks. Captures larger moves, lower time commitment.",
+  
+  "position_trade": "Long-term trades lasting weeks to months. Based on fundamental or macro trends.",
+  
+  "risk_reward": "Ratio of potential profit to potential loss. Minimum 2:1 recommended.",
+  
+  "position_sizing": "Determining how many contracts/shares to trade based on risk tolerance and account size.",
+  
+  "max_drawdown": "Largest peak-to-trough decline. Key metric for strategy evaluation.",
+  
+  "sharpe_ratio": "Risk-adjusted return measure. >1.0 good, >2.0 excellent.",
+  
+  "win_rate": "Percentage of profitable trades. Less important than risk:reward.",
+  
+  "expectancy": "Average profit per trade. (Win% × Avg Win) - (Loss% × Avg Loss).",
+  
+  "edge": "Statistical advantage that generates positive expectancy over many trades."
+}

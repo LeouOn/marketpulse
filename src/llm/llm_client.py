@@ -57,7 +57,7 @@ class LMStudioClient:
             await self.session.close()
     
     async def generate_completion(self, 
-                                model: str = 'fast',
+                                model: str = 'fast_analysis',
                                 messages: List[Dict[str, str]] = None,
                                 max_tokens: int = 100,
                                 temperature: float = 0.3,
@@ -66,7 +66,7 @@ class LMStudioClient:
         Generate completion using LM Studio
         
         Args:
-            model: Model type ('fast', 'analyst', 'reviewer')
+            model: Model capability type ('fast_analysis', 'deep_analysis', 'trade_review', 'data_validation')
             messages: Chat messages in OpenAI format
             max_tokens: Maximum tokens to generate
             temperature: Response creativity (0.0-1.0)
@@ -76,8 +76,14 @@ class LMStudioClient:
             Completion response or None if error
         """
         try:
-            # Use default model if not specified
-            actual_model = self.models.get(model, self.models['fast'])
+            # Use configured model from settings
+            actual_model = self.model
+            
+            # Get model configuration if available
+            model_config = self.model_capabilities.get(model, {})
+            if model_config:
+                max_tokens = model_config.get('max_tokens', max_tokens)
+                temperature = model_config.get('temperature', temperature)
             
             # Prepare messages
             if messages is None:
@@ -137,7 +143,7 @@ Focus on: market bias, volatility regime, trading opportunities, and key levels.
         ]
         
         response = await self.generate_completion(
-            model='fast',
+            model='fast_analysis',
             messages=messages,
             system_prompt=system_prompt,
             max_tokens=150,
@@ -187,7 +193,7 @@ Provide comprehensive analysis with clear reasoning for trading decisions."""
         ]
         
         response = await self.generate_completion(
-            model='analyst',
+            model='deep_analysis',
             messages=messages,
             system_prompt=system_prompt,
             max_tokens=400,
@@ -232,7 +238,7 @@ focusing on risk management, execution quality, and learning opportunities."""
         ]
         
         response = await self.generate_completion(
-            model='reviewer',
+            model='trade_review',
             messages=messages,
             system_prompt=system_prompt,
             max_tokens=250,
@@ -313,7 +319,7 @@ Return validation results in JSON format."""
             messages = [{'role': 'user', 'content': user_prompt}]
             
             response = await self.generate_completion(
-                model='fast_analysis',
+                model='data_validation',
                 messages=messages,
                 system_prompt=system_prompt,
                 max_tokens=200,

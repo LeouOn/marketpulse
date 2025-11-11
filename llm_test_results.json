@@ -1,15 +1,18 @@
 {
-  "timestamp": 1762801765.467784,
+  "timestamp": 1762809355.016222,
+  "timestamp_readable": "2025-11-10 13:15:55",
+  "endpoint": "http://127.0.0.1:1234/v1",
+  "model": "aquif-3.5-max-42b-a3b-i1",
   "results": {
-    "lm_studio_connection": false,
-    "market_analysis": false,
-    "model_performance": false,
-    "openrouter_fallback": false,
-    "llm_manager": false
+    "lm_studio_connection": true,
+    "data_validation": true,
+    "market_analysis": true,
+    "chart_interpretation": true,
+    "llm_manager": true
   },
   "summary": {
-    "passed": 0,
+    "passed": 5,
     "total": 5,
-    "success_rate": "0.0%"
+    "success_rate": "100.0%"
   }
 }
