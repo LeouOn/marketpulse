@@ -327,14 +327,17 @@ class YahooFinanceClient:
         """Get historical OHLC data for a symbol
 
         Args:
-            symbol: Stock symbol (e.g., 'SPY', 'AAPL')
+            symbol: Stock symbol (e.g., 'SPY', 'AAPL', 'BTC')
             period: Period string ('1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max')
             interval: Data interval ('1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo')
         """
         try:
+            # Map symbol if it's in macro_symbols (e.g., BTC -> BTC-USD)
+            yahoo_symbol = self.macro_symbols.get(symbol, symbol)
+
             # Download historical data from Yahoo Finance
             data = yf.download(
-                symbol,
+                yahoo_symbol,
                 period=period,
                 interval=interval,
                 progress=False,
