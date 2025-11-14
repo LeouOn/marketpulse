@@ -74,4 +74,10 @@ coverage.xml
 *.log
 logs/
 
+# Test results and temporary files
+*_test_results.json
+test_results*.json
+*.tmp
+*.temp
+
 # Docker

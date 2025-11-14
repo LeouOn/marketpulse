@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run dev:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(pip install:*)",
+      "Bash(curl:*)",
+      "Bash(npm run build:*)",
+      "Bash(docker compose:*)",
+      "Bash(node:*)",
+      "Bash(uvicorn:*)",
+      "Bash(rm:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(venv/Scripts/python.exe:*)",
+      "Bash(venv/Scripts/pip.exe:*)",
+      "Bash(venv/Scripts/pip install:*)",
+      "Bash(./start-dev.bat:*)",
+      "Bash(timeout:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

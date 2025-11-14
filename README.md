@@ -1,12 +1,90 @@
-# MarketPulse - Real-Time Market Internals Analysis
+# MarketPulse 📈
 
-A comprehensive market internals analysis system for NQ, BTC, and ETH trading with AI-powered insights.
+Real-time market analysis platform with AI-powered trading insights, OHLC technical analysis, and comprehensive market internals monitoring.
 
-## Overview
+## 🚀 Quick Start
 
-MarketPulse provides real-time analysis of market internals to help identify important levels, signals, and trading opportunities. The system integrates with multiple data sources and uses LLMs to provide intelligent market analysis.
+### Prerequisites
 
-## Features
+- **Python 3.8+** - For the backend API
+- **Node.js 16+** - For the Next.js frontend
+- **Docker & Docker Compose** - For containerized deployment (optional)
+
+### Option 1: Automated Setup (Recommended)
+
+#### Windows PowerShell
+```powershell
+# One-time setup
+.\scripts\setup.ps1
+
+# Start development servers
+.\scripts\dev.ps1
+
+# Or start with Docker
+.\scripts\docker.ps1 -Action up
+```
+
+#### Linux/macOS (Bash)
+```bash
+# One-time setup
+./scripts/setup.sh
+
+# Start development servers
+./scripts/dev.sh
+
+# Or start with Docker
+./scripts/docker.sh up
+```
+
+#### Make (Cross-platform)
+```bash
+# One-time setup
+make install
+
+# Start development servers
+make dev
+
+# Or start with Docker
+make docker-up
+```
+
+### Option 2: Manual Setup
+
+1. **Clone and setup environment**
+```bash
+git clone <repository>
+cd marketpulse
+
+# Python virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/macOS
+# or
+venv\Scripts\Activate     # Windows
+
+# Install dependencies
+pip install -r requirements-lite.txt
+cd marketpulse-client && npm install && cd ..
+```
+
+2. **Start development servers**
+```bash
+# Backend (http://localhost:8000)
+python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Frontend (http://localhost:3000) - in separate terminal
+cd marketpulse-client && npm run dev
+```
+
+## 🌐 Access Points
+
+Once running, access the application at:
+
+- **Frontend Dashboard**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+- **Interactive API**: http://localhost:8000/redoc
+
+## 📊 Features
 
 - **Real-time Market Data Collection** from Alpaca, Rithmic, and Coinbase
 - **PostgreSQL Database** for historical data storage and analysis

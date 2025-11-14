@@ -1,8 +1,7 @@
 from loguru import logger
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, UniqueConstraint, JSON
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from datetime import datetime
 
@@ -61,7 +60,7 @@ class LLMInsight(Base):
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
     analysis_type = Column(String(50), nullable=False, index=True)
     model_used = Column(String(50), nullable=False)
-    input_data = Column(JSONB)
+    input_data = Column(JSON)
     analysis_result = Column(Text)
     confidence_score = Column(Float)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -99,7 +98,7 @@ class MarketRegime(Base):
     confidence = Column(Float, nullable=False)
     start_time = Column(DateTime(timezone=True), nullable=False, index=True)
     end_time = Column(DateTime(timezone=True), index=True)
-    characteristics = Column(JSONB)
+    characteristics = Column(JSON)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     def __repr__(self):

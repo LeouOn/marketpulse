@@ -32,6 +32,20 @@ export interface DashboardData {
     symbolsTracked: number;
   };
   aiAnalysis?: string;
+  dataSource?: string;
+}
+
+export interface MacroData {
+  DXY: MarketSymbol;
+  TNX: MarketSymbol;
+  CLF: MarketSymbol;
+  GC: MarketSymbol;
+  BTC: MarketSymbol;
+  ETH: MarketSymbol;
+  market_session: string;
+  economic_sentiment: string;
+  sector_performance: Record<string, number>;
+  risk_appetite: string;
 }
 
 export interface PriceData {
