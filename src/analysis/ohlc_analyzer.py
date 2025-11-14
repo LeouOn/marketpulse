@@ -71,15 +71,25 @@ class OHLCAnalyzer:
         """Extract OHLC data for a specific timeframe"""
         try:
             # Try different data sources
+            raw_data = []
+
             if 'historical_data' in data and timeframe in data['historical_data']:
-                raw_data = data['historical_data'][timeframe].get(symbol, [])
+                # New format: {'historical_data': {'4h': {'symbol': symbol, 'data': [...]}}}
+                timeframe_data = data['historical_data'][timeframe]
+                if isinstance(timeframe_data, dict) and 'data' in timeframe_data:
+                    raw_data = timeframe_data['data']
+                elif isinstance(timeframe_data, list):
+                    raw_data = timeframe_data
             elif 'candles' in data and timeframe in data['candles']:
-                raw_data = data['candles'][timeframe].get(symbol, [])
+                # Alternative format: {'candles': {'4h': [{}]}}
+                raw_data = data['candles'][timeframe]
             else:
-                # Generate sample data for testing
-                raw_data = self._generate_sample_data(symbol, timeframe)
+                # No real data available - return None instead of mock data
+                logger.warning(f"No real OHLC data available for {symbol} {timeframe} - refusing to use mock data")
+                return None
 
             if not raw_data:
+                logger.warning(f"No raw data found for {symbol} {timeframe}")
                 return None
 
             # Convert to DataFrame
@@ -102,8 +112,10 @@ class OHLCAnalyzer:
             # Ensure we have required columns
             required_cols = ['open', 'high', 'low', 'close']
             if not all(col in df.columns for col in required_cols):
+                logger.warning(f"Missing required columns for {symbol} {timeframe}. Available: {list(df.columns)}")
                 return None
 
+            logger.info(f"Successfully extracted {len(df)} data points for {symbol} {timeframe}")
             return df.sort_index()
 
         except Exception as e:

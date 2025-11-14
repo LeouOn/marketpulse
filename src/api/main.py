@@ -882,9 +882,9 @@ async def get_ohlc_analysis(symbol: str):
         # Get data for each timeframe
         for tf_name, tf_config in ohlc_analyzer.timeframes.items():
             try:
-                from src.api.yahoo_client import YahooFinanceClient as AlpacaClient
-                client = AlpacaClient(settings)
-                data = await client.get_bars(symbol, tf_config['period'], tf_config['limit'])
+                from src.api.yahoo_client import YahooFinanceClient
+                client = YahooFinanceClient(settings)
+                data = client.get_bars(symbol, tf_config['period'], tf_config.get('interval', '1d'))
 
                 if data is not None:
                         historical_data[tf_name] = {
@@ -901,6 +901,8 @@ async def get_ohlc_analysis(symbol: str):
                                 "close": float(row['close']),
                                 "volume": int(row['volume'])
                             })
+                else:
+                    logger.warning(f"No data returned for {symbol} {tf_name}")
             except Exception as e:
                 logger.warning(f"Could not fetch {tf_name} data for {symbol}: {e}")
 

@@ -18,7 +18,10 @@
       "Bash(venv/Scripts/pip.exe:*)",
       "Bash(venv/Scripts/pip install:*)",
       "Bash(./start-dev.bat:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(cat:*)",
+      "Bash(npm show:*)",
+      "Bash(npm update:*)"
     ],
     "deny": [],
     "ask": []

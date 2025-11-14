@@ -323,6 +323,50 @@ class YahooFinanceClient:
             return None
 
 
+    def get_bars(self, symbol: str, period: str = '1mo', interval: str = '1d') -> Optional[pd.DataFrame]:
+        """Get historical OHLC data for a symbol
+
+        Args:
+            symbol: Stock symbol (e.g., 'SPY', 'AAPL')
+            period: Period string ('1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max')
+            interval: Data interval ('1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo')
+        """
+        try:
+            # Download historical data from Yahoo Finance
+            data = yf.download(
+                symbol,
+                period=period,
+                interval=interval,
+                progress=False,
+                auto_adjust=False
+            )
+
+            if data.empty:
+                logger.warning(f"No historical data found for {symbol}")
+                return None
+
+            # Rename columns to standard format
+            if 'Close' in data.columns:
+                data = data.rename(columns={
+                    'Close': 'close',
+                    'Open': 'open',
+                    'High': 'high',
+                    'Low': 'low',
+                    'Volume': 'volume'
+                })
+
+            # Ensure we have the required columns
+            required_columns = ['open', 'high', 'low', 'close', 'volume']
+            if not all(col in data.columns for col in required_columns):
+                logger.error(f"Missing required columns in data for {symbol}")
+                return None
+
+            return data
+
+        except Exception as e:
+            logger.error(f"Error fetching bars for {symbol}: {e}")
+            return None
+
 # Convenience function
 def create_yahoo_client(settings: Settings = None) -> YahooFinanceClient:
     """Create a Yahoo Finance client instance"""

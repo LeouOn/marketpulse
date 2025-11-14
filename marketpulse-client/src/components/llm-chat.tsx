@@ -2,7 +2,32 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Bot, User, RefreshCw, Sparkles } from 'lucide-react';
+// Custom icon components
+const SendIcon = () => (
+  <div className="w-5 h-5 bg-blue-400 rounded-full flex items-center justify-center">
+    <div className="w-2 h-2 bg-white rounded-sm" style={{transform: 'rotate(-45deg) translateY(1px)'}}></div>
+  </div>
+);
+
+const BotIcon = () => (
+  <div className="w-6 h-6 bg-purple-400 rounded-lg flex items-center justify-center text-white font-bold">AI</div>
+);
+
+const UserIcon = () => (
+  <div className="w-6 h-6 bg-green-400 rounded-full flex items-center justify-center text-white font-bold">U</div>
+);
+
+const RefreshIcon = () => (
+  <div className="w-5 h-5 border-2 border-gray-400 rounded-full" />
+);
+
+const SparklesIcon = () => (
+  <div className="w-4 h-4 flex gap-0.5">
+    <div className="w-1 h-1 bg-yellow-400 rounded-full"></div>
+    <div className="w-1 h-1 bg-yellow-300 rounded-full"></div>
+    <div className="w-1 h-1 bg-yellow-200 rounded-full"></div>
+  </div>
+);
 
 interface Message {
   id: string;
@@ -90,7 +115,7 @@ What would you like to know about the current market?`,
     setMessages(prev => [...prev, thinkingMessage]);
 
     try {
-      const response = await fetch('/api/llm/chat', {
+      const response = await fetch('http://localhost:8000/api/llm/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -185,7 +210,7 @@ What would you like to know about the current market?`,
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Bot className="w-5 h-5 text-blue-400" />
+            <BotIcon />
             <h3 className="text-lg font-semibold text-white">AI Trading Assistant</h3>
             <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">
               {symbol}
@@ -197,7 +222,7 @@ What would you like to know about the current market?`,
           className="p-2 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors"
           title="Clear chat"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshIcon />
         </button>
       </div>
 
@@ -225,9 +250,9 @@ What would you like to know about the current market?`,
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
                     message.role === 'user' ? (
-                      <User className="w-4 h-4 text-white" />
+                      <UserIcon />
                     ) : (
-                      <Bot className="w-4 h-4 text-white" />
+                      <BotIcon />
                     )
                   )}
                 </div>
@@ -240,7 +265,7 @@ What would you like to know about the current market?`,
                 }`}>
                   {message.isThinking ? (
                     <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4" />
+                      <SparklesIcon />
                       <span>Thinking...</span>
                     </div>
                   ) : (
@@ -297,7 +322,7 @@ What would you like to know about the current market?`,
             {isLoading ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
-              <Send className="w-4 h-4" />
+              <SendIcon />
             )}
             <span className="hidden sm:inline">Send</span>
           </button>

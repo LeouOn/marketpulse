@@ -2,7 +2,53 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Activity, BarChart3, AlertTriangle, Target, Clock, RefreshCw, Signal } from 'lucide-react';
+// Custom icon components
+const ActivityIcon = () => (
+  <div className="w-5 h-5 bg-blue-400 rounded-full" />
+);
+
+const TrendingUpIcon = () => (
+  <div className="w-5 h-5 bg-green-400 rounded-sm" style={{clipPath: 'polygon(0 100%, 50% 0%, 100% 50%)'}} />
+);
+
+const TrendingDownIcon = () => (
+  <div className="w-5 h-5 bg-red-400 rounded-sm" style={{clipPath: 'polygon(0 0%, 50% 100%, 100% 50%)'}} />
+);
+
+const BarChartIcon = () => (
+  <div className="w-5 h-5 bg-purple-400 rounded flex gap-0.5 p-1">
+    <div className="bg-white w-1 h-3 rounded-sm"></div>
+    <div className="bg-white w-1 h-5 rounded-sm"></div>
+    <div className="bg-white w-1 h-2 rounded-sm"></div>
+  </div>
+);
+
+const AlertIcon = () => (
+  <div className="w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center text-white font-bold">!</div>
+);
+
+const TargetIcon = () => (
+  <div className="w-5 h-5 border-2 border-red-400 rounded-full flex items-center justify-center">
+    <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+  </div>
+);
+
+const ClockIcon = () => (
+  <div className="w-5 h-5 border-2 border-gray-400 rounded-full flex items-center justify-center">
+    <div className="w-2 h-0.5 bg-gray-400 rounded-sm"></div>
+  </div>
+);
+
+const RefreshIcon = () => (
+  <div className="w-5 h-5 border-2 border-blue-400 rounded-full" />
+);
+
+const SignalIcon = () => (
+  <div className="w-5 h-5 bg-green-400 rounded flex items-center justify-center gap-1 p-1">
+    <div className="bg-white w-1 h-1 rounded-full"></div>
+    <div className="bg-white w-1 h-1 rounded-full"></div>
+  </div>
+);
 import { useDashboardData } from '@/hooks/useMarketData';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 
@@ -61,7 +107,7 @@ export function OHLCAnalysisDashboard() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/market/ohlc-analysis/${symbol}`);
+      const response = await fetch(`http://localhost:8000/api/market/ohlc-analysis/${symbol}`);
       const data = await response.json();
 
       if (data.success) {
@@ -95,11 +141,11 @@ export function OHLCAnalysisDashboard() {
 
   const getTrendIcon = (trend: string) => {
     if (trend.toLowerCase().includes('bullish')) {
-      return <TrendingUp className="w-4 h-4" />;
+      return <TrendingUpIcon />;
     } else if (trend.toLowerCase().includes('bearish')) {
-      return <TrendingDown className="w-4 h-4" />;
+      return <TrendingDownIcon />;
     }
-    return <Activity className="w-4 h-4" />;
+    return <ActivityIcon />;
   };
 
   const getStrengthColor = (strength: string) => {
@@ -138,7 +184,7 @@ export function OHLCAnalysisDashboard() {
         className="bg-red-900/20 backdrop-blur border border-red-500/30 rounded-xl p-6"
       >
         <div className="flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5" />
+          <AlertIcon />
           <div>
             <h3 className="text-red-400 font-medium mb-1">Analysis Unavailable</h3>
             <p className="text-red-300 text-sm mb-3">{error}</p>
@@ -146,7 +192,7 @@ export function OHLCAnalysisDashboard() {
               onClick={() => fetchAnalysis(selectedSymbol)}
               className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshIcon />
               Retry
             </button>
           </div>
@@ -165,7 +211,7 @@ export function OHLCAnalysisDashboard() {
       >
         <div className="flex items-center gap-3">
           <div className="p-2 bg-blue-500/10 rounded-lg">
-            <BarChart3 className="w-6 h-6 text-blue-400" />
+            <BarChartIcon />
           </div>
           <div>
             <h2 className="text-2xl font-bold text-white">OHLC Technical Analysis</h2>
@@ -196,7 +242,9 @@ export function OHLCAnalysisDashboard() {
             disabled={isLoading}
             className="p-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <div className={isLoading ? 'animate-spin' : ''}>
+              <RefreshIcon />
+            </div>
           </button>
         </div>
       </motion.div>
@@ -237,7 +285,7 @@ export function OHLCAnalysisDashboard() {
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-300">Current Price</h3>
-                <Target className="w-5 h-5 text-blue-400" />
+                <TargetIcon />
               </div>
               {Object.values(analysisData.timeframes).length > 0 && (
                 <>
@@ -257,7 +305,7 @@ export function OHLCAnalysisDashboard() {
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-300">Active Signals</h3>
-                <Signal className="w-5 h-5 text-yellow-400" />
+                <SignalIcon />
               </div>
               <div className="text-2xl font-bold text-white mb-2">
                 {analysisData.signals.length}
@@ -321,7 +369,7 @@ export function OHLCAnalysisDashboard() {
               className="bg-gray-900/50 backdrop-blur rounded-xl p-6 border border-gray-800/50"
             >
               <h3 className="text-lg font-semibold text-gray-300 mb-4 flex items-center gap-2">
-                <TrendingDown className="w-5 h-5 text-green-400" />
+                <TrendingDownIcon />
                 Support Levels
               </h3>
               <div className="space-y-3">
@@ -354,7 +402,7 @@ export function OHLCAnalysisDashboard() {
               className="bg-gray-900/50 backdrop-blur rounded-xl p-6 border border-gray-800/50"
             >
               <h3 className="text-lg font-semibold text-gray-300 mb-4 flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-red-400" />
+                <TrendingUpIcon />
                 Resistance Levels
               </h3>
               <div className="space-y-3">

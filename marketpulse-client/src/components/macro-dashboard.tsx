@@ -52,6 +52,20 @@ export function MacroDashboard() {
   }
 
   const renderMacroCard = (data: any, label: string, icon: React.ReactNode, format: 'price' | 'percentage' | 'yield' = 'price') => {
+    // Handle undefined data
+    if (!data || typeof data !== 'object' || data.change === undefined) {
+      return (
+        <div className="bg-gray-900/50 backdrop-blur rounded-xl p-6 border border-gray-800/50">
+          <div className="flex items-center justify-center h-32">
+            <div className="text-center">
+              <div className="text-gray-500 mb-2">{icon}</div>
+              <p className="text-sm text-gray-400">No {label} data</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const isPositive = data.change >= 0;
     const TrendIcon = isPositive ? TrendingUp : TrendingDown;
     const trendColor = isPositive ? 'text-green-400' : 'text-red-400';
