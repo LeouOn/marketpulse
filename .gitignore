@@ -80,4 +80,7 @@ test_results*.json
 *.tmp
 *.temp
 
+# Test state files
+data/state/test_positions.json
+
 # Docker
