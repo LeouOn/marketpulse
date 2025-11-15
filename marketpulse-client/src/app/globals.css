@@ -80,5 +80,161 @@ body {
 
 /* Smooth transitions for color changes */
 .price-change {
-  transition: color 0.3s ease, background-color 0.3s ease;
+  transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Enhanced CSS Variables for Professional Dashboard */
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #2a2a2a;
+
+  --text-primary: #ffffff;
+  --text-secondary: #a0a0a0;
+
+  --green-bright: #10b981;
+  --green-dim: rgba(16, 185, 129, 0.1);
+
+  --red-bright: #ef4444;
+  --red-dim: rgba(239, 68, 68, 0.1);
+
+  --blue-accent: #3b82f6;
+  --border-color: #333333;
+  --border-color-light: #444444;
+}
+
+/* Multi-column Dashboard Grid System */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 1.5rem;
+  padding: 0;
+}
+
+@media (min-width: 1024px) {
+  .dashboard-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dashboard-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .dashboard-grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1400px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Compact table styles for data density */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+}
+
+.data-table td {
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.data-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.data-table tbody tr:hover {
+  background-color: var(--bg-tertiary);
+}
+
+/* Horizontal bar chart for sector performance */
+.sector-bar-container {
+  position: relative;
+  height: 2rem;
+  background-color: var(--bg-tertiary);
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.sector-bar {
+  height: 100%;
+  transition: width 0.5s ease;
+  display: flex;
+  align-items: center;
+  padding: 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.sector-bar-positive {
+  background: linear-gradient(90deg, var(--green-dim), var(--green-bright));
+  color: var(--green-bright);
+}
+
+.sector-bar-negative {
+  background: linear-gradient(90deg, var(--red-bright), var(--red-dim));
+  color: var(--red-bright);
+}
+
+/* Session timer styles */
+.session-timer {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Responsive utilities */
+.text-positive {
+  color: var(--green-bright);
+}
+
+.text-negative {
+  color: var(--red-bright);
+}
+
+.bg-positive {
+  background-color: var(--green-dim);
+}
+
+.bg-negative {
+  background-color: var(--red-dim);
+}
+
+/* Improved animations */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slideInUp 0.3s ease-out;
+}
+
+/* Card hover effects */
+.interactive-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.interactive-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
 }
