@@ -14,10 +14,10 @@ class OHLCAnalyzer:
 
     def __init__(self):
         self.timeframes = {
-            '4h': {'period': '4h', 'limit': 168},  # 7 days of 4h candles
-            '1d': {'period': '1d', 'limit': 30},   # 30 days
-            '7d': {'period': '1wk', 'limit': 12},  # 12 weeks
-            '30d': {'period': '1mo', 'limit': 12}  # 12 months
+            '4h': {'period': '7d', 'interval': '1h', 'limit': 168},  # 7 days of hourly candles
+            '1d': {'period': '1mo', 'interval': '1d', 'limit': 30},   # 30 days
+            '7d': {'period': '3mo', 'interval': '1d', 'limit': 90},  # ~12 weeks of daily candles
+            '30d': {'period': '1y', 'interval': '1d', 'limit': 365}  # 1 year of daily candles
         }
 
     def analyze_symbol(self, data: Dict[str, Any], symbol: str) -> Dict[str, Any]:
