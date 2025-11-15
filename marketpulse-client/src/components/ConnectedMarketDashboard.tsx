@@ -138,9 +138,15 @@ export function ConnectedMarketDashboard() {
 
   const formatChange = (change: number, changePct: number) => {
     const sign = change >= 0 ? '+' : '';
+    const isPositive = change >= 0;
+    const isNeutral = Math.abs(change) < 0.01; // Consider very small changes as neutral
+
     return {
       value: `${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)`,
-      color: change >= 0 ? 'text-green-400' : 'text-red-400',
+      color: isNeutral ? 'neutral' : (isPositive ? 'positive' : 'negative'),
+      colorClass: isNeutral ? 'text-neutral' : (isPositive ? 'text-positive' : 'text-negative'),
+      bgClass: isNeutral ? 'neutral-bg' : (isPositive ? 'positive-bg' : 'negative-bg'),
+      borderClass: isNeutral ? 'neutral-border' : (isPositive ? 'positive-border' : 'negative-border'),
       icon: change >= 0 ? TrendingUpIcon : TrendingDownIcon
     };
   };
@@ -283,7 +289,7 @@ export function ConnectedMarketDashboard() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.1 }}
-                    className="bg-gray-900/50 backdrop-blur rounded-xl p-6 border border-gray-800/50 hover:border-gray-700/50 transition-all"
+                    className={`bg-gray-900/50 backdrop-blur rounded-xl p-6 border border-gray-800/50 hover:border-gray-700/50 transition-all price-change ${changeInfo.borderClass}`}
                   >
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
@@ -294,7 +300,7 @@ export function ConnectedMarketDashboard() {
                     </div>
                     <div className="space-y-2">
                       <div className="text-2xl font-bold">{formatPrice(data.price, displaySymbol)}</div>
-                      <div className={`text-sm font-medium ${changeInfo.color}`}>
+                      <div className={`text-sm font-medium price-change ${changeInfo.colorClass}`}>
                         {changeInfo.value}
                       </div>
                       <div className="text-xs text-gray-400">
@@ -329,7 +335,7 @@ export function ConnectedMarketDashboard() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className="bg-gray-900/50 backdrop-blur rounded-xl p-4 border border-gray-800/50 hover:border-gray-700/50 transition-all"
+                    className={`bg-gray-900/50 backdrop-blur rounded-xl p-4 border border-gray-800/50 hover:border-gray-700/50 transition-all price-change ${changeInfo.borderClass}`}
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
@@ -340,7 +346,7 @@ export function ConnectedMarketDashboard() {
                     </div>
                     <div className="space-y-1">
                       <div className="text-xl font-bold">{formatPrice(marketData.price, symbol)}</div>
-                      <div className={`text-xs font-medium ${changeInfo.color}`}>
+                      <div className={`text-xs font-medium price-change ${changeInfo.colorClass}`}>
                         {changeInfo.value}
                       </div>
                       <div className="text-xs text-gray-500">

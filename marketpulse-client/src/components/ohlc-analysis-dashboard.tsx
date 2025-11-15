@@ -130,12 +130,12 @@ export function OHLCAnalysisDashboard() {
     switch (trend.toLowerCase()) {
       case 'bullish':
       case 'strongly_bullish':
-        return 'text-green-400';
+        return 'text-positive';
       case 'bearish':
       case 'strongly_bearish':
-        return 'text-red-400';
+        return 'text-negative';
       default:
-        return 'text-yellow-400';
+        return 'text-neutral';
     }
   };
 
@@ -161,11 +161,11 @@ export function OHLCAnalysisDashboard() {
 
   const getSignalColor = (signal: string) => {
     if (signal.toLowerCase().includes('bullish')) {
-      return 'bg-green-500/10 border-green-500/30 text-green-400';
+      return 'positive-bg positive-border text-positive';
     } else if (signal.toLowerCase().includes('bearish')) {
-      return 'bg-red-500/10 border-red-500/30 text-red-400';
+      return 'negative-bg negative-border text-negative';
     }
-    return 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400';
+    return 'neutral-bg neutral-border text-neutral';
   };
 
   if (isLoading && !analysisData) {
@@ -344,7 +344,7 @@ export function OHLCAnalysisDashboard() {
                   <div className={`text-lg font-bold mb-2 ${getTrendColor(data.trend.direction)}`}>
                     {data.trend.direction.replace('_', ' ')}
                   </div>
-                  <div className="text-xs text-gray-400 mb-2">
+                  <div className={`text-xs mb-2 price-change ${data.price_change_pct >= 0 ? 'text-positive' : 'text-negative'}`}>
                     Change: {data.price_change_pct >= 0 ? '+' : ''}{data.price_change_pct.toFixed(2)}%
                   </div>
                   <div className="text-xs text-gray-400">

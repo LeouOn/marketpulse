@@ -23,3 +23,62 @@ body {
     text-wrap: balance;
   }
 }
+
+/* Price Movement Color Scheme */
+.positive {
+  color: #10b981; /* Green */
+}
+
+.negative {
+  color: #ef4444; /* Red */
+}
+
+.neutral {
+  color: #6b7280; /* Gray */
+}
+
+.positive-bg {
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+.negative-bg {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.neutral-bg {
+  background-color: rgba(107, 114, 128, 0.1);
+}
+
+.positive-border {
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.negative-border {
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.neutral-border {
+  border-color: rgba(107, 114, 128, 0.2);
+}
+
+/* Enhanced color variations for better visual hierarchy */
+.positive-intense {
+  color: #059669; /* Darker green for emphasis */
+}
+
+.negative-intense {
+  color: #dc2626; /* Darker red for emphasis */
+}
+
+.positive-bg-intense {
+  background-color: rgba(16, 185, 129, 0.2);
+}
+
+.negative-bg-intense {
+  background-color: rgba(239, 68, 68, 0.2);
+}
+
+/* Smooth transitions for color changes */
+.price-change {
+  transition: color 0.3s ease, background-color 0.3s ease;
+}

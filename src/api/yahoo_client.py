@@ -22,6 +22,8 @@ class YahooFinanceClient:
             'SPY',    # S&P 500 ETF
             'QQQ',    # NASDAQ ETF
             '^VIX',   # VIX Volatility Index - Fixed with ^ prefix
+            'NQ=F',   # Nasdaq 100 Futures
+            'ES=F',   # S&P 500 Futures
             'IWM',    # Russell 2000 ETF
             'DIA',    # Dow Jones ETF
             'VTI',    # Total Stock Market ETF

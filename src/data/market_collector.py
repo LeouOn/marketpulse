@@ -26,9 +26,9 @@ class MarketPulseCollector:
         
         # Market symbols to monitor
         self.symbols = {
-            'NQ': self.settings.nq_symbol,
-            'BTC': self.settings.btc_symbol,
-            'ETH': self.settings.eth_symbol,
+            'NQ=F': self.settings.nq_symbol,  # Use full symbol as key for consistency
+            'BTC-USD': self.settings.btc_symbol,
+            'ETH-USD': self.settings.eth_symbol,
             'SPY': 'SPY',
             'QQQ': 'QQQ',
             'VIX': '^VIX',  # Fixed: VIX needs ^ prefix for Yahoo Finance

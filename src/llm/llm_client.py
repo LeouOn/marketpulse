@@ -48,7 +48,9 @@ class LMStudioClient:
     async def __aenter__(self):
         """Async context manager entry"""
         import aiohttp
-        self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout))
+        # Use longer timeout for chat requests
+        timeout = max(self.timeout, 200)  # At least 200 seconds for chat
+        self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout))
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):

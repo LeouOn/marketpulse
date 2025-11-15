@@ -57,6 +57,21 @@ export function EnhancedMarketDashboard({ data, loading, error, onRefresh, lastU
     }
   };
 
+  const formatChangeWithColor = (change: number, changePct: number) => {
+    const isPositive = change >= 0;
+    const isNeutral = Math.abs(change) < 0.01;
+
+    return {
+      isPositive,
+      isNeutral,
+      colorClass: isNeutral ? 'text-neutral' : (isPositive ? 'text-positive' : 'text-negative'),
+      bgClass: isNeutral ? 'neutral-bg' : (isPositive ? 'positive-bg' : 'negative-bg'),
+      borderClass: isNeutral ? 'neutral-border' : (isPositive ? 'positive-border' : 'negative-border'),
+      iconBgClass: isNeutral ? 'neutral-bg' : (isPositive ? 'positive-bg' : 'negative-bg'),
+      sign: isPositive ? '+' : ''
+    };
+  };
+
   const renderSymbolCard = (symbol: any, label: string, icon: React.ReactNode) => {
     if (!symbol || symbol.price === 0) {
       return (
@@ -76,16 +91,15 @@ export function EnhancedMarketDashboard({ data, loading, error, onRefresh, lastU
       );
     }
 
-    const isPositive = symbol.change >= 0;
-    const TrendIcon = isPositive ? TrendingUpIcon : TrendingDownIcon;
-    const trendColor = isPositive ? 'text-green-400' : 'text-red-400';
+    const changeInfo = formatChangeWithColor(symbol.change, symbol.change_pct);
+    const TrendIcon = changeInfo.isPositive ? TrendingUpIcon : TrendingDownIcon;
 
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         whileHover={{ y: -5, transition: { duration: 0.2 } }}
-        className="bg-gray-900/50 backdrop-blur rounded-xl p-6 border border-gray-800/50 hover:border-gray-700/50 transition-all"
+        className={`bg-gray-900/50 backdrop-blur rounded-xl p-6 border border-gray-800/50 hover:border-gray-700/50 transition-all price-change ${changeInfo.borderClass}`}
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -94,8 +108,8 @@ export function EnhancedMarketDashboard({ data, loading, error, onRefresh, lastU
             </div>
             <h3 className="text-lg font-semibold text-gray-300">{label}</h3>
           </div>
-          <div className={`p-2 rounded-lg ${isPositive ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
-            <TrendIcon className={`w-5 h-5 ${trendColor}`} />
+          <div className={`p-2 rounded-lg ${changeInfo.iconBgClass}`}>
+            <TrendIcon className="w-5 h-5" />
           </div>
         </div>
 
@@ -103,10 +117,10 @@ export function EnhancedMarketDashboard({ data, loading, error, onRefresh, lastU
           <div className="text-3xl font-bold text-white">
             ${symbol.price.toFixed(2)}
           </div>
-          <div className={`flex items-center gap-2 text-sm ${trendColor}`}>
-            <span>{isPositive ? '+' : ''}{symbol.change.toFixed(2)}</span>
+          <div className={`flex items-center gap-2 text-sm price-change ${changeInfo.colorClass}`}>
+            <span>{changeInfo.sign}{symbol.change.toFixed(2)}</span>
             <span>•</span>
-            <span>{isPositive ? '+' : ''}{symbol.change_pct.toFixed(2)}%</span>
+            <span>{changeInfo.sign}{symbol.change_pct.toFixed(2)}%</span>
           </div>
           <div className="text-xs text-gray-500 flex items-center gap-1">
             <ActivityIcon />

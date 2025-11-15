@@ -59,6 +59,7 @@ except Exception as e:
 # Global variables
 collector = None
 ohlc_analyzer = None
+model_cache = {"models": None, "timestamp": None, "cache_duration": 300}  # 5 minutes cache
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -549,41 +550,344 @@ class ChatRequest(BaseModel):
 async def chat_with_llm(request: ChatRequest):
     """Chat with the LLM trading assistant"""
     try:
-        llm_manager = LLMManager()
+        # Add system prompt for trading assistant
+        system_prompt = """You are a professional AI trading assistant. You help users analyze market conditions,
+        understand trading strategies, and provide insights about financial markets. Always be helpful,
+        educational, and responsible with your advice. Never provide guaranteed financial advice.
 
-        # Build context-aware prompt
+        When users ask about market data, reference the provided context. When you don't have specific data,
+        acknowledge the limitations and provide general guidance."""
+
+        # Build enhanced context-aware prompt
         context_info = ""
         if request.context:
-            context_info = f"Current Market Context:\n{request.context}\n\n"
+            # Handle enhanced context with symbol detection
+            context_data = request.context
+            context_info = f"Current Market Context:\n{json.dumps(context_data, indent=2)}\n\n"
+
+            # Add symbol-specific context information
+            if 'detected_symbols' in context_data and context_data['detected_symbols']:
+                detected_syms = context_data['detected_symbols']
+                context_info += f"Symbols Mentioned: {', '.join(detected_syms)}\n"
+
+            # Add query type context
+            if 'query_type' in context_data:
+                query_type = context_data['query_type']
+                context_info += f"Query Type: {query_type}\n"
+
+                # Add specialized instructions based on query type
+                if query_type == 'trend_analysis':
+                    context_info += "Focus on trend direction, momentum, and price patterns.\n"
+                elif query_type == 'technical_levels':
+                    context_info += "Focus on support/resistance levels and price targets.\n"
+                elif query_type == 'volatility_analysis':
+                    context_info += "Focus on volatility patterns, risk assessment, and timing.\n"
+                elif query_type == 'trading_strategy':
+                    context_info += "Focus on actionable strategies, entries, exits, and risk management.\n"
+                elif query_type == 'symbol_specific':
+                    context_info += "Focus analysis on the detected symbols mentioned.\n"
 
         if request.symbol:
             context_info += f"Primary Symbol: {request.symbol}\n"
 
-        # Build conversation history
-        conversation = []
-        if request.conversation_history:
-            conversation = request.conversation_history
+        # Build conversation history in OpenAI format
+        messages = []
 
-        # Add current message
-        conversation.append({
+        # Add system message
+        messages.append({
+            'role': 'system',
+            'content': system_prompt
+        })
+
+        # Add conversation history (excluding the last user message as we'll add it separately)
+        if request.conversation_history:
+            for msg in request.conversation_history[-6:]:  # Keep last 6 messages for context
+                messages.append({
+                    'role': msg['role'],
+                    'content': msg['content']
+                })
+
+        # Add context as a system message if available
+        if context_info:
+            messages.append({
+                'role': 'system',
+                'content': context_info
+            })
+
+        # Add current user message
+        messages.append({
             'role': 'user',
             'content': request.message
         })
 
-        # Get AI analysis
-        response = await llm_manager.analyze_market(
-            {'user_message': request.message, 'context': request.context},
-            'chat'
-        )
+        # Try to get response from LM Studio with longer timeout
+        response_text = None
+
+        try:
+            # Use asyncio.wait_for to handle timeout
+            async with LMStudioClient() as client:
+                # Get the preferred model or use default
+                selected_model = getattr(LMStudioClient, 'default_model', 'aquif-3.5-max-42b-a3b-i1')
+
+                response = await asyncio.wait_for(
+                    client.generate_completion(
+                        model=selected_model,  # Use the selected model
+                        messages=messages,
+                        max_tokens=500,  # Allow longer responses for chat
+                        temperature=0.7  # More conversational temperature
+                    ),
+                    timeout=180.0  # 3 minutes timeout
+                )
+
+                if response and 'choices' in response and len(response['choices']) > 0:
+                    response_text = response['choices'][0]['message']['content']
+                    logger.info(f"Successfully got response from LM Studio")
+
+        except asyncio.TimeoutError:
+            logger.error("LM Studio request timed out after 3 minutes")
+            return MarketResponse(
+                success=False,
+                error="The AI request timed out after 3 minutes. The query might be too complex or the AI service is overloaded. Please try again with a simpler question.",
+                timestamp=datetime.now().isoformat()
+            )
+        except Exception as e:
+            logger.error(f"LM Studio error: {e}")
+
+        # If LM Studio failed, try to provide a helpful fallback response
+        if not response_text:
+            logger.warning("LM Studio failed, providing fallback response")
+
+            # Simple fallback responses based on common patterns
+            message_lower = request.message.lower()
+
+            if "trend" in message_lower and request.symbol:
+                response_text = f"I apologize, but I'm having trouble connecting to my AI analysis service right now. However, I can tell you that for {request.symbol}, you should look at multiple timeframes to determine the current trend. Check for higher highs and higher lows for an uptrend, or lower highs and lower lows for a downtrend."
+            elif "market" in message_lower:
+                response_text = "I apologize, but I'm having trouble connecting to my AI analysis service right now. For general market analysis, I recommend looking at the major indices (SPY, QQQ), volatility (VIX), and market breadth indicators to get a complete picture of market conditions."
+            elif "buy" in message_lower or "sell" in message_lower:
+                response_text = "I apologize, but I'm having trouble connecting to my AI analysis service right now. Remember that trading decisions should be based on your own analysis, risk tolerance, and strategy. Always use proper risk management and never risk more than you're willing to lose."
+            else:
+                response_text = "I apologize, but I'm having trouble connecting to my AI analysis service right now. This could be due to technical difficulties with the LM Studio service. Please check if LM Studio is running and try again in a moment."
 
         return MarketResponse(
             success=True,
-            data={'response': response},
+            data={'response': response_text},
             timestamp=datetime.now().isoformat()
         )
 
     except Exception as e:
         logger.error(f"Error in LLM chat: {e}")
+        return MarketResponse(
+            success=False,
+            error=f"An error occurred while processing your request: {str(e)}",
+            timestamp=datetime.now().isoformat()
+        )
+
+class ModelSelectionRequest(BaseModel):
+    """Model selection request"""
+    model_id: str
+    provider: str = "lm_studio"  # lm_studio or openrouter
+
+@app.get("/api/llm/models", response_model=MarketResponse)
+async def get_available_models():
+    """Get available models from LM Studio and cache them"""
+    try:
+        current_time = datetime.now().timestamp()
+
+        # Check if cache is valid
+        if (model_cache["models"] and
+            model_cache["timestamp"] and
+            current_time - model_cache["timestamp"] < model_cache["cache_duration"]):
+
+            return MarketResponse(
+                success=True,
+                data={
+                    "models": model_cache["models"],
+                    "cached": True,
+                    "cache_age": int(current_time - model_cache["timestamp"]),
+                    "provider": "lm_studio"
+                },
+                timestamp=datetime.now().isoformat()
+            )
+
+        # Fetch fresh models from LM Studio
+        import aiohttp
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://localhost:1234/v1/models", timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    if response.status == 200:
+                        models_data = await response.json()
+
+                        # Extract model information
+                        models = []
+                        for model in models_data.get("data", []):
+                            model_info = {
+                                "id": model.get("id"),
+                                "object": model.get("object"),
+                                "owned_by": model.get("owned_by"),
+                                "size": _estimate_model_size(model.get("id", "")),
+                                "recommended": model.get("id") == "aquif-3.5-max-42b-a3b-i1"
+                            }
+                            models.append(model_info)
+
+                        # Update cache
+                        model_cache["models"] = models
+                        model_cache["timestamp"] = current_time
+
+                        return MarketResponse(
+                            success=True,
+                            data={
+                                "models": models,
+                                "cached": False,
+                                "cache_age": 0,
+                                "provider": "lm_studio",
+                                "total_count": len(models)
+                            },
+                            timestamp=datetime.now().isoformat()
+                        )
+                    else:
+                        raise Exception(f"LM Studio API returned status {response.status}")
+
+        except Exception as lm_error:
+            logger.warning(f"Could not fetch models from LM Studio: {lm_error}")
+
+            # Return cached models if available, even if expired
+            if model_cache["models"]:
+                return MarketResponse(
+                    success=True,
+                    data={
+                        "models": model_cache["models"],
+                        "cached": True,
+                        "cache_age": int(current_time - model_cache["timestamp"]) if model_cache["timestamp"] else 999999,
+                        "provider": "lm_studio",
+                        "warning": "Using stale cache - LM Studio unavailable"
+                    },
+                    timestamp=datetime.now().isoformat()
+                )
+
+            # Fallback models if no cache available
+            fallback_models = [
+                {
+                    "id": "aquif-3.5-max-42b-a3b-i1",
+                    "object": "model",
+                    "owned_by": "organization_owner",
+                    "size": "42B",
+                    "recommended": True
+                }
+            ]
+
+            return MarketResponse(
+                success=True,
+                data={
+                    "models": fallback_models,
+                    "cached": False,
+                    "cache_age": 0,
+                    "provider": "fallback",
+                    "warning": "LM Studio unavailable - using fallback models"
+                },
+                timestamp=datetime.now().isoformat()
+            )
+
+    except Exception as e:
+        logger.error(f"Error fetching models: {e}")
+        return MarketResponse(
+            success=False,
+            error=str(e),
+            timestamp=datetime.now().isoformat()
+        )
+
+def _estimate_model_size(model_id: str) -> str:
+    """Estimate model size from model ID"""
+    model_id_lower = model_id.lower()
+
+    if "42b" in model_id_lower or "70b" in model_id_lower:
+        return "42B-70B"
+    elif "32b" in model_id_lower or "36b" in model_id_lower:
+        return "32B-36B"
+    elif "24b" in model_id_lower or "27b" in model_id_lower:
+        return "24B-27B"
+    elif "18b" in model_id_lower:
+        return "18B"
+    elif "14b" in model_id_lower or "12b" in model_id_lower:
+        return "12B-14B"
+    elif "8b" in model_id_lower:
+        return "8B"
+    else:
+        return "Unknown"
+
+@app.post("/api/llm/select-model", response_model=MarketResponse)
+async def select_model(request: ModelSelectionRequest):
+    """Select a specific model for LLM chat"""
+    try:
+        # Validate model is available
+        models_response = await get_available_models()
+        if models_response.success and models_response.data:
+            available_models = models_response.data.get("models", [])
+            model_ids = [model["id"] for model in available_models]
+
+            if request.model_id not in model_ids:
+                return MarketResponse(
+                    success=False,
+                    error=f"Model '{request.model_id}' not available. Available models: {', '.join(model_ids[:5])}...",
+                    timestamp=datetime.now().isoformat()
+                )
+
+        # Update the LM Studio client default model
+        if hasattr(LMStudioClient, 'default_model'):
+            LMStudioClient.default_model = request.model_id
+
+        return MarketResponse(
+            success=True,
+            data={
+                "selected_model": request.model_id,
+                "provider": request.provider,
+                "message": f"Model '{request.model_id}' selected successfully"
+            },
+            timestamp=datetime.now().isoformat()
+        )
+
+    except Exception as e:
+        logger.error(f"Error selecting model: {e}")
+        return MarketResponse(
+            success=False,
+            error=str(e),
+            timestamp=datetime.now().isoformat()
+        )
+
+@app.get("/api/llm/model-status", response_model=MarketResponse)
+async def get_model_status():
+    """Get current model status and LM Studio connection"""
+    try:
+        import aiohttp
+
+        status_info = {
+            "lm_studio_connected": False,
+            "current_model": getattr(LMStudioClient, 'default_model', 'aquif-3.5-max-42b-a3b-i1'),
+            "last_check": datetime.now().isoformat(),
+            "response_time_ms": None
+        }
+
+        # Test LM Studio connection
+        try:
+            start_time = datetime.now().timestamp()
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://localhost:1234/v1/models", timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        status_info["lm_studio_connected"] = True
+                        status_info["response_time_ms"] = int((datetime.now().timestamp() - start_time) * 1000)
+        except Exception as connection_error:
+            logger.warning(f"LM Studio connection test failed: {connection_error}")
+            status_info["connection_error"] = str(connection_error)
+
+        return MarketResponse(
+            success=True,
+            data=status_info,
+            timestamp=datetime.now().isoformat()
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting model status: {e}")
         return MarketResponse(
             success=False,
             error=str(e),

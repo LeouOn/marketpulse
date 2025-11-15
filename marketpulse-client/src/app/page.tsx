@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MarketDashboard } from "@/components/market-dashboard";
 import { ConnectedMarketDashboard } from "@/components/ConnectedMarketDashboard";
 import { MacroDashboard } from "@/components/macro-dashboard";
@@ -10,6 +10,30 @@ import { BarChart3, Globe, TrendingUp, MessageSquare, Bot, Activity } from 'luci
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'connected' | 'market' | 'macro' | 'technical' | 'ai'>('connected');
+  const [marketData, setMarketData] = useState(null);
+
+  // Fetch market data for AI chat
+  useEffect(() => {
+    const fetchMarketData = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/market/internals');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            setMarketData(data.data);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch market data for AI chat:', error);
+      }
+    };
+
+    // Fetch immediately and then every 60 seconds
+    fetchMarketData();
+    const interval = setInterval(fetchMarketData, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -85,7 +109,7 @@ export default function Home() {
         {activeTab === 'technical' && <OHLCAnalysisDashboard />}
         {activeTab === 'ai' && (
           <div className="h-[calc(100vh-200px)]">
-            <LLMChat />
+            <LLMChat marketData={marketData} />
           </div>
         )}
 

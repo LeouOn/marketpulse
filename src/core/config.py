@@ -76,7 +76,7 @@ class MarketSettings(BaseSettings):
     """Market-specific settings"""
     
     class NQConfig(BaseSettings):
-        symbol: str = "MNQ"
+        symbol: str = "NQ=F"
         timezone: str = "America/New_York"
         trading_hours: str = "09:30-16:00"
         tick_size: float = 0.25
@@ -146,7 +146,7 @@ class Settings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     
     # Convenience aliases for backward compatibility
-    nq_symbol: str = "MNQ"
+    nq_symbol: str = "NQ=F"
     btc_symbol: str = "BTC-USD"
     eth_symbol: str = "ETH-USD"
     internals_interval: int = 60
