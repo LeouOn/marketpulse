@@ -2090,6 +2090,16 @@ async def get_macro_context():
         )
 
 
+# ==================== ICT & ORDER FLOW ENDPOINTS ====================
+# Include ICT router
+try:
+    from .ict_endpoints import ict_router
+    app.include_router(ict_router)
+    logger.info("ICT endpoints loaded successfully")
+except Exception as e:
+    logger.warning(f"Could not load ICT endpoints: {e}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
