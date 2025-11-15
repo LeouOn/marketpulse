@@ -2100,6 +2100,18 @@ except Exception as e:
     logger.warning(f"Could not load ICT endpoints: {e}")
 
 
+# ==================== RISK MANAGEMENT & JOURNAL ENDPOINTS ====================
+# Include risk management, journaling, and alert routers
+try:
+    from .risk_endpoints import risk_router, journal_router, alerts_router
+    app.include_router(risk_router)
+    app.include_router(journal_router)
+    app.include_router(alerts_router)
+    logger.info("Risk management, journal, and alert endpoints loaded successfully")
+except Exception as e:
+    logger.warning(f"Could not load risk/journal/alert endpoints: {e}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
