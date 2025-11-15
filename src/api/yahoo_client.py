@@ -33,16 +33,39 @@ class YahooFinanceClient:
             'NVDA'    # NVIDIA
         ]
 
-        # Macro indicators using ETFs
+        # Macro indicators using ETFs and direct symbols
         self.macro_symbols = {
+            # Commodities & Indices
             'DXY': 'UUP',   # US Dollar Index ETF
             'GC': 'GLD',    # Gold ETF
-            'CL': 'USO',    # Oil ETF
+            'CL': 'CL=F',   # Crude Oil Futures (WTI) - Direct symbol
             'TNX': '^TNX',  # 10-Year Treasury Yield (^TNX)
+
+            # Cryptocurrencies
             'BTC': 'BTC-USD',  # Bitcoin
             'ETH': 'ETH-USD',  # Ethereum
             'SOL': 'SOL-USD',  # Solana
-            'XRP': 'XRP-USD'   # Ripple
+            'XRP': 'XRP-USD',  # Ripple
+
+            # Asian Markets
+            'NIKKEI': '^N225',     # Nikkei 225 (Japan)
+            'HSI': '^HSI',         # Hang Seng (Hong Kong)
+            'SSE': '000001.SS',    # Shanghai Composite (China)
+            'ASX': '^AXJO',        # ASX 200 (Australia)
+
+            # European Markets
+            'FTSE': '^FTSE',       # FTSE 100 (UK)
+            'DAX': '^GDAXI',       # DAX (Germany)
+            'CAC': '^FCHI',        # CAC 40 (France)
+            'STOXX': '^STOXX50E',  # Euro Stoxx 50
+
+            # Forex (Major Pairs)
+            'EURUSD': 'EURUSD=X',  # Euro / US Dollar
+            'GBPUSD': 'GBPUSD=X',  # British Pound / US Dollar
+            'USDJPY': 'USDJPY=X',  # US Dollar / Japanese Yen
+            'AUDUSD': 'AUDUSD=X',  # Australian Dollar / US Dollar
+            'USDCAD': 'USDCAD=X',  # US Dollar / Canadian Dollar
+            'USDCHF': 'USDCHF=X',  # US Dollar / Swiss Franc
         }
 
     def get_market_internals(self, symbols: List[str] = None, timeframe: str = '1d', period: str = '2d') -> Dict[str, Any]:
@@ -153,132 +176,152 @@ class YahooFinanceClient:
     def get_macro_data(self) -> Dict[str, Any]:
         """Get macro economic indicators"""
         try:
-            # Get macro ETF symbols
-            etf_symbols = [sym for sym in self.macro_symbols.values() if not sym.startswith('^')]
-            crypto_symbols = [sym for sym in self.macro_symbols.values() if sym.endswith('-USD')]
+            # Categorize symbols by type for efficient batch fetching
+            etf_symbols = []
+            crypto_symbols = []
+            index_symbols = []
+            forex_symbols = []
+            futures_symbols = []
 
-            all_symbols = etf_symbols + crypto_symbols
+            for indicator, symbol in self.macro_symbols.items():
+                if symbol.endswith('-USD'):
+                    crypto_symbols.append(symbol)
+                elif symbol.startswith('^'):
+                    index_symbols.append(symbol)
+                elif symbol.endswith('=X'):
+                    forex_symbols.append(symbol)
+                elif symbol.endswith('=F'):
+                    futures_symbols.append(symbol)
+                else:
+                    etf_symbols.append(symbol)
 
             macro_data = {}
 
-            # Download ETF and crypto data separately
-            # First download ETF data
-            if etf_symbols:
-                etf_data = yf.download(
-                    etf_symbols,
-                    period='2d',
-                    interval='1d',
-                    progress=False,
-                    auto_adjust=False
-                )
+            # Helper function to process symbol data
+            def process_symbol_data(data, symbols_list, period_days='2d'):
+                if data.empty or 'Close' not in data:
+                    return
 
-                if not etf_data.empty and 'Close' in etf_data:
-                    for etf_symbol in etf_symbols:
-                        try:
-                            if etf_symbol in etf_data['Close'].columns:
-                                close_prices = etf_data['Close'][etf_symbol].dropna()
-                                volumes = etf_data['Volume'][etf_symbol].dropna() if 'Volume' in etf_data else pd.Series()
+                for symbol in symbols_list:
+                    try:
+                        # Handle both multi-index (multiple symbols) and single symbol DataFrames
+                        if symbol in data['Close'].columns:
+                            close_prices = data['Close'][symbol].dropna()
+                        elif hasattr(data['Close'], 'name'):  # Single symbol
+                            close_prices = data['Close'].dropna()
+                        else:
+                            continue
 
-                                if len(close_prices) > 0:
-                                    latest_price = close_prices.iloc[-1]
-                                    latest_volume = volumes.iloc[-1] if len(volumes) > 0 else 0
+                        if len(close_prices) == 0:
+                            continue
 
-                                    # Calculate change
-                                    change = 0.0
-                                    change_pct = 0.0
-                                    if len(close_prices) > 1:
-                                        prev_price = close_prices.iloc[-2]
-                                        change = latest_price - prev_price
-                                        change_pct = (change / prev_price) * 100 if prev_price != 0 else 0
+                        # Get volumes (may not exist for all asset types)
+                        volumes = pd.Series()
+                        if 'Volume' in data:
+                            if symbol in data['Volume'].columns:
+                                volumes = data['Volume'][symbol].dropna()
+                            elif hasattr(data['Volume'], 'name'):
+                                volumes = data['Volume'].dropna()
 
-                                    # Map back to indicator name
-                                    indicator = None
-                                    for ind, sym in self.macro_symbols.items():
-                                        if sym == etf_symbol:
-                                            indicator = ind
-                                            break
+                        latest_price = close_prices.iloc[-1]
+                        latest_volume = volumes.iloc[-1] if len(volumes) > 0 else 0
 
-                                    if indicator:
-                                        macro_data[indicator] = {
-                                            'price': float(latest_price),
-                                            'change': float(change),
-                                            'change_pct': float(change_pct),
-                                            'volume': int(latest_volume) if pd.notna(latest_volume) else 0,
-                                            'timestamp': datetime.now().isoformat()
-                                        }
-
-                        except Exception as e:
-                            logger.debug(f"Error processing ETF {etf_symbol}: {e}")
-
-            # Then download crypto data with more history for change calculation
-            if crypto_symbols:
-                crypto_data = yf.download(
-                    crypto_symbols,
-                    period='7d',  # Get 7 days to ensure we have previous day data
-                    interval='1d',
-                    progress=False,
-                    auto_adjust=False
-                )
-
-                if not crypto_data.empty and 'Close' in crypto_data:
-                    for crypto_symbol in crypto_symbols:
-                        try:
-                            if crypto_symbol in crypto_data['Close'].columns:
-                                close_prices = crypto_data['Close'][crypto_symbol].dropna()
-                                volumes = crypto_data['Volume'][crypto_symbol].dropna() if 'Volume' in crypto_data else pd.Series()
-
-                                if len(close_prices) > 0:
-                                    latest_price = close_prices.iloc[-1]
-                                    latest_volume = volumes.iloc[-1] if len(volumes) > 0 else 0
-
-                                    # Calculate change
-                                    change = 0.0
-                                    change_pct = 0.0
-                                    if len(close_prices) > 1:
-                                        prev_price = close_prices.iloc[-2]
-                                        change = latest_price - prev_price
-                                        change_pct = (change / prev_price) * 100 if prev_price != 0 else 0
-
-                                    # Map back to indicator name
-                                    indicator = None
-                                    for ind, sym in self.macro_symbols.items():
-                                        if sym == crypto_symbol:
-                                            indicator = ind
-                                            break
-
-                                    if indicator:
-                                        macro_data[indicator] = {
-                                            'price': float(latest_price),
-                                            'change': float(change),
-                                            'change_pct': float(change_pct),
-                                            'volume': int(latest_volume) if pd.notna(latest_volume) else 0,
-                                            'timestamp': datetime.now().isoformat()
-                                        }
-
-                        except Exception as e:
-                            logger.debug(f"Error processing crypto {crypto_symbol}: {e}")
-
-            # Handle treasury yield (^TNX) separately if needed
-            try:
-                tnx_data = yf.download('^TNX', period='2d', interval='1d', progress=False, auto_adjust=False)
-                if not tnx_data.empty and 'Close' in tnx_data:
-                    close_prices = tnx_data['Close'].dropna()
-                    if len(close_prices) > 0:
-                        latest_yield = close_prices.iloc[-1]
+                        # Calculate change
                         change = 0.0
+                        change_pct = 0.0
                         if len(close_prices) > 1:
-                            prev_yield = close_prices.iloc[-2]
-                            change = latest_yield - prev_yield
+                            prev_price = close_prices.iloc[-2]
+                            change = latest_price - prev_price
+                            change_pct = (change / prev_price) * 100 if prev_price != 0 else 0
 
-                        macro_data['TNX'] = {
-                            'price': float(latest_yield.iloc[0] if hasattr(latest_yield, 'iloc') else latest_yield),
-                            'change': float(change.iloc[0] if hasattr(change, 'iloc') else change),
-                            'change_pct': float(change.iloc[0] if hasattr(change, 'iloc') else change),  # For yields, change is already in percentage points
-                            'volume': 0,
-                            'timestamp': datetime.now().isoformat()
-                        }
-            except Exception as e:
-                logger.debug(f"Could not fetch TNX data: {e}")
+                        # Map back to indicator name
+                        indicator = None
+                        for ind, sym in self.macro_symbols.items():
+                            if sym == symbol:
+                                indicator = ind
+                                break
+
+                        if indicator:
+                            macro_data[indicator] = {
+                                'price': float(latest_price),
+                                'change': float(change),
+                                'change_pct': float(change_pct),
+                                'volume': int(latest_volume) if pd.notna(latest_volume) else 0,
+                                'timestamp': datetime.now().isoformat()
+                            }
+
+                    except Exception as e:
+                        logger.debug(f"Error processing {symbol}: {e}")
+
+            # Fetch ETF data
+            if etf_symbols:
+                try:
+                    etf_data = yf.download(
+                        etf_symbols,
+                        period='2d',
+                        interval='1d',
+                        progress=False,
+                        auto_adjust=False
+                    )
+                    process_symbol_data(etf_data, etf_symbols)
+                except Exception as e:
+                    logger.debug(f"Error fetching ETF data: {e}")
+
+            # Fetch crypto data (needs more history)
+            if crypto_symbols:
+                try:
+                    crypto_data = yf.download(
+                        crypto_symbols,
+                        period='7d',
+                        interval='1d',
+                        progress=False,
+                        auto_adjust=False
+                    )
+                    process_symbol_data(crypto_data, crypto_symbols, '7d')
+                except Exception as e:
+                    logger.debug(f"Error fetching crypto data: {e}")
+
+            # Fetch index data (^VIX, ^N225, ^HSI, etc.)
+            if index_symbols:
+                try:
+                    index_data = yf.download(
+                        index_symbols,
+                        period='2d',
+                        interval='1d',
+                        progress=False,
+                        auto_adjust=False
+                    )
+                    process_symbol_data(index_data, index_symbols)
+                except Exception as e:
+                    logger.debug(f"Error fetching index data: {e}")
+
+            # Fetch forex data (EURUSD=X, etc.)
+            if forex_symbols:
+                try:
+                    forex_data = yf.download(
+                        forex_symbols,
+                        period='2d',
+                        interval='1d',
+                        progress=False,
+                        auto_adjust=False
+                    )
+                    process_symbol_data(forex_data, forex_symbols)
+                except Exception as e:
+                    logger.debug(f"Error fetching forex data: {e}")
+
+            # Fetch futures data (CL=F, etc.)
+            if futures_symbols:
+                try:
+                    futures_data = yf.download(
+                        futures_symbols,
+                        period='2d',
+                        interval='1d',
+                        progress=False,
+                        auto_adjust=False
+                    )
+                    process_symbol_data(futures_data, futures_symbols)
+                except Exception as e:
+                    logger.debug(f"Error fetching futures data: {e}")
 
             logger.info(f"Successfully retrieved macro data for {len(macro_data)} indicators")
             return macro_data
