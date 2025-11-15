@@ -539,6 +539,29 @@ async def get_macro_data():
                 timestamp=datetime.now().isoformat()
             )
 
+@app.get("/api/market/breadth", response_model=MarketResponse)
+async def get_market_breadth():
+    """Get market breadth indicators (A/D, TICK, VOLD, McClellan)"""
+    try:
+        from src.data.market_breadth import MarketBreadthCollector
+
+        collector = MarketBreadthCollector()
+        breadth_data = collector.get_market_internals()
+
+        return MarketResponse(
+            success=True,
+            data=breadth_data,
+            timestamp=datetime.now().isoformat()
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting market breadth data: {e}")
+        return MarketResponse(
+            success=False,
+            error=str(e),
+            timestamp=datetime.now().isoformat()
+        )
+
 class ChatRequest(BaseModel):
     """Chat message request"""
     message: str

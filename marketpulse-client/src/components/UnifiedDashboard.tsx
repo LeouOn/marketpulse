@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { LLMChat } from './llm-chat';
+import { Sparkline } from './ui/Sparkline';
 import { RefreshCw, Activity, TrendingUp, TrendingDown, Clock, Globe, BarChart3, Bot } from 'lucide-react';
 
 interface MarketData {
@@ -45,9 +46,36 @@ interface MacroData {
   sector_performance?: Record<string, number>;
 }
 
+interface MarketBreadth {
+  nyse_advancing: number;
+  nyse_declining: number;
+  nyse_unchanged: number;
+  nyse_ad_ratio: number;
+  nyse_net_ad: number;
+  nasdaq_advancing: number;
+  nasdaq_declining: number;
+  nasdaq_unchanged: number;
+  nasdaq_ad_ratio: number;
+  nasdaq_net_ad: number;
+  interpretation: string;
+  new_highs: number;
+  new_lows: number;
+  hl_ratio: number;
+  net_hl: number;
+  tick_value: number;
+  tick_30min_avg: number;
+  tick_4hr_avg: number;
+  nyse_vold: number;
+  nasdaq_vold: number;
+  total_vold: number;
+  mcclellan_oscillator: number;
+  mcclellan_summation: number;
+}
+
 export function UnifiedDashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [macroData, setMacroData] = useState<MacroData | null>(null);
+  const [breadthData, setBreadthData] = useState<MarketBreadth | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [sessionTime, setSessionTime] = useState('');
@@ -55,16 +83,19 @@ export function UnifiedDashboard() {
 
   const fetchData = async () => {
     try {
-      const [dashboardResponse, macroResponse] = await Promise.all([
+      const [dashboardResponse, macroResponse, breadthResponse] = await Promise.all([
         fetch('http://localhost:8000/api/market/dashboard'),
-        fetch('http://localhost:8000/api/market/macro')
+        fetch('http://localhost:8000/api/market/macro'),
+        fetch('http://localhost:8000/api/market/breadth')
       ]);
 
       const dashboard = await dashboardResponse.json();
       const macro = await macroResponse.json();
+      const breadth = await breadthResponse.json();
 
       setDashboardData(dashboard);
       setMacroData(macro.data || macro);
+      setBreadthData(breadth.data || null);
       setLastUpdate(new Date());
       setLoading(false);
     } catch (err) {
@@ -132,6 +163,27 @@ export function UnifiedDashboard() {
     return volume.toString();
   };
 
+  // Generate simple sparkline data based on price change
+  // In production, this would come from historical data API
+  const generateSparklineData = (currentPrice: number, change: number): number[] => {
+    const points = 12; // 12 data points for smooth line
+    const data: number[] = [];
+    const previousPrice = currentPrice - change;
+    const priceRange = Math.abs(change);
+
+    for (let i = 0; i < points; i++) {
+      const progress = i / (points - 1);
+      // Create a natural-looking curve with some randomness
+      const baseValue = previousPrice + (change * progress);
+      const noise = (Math.random() - 0.5) * priceRange * 0.2; // 20% noise
+      data.push(baseValue + noise);
+    }
+
+    // Ensure last point matches current price
+    data[data.length - 1] = currentPrice;
+    return data;
+  };
+
   const renderDataTable = (title: string, icon: React.ReactNode, data: Record<string, MarketData>, labels: Record<string, string>) => {
     return (
       <div className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4">
@@ -146,6 +198,7 @@ export function UnifiedDashboard() {
             <thead>
               <tr>
                 <th>Symbol</th>
+                <th className="text-center">Trend</th>
                 <th className="text-right">Price</th>
                 <th className="text-right">Change</th>
                 <th className="text-right">%</th>
@@ -157,10 +210,19 @@ export function UnifiedDashboard() {
                 if (!marketData || marketData.price === 0) return null;
                 const changeInfo = formatChange(marketData.change, marketData.change_pct);
                 const displayLabel = labels[symbol] || symbol;
+                const sparklineData = generateSparklineData(marketData.price, marketData.change);
 
                 return (
                   <tr key={symbol} className="hover:bg-gray-800/50 transition-colors">
                     <td className="font-medium text-white">{displayLabel}</td>
+                    <td className="text-center">
+                      <Sparkline
+                        data={sparklineData}
+                        width={60}
+                        height={20}
+                        className="inline-block"
+                      />
+                    </td>
                     <td className="text-right text-white font-mono">{formatPrice(marketData.price, symbol)}</td>
                     <td className={`text-right font-mono ${changeInfo.color}`}>{changeInfo.value}</td>
                     <td className={`text-right font-mono ${changeInfo.color}`}>{changeInfo.percent}</td>
@@ -218,6 +280,19 @@ export function UnifiedDashboard() {
     );
   };
 
+  const formatBreadthValue = (value: number, type: 'ratio' | 'count' | 'large' = 'count') => {
+    if (type === 'ratio') return value.toFixed(2);
+    if (type === 'large') return (value / 1000000).toFixed(0) + 'M';
+    return value.toLocaleString();
+  };
+
+  const getBreadthColor = (interpretation: string) => {
+    const lower = interpretation.toLowerCase();
+    if (lower.includes('bullish') || lower.includes('buying')) return 'text-green-400';
+    if (lower.includes('bearish') || lower.includes('selling')) return 'text-red-400';
+    return 'text-yellow-400';
+  };
+
   const renderMarketInternals = () => {
     return (
       <div className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4">
@@ -225,52 +300,70 @@ export function UnifiedDashboard() {
           <Activity className="w-5 h-5 text-blue-400" />
           <h3 className="text-lg font-semibold text-white">Market Internals</h3>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          {/* Advance/Decline Ratio - Placeholder */}
-          <div className="bg-gray-800/50 rounded-lg p-3">
-            <div className="text-xs text-gray-400 mb-1">NYSE Adv/Dec</div>
-            <div className="text-xl font-bold text-white">--.--</div>
-            <div className="text-xs text-gray-500">Coming soon</div>
-          </div>
-
-          {/* New Highs/Lows - Placeholder */}
-          <div className="bg-gray-800/50 rounded-lg p-3">
-            <div className="text-xs text-gray-400 mb-1">52W High/Low</div>
-            <div className="text-xl font-bold text-white">-- / --</div>
-            <div className="text-xs text-gray-500">Coming soon</div>
-          </div>
-
-          {/* TICK Index - Placeholder */}
-          <div className="bg-gray-800/50 rounded-lg p-3">
-            <div className="text-xs text-gray-400 mb-1">$TICK (30min avg)</div>
-            <div className="text-xl font-bold text-white">--</div>
-            <div className="text-xs text-gray-500">Coming soon</div>
-          </div>
-
-          {/* VOLD - Placeholder */}
-          <div className="bg-gray-800/50 rounded-lg p-3">
-            <div className="text-xs text-gray-400 mb-1">$VOLD</div>
-            <div className="text-xl font-bold text-white">--</div>
-            <div className="text-xs text-gray-500">Coming soon</div>
-          </div>
-
-          {/* McClellan Oscillator - Placeholder */}
-          <div className="bg-gray-800/50 rounded-lg p-3">
-            <div className="text-xs text-gray-400 mb-1">McClellan Osc</div>
-            <div className="text-xl font-bold text-white">--</div>
-            <div className="text-xs text-gray-500">Coming soon</div>
-          </div>
-
-          {/* Volume Flow */}
-          <div className="bg-gray-800/50 rounded-lg p-3">
-            <div className="text-xs text-gray-400 mb-1">Volume Flow (60m)</div>
+        <div className="grid grid-cols-2 gap-3">
+          {/* NYSE Advance/Decline */}
+          <div className="bg-gray-800/50 rounded-lg p-3 hover:bg-gray-800/70 transition-colors">
+            <div className="text-xs text-gray-400 mb-1">NYSE A/D Ratio</div>
             <div className="text-xl font-bold text-white">
-              {dashboardData?.data?.volumeFlow?.total_volume_60min
-                ? formatVolume(dashboardData.data.volumeFlow.total_volume_60min)
-                : '--'}
+              {breadthData?.nyse_ad_ratio ? formatBreadthValue(breadthData.nyse_ad_ratio, 'ratio') : '--'}
             </div>
             <div className="text-xs text-gray-500">
-              {dashboardData?.data?.volumeFlow?.symbols_tracked || 0} symbols
+              {breadthData ? `${breadthData.nyse_advancing}↑ / ${breadthData.nyse_declining}↓` : 'Loading...'}
+            </div>
+          </div>
+
+          {/* NASDAQ Advance/Decline */}
+          <div className="bg-gray-800/50 rounded-lg p-3 hover:bg-gray-800/70 transition-colors">
+            <div className="text-xs text-gray-400 mb-1">NASDAQ A/D Ratio</div>
+            <div className="text-xl font-bold text-white">
+              {breadthData?.nasdaq_ad_ratio ? formatBreadthValue(breadthData.nasdaq_ad_ratio, 'ratio') : '--'}
+            </div>
+            <div className="text-xs text-gray-500">
+              {breadthData ? `${breadthData.nasdaq_advancing}↑ / ${breadthData.nasdaq_declining}↓` : 'Loading...'}
+            </div>
+          </div>
+
+          {/* New Highs/Lows */}
+          <div className="bg-gray-800/50 rounded-lg p-3 hover:bg-gray-800/70 transition-colors">
+            <div className="text-xs text-gray-400 mb-1">52W High/Low</div>
+            <div className="text-xl font-bold text-white">
+              {breadthData ? `${breadthData.new_highs} / ${breadthData.new_lows}` : '-- / --'}
+            </div>
+            <div className={`text-xs font-medium ${breadthData ? getBreadthColor(breadthData.interpretation || '') : 'text-gray-500'}`}>
+              {breadthData?.interpretation || 'Loading...'}
+            </div>
+          </div>
+
+          {/* TICK Index */}
+          <div className="bg-gray-800/50 rounded-lg p-3 hover:bg-gray-800/70 transition-colors">
+            <div className="text-xs text-gray-400 mb-1">$TICK (30min avg)</div>
+            <div className={`text-xl font-bold ${breadthData ? (breadthData.tick_30min_avg > 0 ? 'text-green-400' : breadthData.tick_30min_avg < 0 ? 'text-red-400' : 'text-white') : 'text-white'}`}>
+              {breadthData?.tick_30min_avg ? (breadthData.tick_30min_avg > 0 ? '+' : '') + breadthData.tick_30min_avg : '--'}
+            </div>
+            <div className="text-xs text-gray-500">
+              {breadthData ? `Current: ${breadthData.tick_value > 0 ? '+' : ''}${breadthData.tick_value}` : 'Loading...'}
+            </div>
+          </div>
+
+          {/* VOLD */}
+          <div className="bg-gray-800/50 rounded-lg p-3 hover:bg-gray-800/70 transition-colors">
+            <div className="text-xs text-gray-400 mb-1">$VOLD (Total)</div>
+            <div className={`text-xl font-bold ${breadthData ? (breadthData.total_vold > 0 ? 'text-green-400' : breadthData.total_vold < 0 ? 'text-red-400' : 'text-white') : 'text-white'}`}>
+              {breadthData?.total_vold ? formatBreadthValue(breadthData.total_vold, 'large') : '--'}
+            </div>
+            <div className="text-xs text-gray-500">
+              {breadthData ? `NYSE: ${formatBreadthValue(breadthData.nyse_vold, 'large')}` : 'Loading...'}
+            </div>
+          </div>
+
+          {/* McClellan Oscillator */}
+          <div className="bg-gray-800/50 rounded-lg p-3 hover:bg-gray-800/70 transition-colors">
+            <div className="text-xs text-gray-400 mb-1">McClellan Osc</div>
+            <div className={`text-xl font-bold ${breadthData ? (breadthData.mcclellan_oscillator > 0 ? 'text-green-400' : breadthData.mcclellan_oscillator < 0 ? 'text-red-400' : 'text-white') : 'text-white'}`}>
+              {breadthData?.mcclellan_oscillator ? (breadthData.mcclellan_oscillator > 0 ? '+' : '') + breadthData.mcclellan_oscillator.toFixed(1) : '--'}
+            </div>
+            <div className="text-xs text-gray-500">
+              {breadthData ? `Sum: ${breadthData.mcclellan_summation.toFixed(0)}` : 'Loading...'}
             </div>
           </div>
         </div>
