@@ -2112,6 +2112,16 @@ except Exception as e:
     logger.warning(f"Could not load risk/journal/alert endpoints: {e}")
 
 
+# ==================== VISUALIZATION ENDPOINTS ====================
+# Include visualization router
+try:
+    from .visualization_endpoints import viz_router
+    app.include_router(viz_router)
+    logger.info("Visualization endpoints loaded successfully")
+except Exception as e:
+    logger.warning(f"Could not load visualization endpoints: {e}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
