@@ -368,6 +368,123 @@ class YahooFinanceClient:
             return None
 
 
+    def get_options_expirations(self, symbol: str) -> List[str]:
+        """Get available options expiration dates for a symbol
+
+        Args:
+            symbol: Stock symbol (e.g., 'AAPL', 'SPY')
+
+        Returns:
+            List of expiration dates in 'YYYY-MM-DD' format
+        """
+        try:
+            ticker = yf.Ticker(symbol)
+            expirations = ticker.options
+            logger.info(f"Found {len(expirations)} expiration dates for {symbol}")
+            return list(expirations)
+        except Exception as e:
+            logger.error(f"Error fetching options expirations for {symbol}: {e}")
+            return []
+
+    def get_options_chain(self, symbol: str, expiration: str) -> Dict[str, Any]:
+        """Get options chain for a specific symbol and expiration date
+
+        Args:
+            symbol: Stock symbol (e.g., 'AAPL', 'SPY')
+            expiration: Expiration date in 'YYYY-MM-DD' format
+
+        Returns:
+            Dictionary with 'calls', 'puts', 'underlying_price', 'timestamp'
+        """
+        try:
+            ticker = yf.Ticker(symbol)
+
+            # Get current stock price
+            hist = ticker.history(period='1d')
+            underlying_price = float(hist['Close'].iloc[-1]) if not hist.empty else None
+
+            # Get options chain
+            chain = ticker.option_chain(expiration)
+
+            # Convert calls and puts DataFrames to dictionaries
+            calls_dict = chain.calls.to_dict('records') if not chain.calls.empty else []
+            puts_dict = chain.puts.to_dict('records') if not chain.puts.empty else []
+
+            result = {
+                'symbol': symbol,
+                'expiration': expiration,
+                'underlying_price': underlying_price,
+                'calls': calls_dict,
+                'puts': puts_dict,
+                'timestamp': datetime.now().isoformat()
+            }
+
+            logger.info(f"Retrieved options chain for {symbol} expiring {expiration}: {len(calls_dict)} calls, {len(puts_dict)} puts")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error fetching options chain for {symbol} {expiration}: {e}")
+            return {
+                'symbol': symbol,
+                'expiration': expiration,
+                'underlying_price': None,
+                'calls': [],
+                'puts': [],
+                'timestamp': datetime.now().isoformat(),
+                'error': str(e)
+            }
+
+    def get_risk_free_rate(self) -> float:
+        """Get current risk-free rate from 10-year Treasury yield (^TNX)
+
+        Returns:
+            Risk-free rate as decimal (e.g., 0.045 for 4.5%)
+        """
+        try:
+            ticker = yf.Ticker('^TNX')
+            hist = ticker.history(period='5d')
+
+            if hist.empty:
+                logger.warning("Could not fetch Treasury yield, using default 4.5%")
+                return 0.045
+
+            # TNX is reported as percentage, convert to decimal
+            tnx_value = float(hist['Close'].iloc[-1])
+            rate = tnx_value / 100.0
+
+            logger.info(f"Current risk-free rate: {rate:.4f} ({tnx_value:.2f}%)")
+            return rate
+
+        except Exception as e:
+            logger.error(f"Error fetching risk-free rate: {e}, using default 4.5%")
+            return 0.045
+
+    def get_dividend_yield(self, symbol: str) -> float:
+        """Get dividend yield for a symbol
+
+        Args:
+            symbol: Stock symbol (e.g., 'AAPL', 'SPY')
+
+        Returns:
+            Dividend yield as decimal (e.g., 0.015 for 1.5%)
+        """
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+
+            # Try to get dividend yield from info
+            div_yield = info.get('dividendYield', 0.0)
+
+            if div_yield is None:
+                div_yield = 0.0
+
+            logger.info(f"Dividend yield for {symbol}: {div_yield:.4f} ({div_yield*100:.2f}%)")
+            return float(div_yield)
+
+        except Exception as e:
+            logger.error(f"Error fetching dividend yield for {symbol}: {e}")
+            return 0.0
+
     def get_bars(self, symbol: str, period: str = '1mo', interval: str = '1d') -> Optional[pd.DataFrame]:
         """Get historical OHLC data for a symbol
 

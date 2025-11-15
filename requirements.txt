@@ -22,3 +22,5 @@ pytest==8.3.4
 pytest-asyncio==0.24.0
 black==24.10.0
 isort==5.13.2
+yfinance==0.2.48
+scipy==1.14.1
