@@ -2132,6 +2132,16 @@ except Exception as e:
     logger.warning(f"Could not load divergence endpoints: {e}")
 
 
+# ==================== AI TRADING ANALYST ENDPOINTS ====================
+# Include AI trading analyst router
+try:
+    from .ai_endpoints import ai_router
+    app.include_router(ai_router)
+    logger.info("AI Trading Analyst endpoints loaded successfully")
+except Exception as e:
+    logger.warning(f"Could not load AI endpoints: {e}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
