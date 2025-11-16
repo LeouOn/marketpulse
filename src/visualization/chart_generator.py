@@ -632,3 +632,98 @@ class ChartGenerator:
         )
 
         return fig
+
+    def add_divergence_overlays(
+        self,
+        fig: go.Figure,
+        df: pd.DataFrame,
+        divergences: List[Dict[str, Any]]
+    ) -> go.Figure:
+        """
+        Add divergence annotations to existing chart
+
+        Args:
+            fig: Existing Plotly figure
+            df: DataFrame with OHLCV data
+            divergences: List of divergence dictionaries
+
+        Returns:
+            Updated figure
+        """
+        for div in divergences:
+            # Get divergence type and color
+            div_type = div['type']
+            is_bullish = 'bullish' in div_type
+            is_hidden = 'hidden' in div_type
+
+            # Color based on type
+            if is_bullish:
+                color = 'rgba(76, 175, 80, 0.3)' if not is_hidden else 'rgba(76, 175, 80, 0.15)'
+                line_color = '#4CAF50'
+                symbol = '▲'
+            else:
+                color = 'rgba(244, 67, 54, 0.3)' if not is_hidden else 'rgba(244, 67, 54, 0.15)'
+                line_color = '#F44336'
+                symbol = '▼'
+
+            # Get time points
+            price_idx1, price_idx2 = div['price_points']
+            start_time = df.index[price_idx1]
+            end_time = df.index[price_idx2]
+
+            # Draw line connecting the two price points
+            y1 = df['low'].iloc[price_idx1] if is_bullish else df['high'].iloc[price_idx1]
+            y2 = df['low'].iloc[price_idx2] if is_bullish else df['high'].iloc[price_idx2]
+
+            # Add connecting line
+            fig.add_shape(
+                type="line",
+                x0=start_time,
+                x1=end_time,
+                y0=y1,
+                y1=y2,
+                line=dict(
+                    color=line_color,
+                    width=2,
+                    dash='dot' if is_hidden else 'solid'
+                ),
+                row=1, col=1
+            )
+
+            # Add shaded region
+            fig.add_shape(
+                type="rect",
+                x0=start_time,
+                x1=end_time,
+                y0=min(y1, y2) * 0.999 if is_bullish else max(y1, y2) * 0.999,
+                y1=max(y1, y2) * 1.001 if is_bullish else min(y1, y2) * 1.001,
+                fillcolor=color,
+                line=dict(width=0),
+                layer="below",
+                row=1, col=1
+            )
+
+            # Add annotation
+            annotation_text = f"{symbol} {div['indicator'].upper()} Divergence<br>"
+            annotation_text += f"{'Hidden ' if is_hidden else ''}{'Bullish' if is_bullish else 'Bearish'}<br>"
+            annotation_text += f"Strength: {div['strength']:.0f}"
+
+            fig.add_annotation(
+                x=end_time,
+                y=y2,
+                text=annotation_text,
+                showarrow=True,
+                arrowhead=2,
+                arrowsize=1,
+                arrowwidth=2,
+                arrowcolor=line_color,
+                ax=-40 if is_bullish else 40,
+                ay=-40 if is_bullish else 40,
+                bgcolor=color,
+                bordercolor=line_color,
+                borderwidth=2,
+                font=dict(size=10, color='white'),
+                row=1, col=1
+            )
+
+        return fig

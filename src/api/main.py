@@ -2122,6 +2122,16 @@ except Exception as e:
     logger.warning(f"Could not load visualization endpoints: {e}")
 
 
+# ==================== DIVERGENCE DETECTION ENDPOINTS ====================
+# Include divergence detection router
+try:
+    from .divergence_endpoints import divergence_router
+    app.include_router(divergence_router)
+    logger.info("Divergence detection endpoints loaded successfully")
+except Exception as e:
+    logger.warning(f"Could not load divergence endpoints: {e}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
