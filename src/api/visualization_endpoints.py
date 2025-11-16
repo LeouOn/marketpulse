@@ -515,7 +515,7 @@ async def get_trading_dashboard(
             </div>
             <div class="metric-card">
                 <div class="metric-label">Trend</div>
-                <div class="metric-value {trends.get('sma_trend', 'neutral').replace('_', ' ')}"}>
+                <div class="metric-value {trends.get('sma_trend', 'neutral').replace('_', ' ')}">
                     {trends.get('sma_trend', 'neutral').replace('_', ' ').title()}
                 </div>
             </div>

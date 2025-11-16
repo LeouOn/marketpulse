@@ -303,8 +303,20 @@ class Settings(BaseSettings):
     
     @property
     def database_url(self) -> str:
-        """Database connection URL"""
-        return f"postgresql://{self.database_user}:{self.database_password}@{self.database_host}:{self.database_port}/{self.database_name}"
+        """Database connection URL - defaults to SQLite if PostgreSQL not configured"""
+        # Check if DATABASE_URL is set in environment
+        env_db_url = os.getenv('DATABASE_URL')
+        if env_db_url:
+            return env_db_url
+
+        # Check if PostgreSQL is configured (not default values)
+        if (self.database_user != "marketpulse" or
+            self.database_password != "marketpulse_password"):
+            # User has configured PostgreSQL, use it
+            return f"postgresql://{self.database_user}:{self.database_password}@{self.database_host}:{self.database_port}/{self.database_name}"
+
+        # Default to SQLite (no external database needed)
+        return "sqlite:///./marketpulse.db"
     
     def get_api_key(self, service: str, key_type: str = "api_key") -> str:
         """Get API key for a specific service"""
