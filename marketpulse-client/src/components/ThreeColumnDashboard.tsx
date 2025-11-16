@@ -229,7 +229,7 @@ export function ThreeColumnDashboard() {
     const { color, text, desc } = config[regime];
 
     return (
-      <div className="bg-gray-900/50 border border-gray-800/50 rounded-xl p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
         <div className="flex items-center gap-3 mb-2">
           <div className={`w-4 h-4 rounded-full ${color} animate-pulse`}></div>
           <span className="text-white font-semibold">{text}</span>
@@ -263,7 +263,7 @@ export function ThreeColumnDashboard() {
 
   const renderDataTable = (title: string, icon: React.ReactNode, data: Record<string, MarketData>, labels: Record<string, string>) => {
     return (
-      <div className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             {icon}
@@ -318,7 +318,7 @@ export function ThreeColumnDashboard() {
     const sortedSectors = Object.entries(sectorData).sort(([, a], [, b]) => b - a);
 
     return (
-      <div className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="w-5 h-5 text-purple-400" />
           <h3 className="text-lg font-semibold text-white">Sector Performance</h3>
@@ -380,7 +380,7 @@ export function ThreeColumnDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 lg:p-6">
+    <div className="min-h-screen bg-black p-4">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
@@ -416,11 +416,11 @@ export function ThreeColumnDashboard() {
       </div>
 
       {/* 3-Column Layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* LEFT COLUMN - Command Center */}
-        <div className="xl:col-span-3 space-y-6">
+        <div className="lg:col-span-3 space-y-4">
           {/* NQ/MNQ Hero Widget */}
-          <div className="bg-gray-900/50 border border-blue-500/50 rounded-xl p-4">
+          <div className="bg-gray-900 border border-blue-500 rounded-lg p-4">
             <div className="mb-2">
               <div className="text-gray-400 text-sm">NASDAQ 100</div>
               <div className="text-4xl font-bold text-white">
@@ -468,7 +468,7 @@ export function ThreeColumnDashboard() {
           <RegimeIndicator regime={marketRegime} />
 
           {/* Quick Risk Calculator */}
-          <div className="bg-gray-900/50 border border-gray-800/50 rounded-xl p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
             <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
               <Target size={16} />
               Position Calculator
@@ -507,7 +507,7 @@ export function ThreeColumnDashboard() {
           </div>
 
           {/* Session Stats */}
-          <div className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
             <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
               <Clock size={16} />
               Session
@@ -530,9 +530,9 @@ export function ThreeColumnDashboard() {
         </div>
 
         {/* CENTER COLUMN - Analysis Hub */}
-        <div className="xl:col-span-6 space-y-6">
+        <div className="lg:col-span-6 space-y-4">
           {/* Tab Navigation */}
-          <div className="bg-gray-900/50 border border-gray-800/50 rounded-xl p-1">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-1">
             <div className="flex gap-1">
               {tabs.map(tab => (
                 <button
@@ -579,7 +579,7 @@ export function ThreeColumnDashboard() {
             )}
 
             {(activeTab === 'backtest' || activeTab === 'risk' || activeTab === 'options' || activeTab === 'strategy') && (
-              <div className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-6 flex flex-col items-center justify-center" style={{ minHeight: '400px' }}>
+              <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center min-h-[600px]">
                 <AlertCircle size={48} className="text-yellow-500 mb-4" />
                 <h3 className="text-xl font-semibold text-white mb-2">Feature Coming Soon</h3>
                 <p className="text-gray-400 text-center max-w-md">
@@ -594,9 +594,9 @@ export function ThreeColumnDashboard() {
         </div>
 
         {/* RIGHT COLUMN - Context & AI */}
-        <div className="xl:col-span-3 space-y-6">
+        <div className="lg:col-span-3 space-y-4">
           {/* AI Assistant */}
-          <div className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-4">
               <Bot className="w-5 h-5 text-green-400" />
               <h3 className="text-lg font-semibold text-white">AI Assistant</h3>
