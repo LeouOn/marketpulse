@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 // Custom icon components
 const SendIcon = () => (
   <div className="w-5 h-5 bg-blue-400 rounded-full flex items-center justify-center">
@@ -124,7 +126,7 @@ export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [detectedSymbols, setDetectedSymbols] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Symbol mapping dictionary for pattern recognition
   const symbolMappings: SymbolMapping[] = [
@@ -582,14 +584,15 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
+    // Allow Shift+Enter for new lines
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setInput(value);
 
@@ -733,7 +736,7 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ maxHeight: 'calc(100% - 250px)' }}>
         <AnimatePresence>
           {messages.map((message) => (
             <motion.div
@@ -744,13 +747,13 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
               transition={{ duration: 0.3 }}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`flex gap-3 max-w-[80%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-3 max-w-[95%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                   message.role === 'user'
-                    ? 'bg-blue-500'
+                    ? 'bg-blue-600'
                     : message.isThinking
                       ? 'bg-yellow-500 animate-pulse'
-                      : 'bg-purple-500'
+                      : 'bg-purple-600'
                 }`}>
                   {message.isThinking ? (
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -762,12 +765,12 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
                     )
                   )}
                 </div>
-                <div className={`rounded-lg px-4 py-3 ${
+                <div className={`rounded-lg px-4 py-3 shadow-lg ${
                   message.role === 'user'
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-blue-600 text-white border border-blue-500'
                     : message.isThinking
-                      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                      : 'bg-gray-800 text-gray-100 border border-gray-700'
+                      ? 'bg-yellow-900/30 text-yellow-200 border border-yellow-600/50'
+                      : 'bg-gray-800 text-gray-100 border border-gray-600'
                 }`}>
                   {message.isThinking ? (
                     <div className="flex items-center gap-2">
@@ -775,9 +778,42 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
                       <span>Thinking...</span>
                     </div>
                   ) : (
-                    <div className="whitespace-pre-wrap">{message.content}</div>
+                    <div className={`prose prose-invert max-w-none ${message.role === 'user' ? 'prose-p:text-white prose-strong:text-white prose-headings:text-white' : ''}`}>
+                      {message.role === 'assistant' ? (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2 text-white" {...props} />,
+                            h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2 text-white" {...props} />,
+                            h3: ({node, ...props}) => <h3 className="text-base font-bold mb-1 text-white" {...props} />,
+                            p: ({node, ...props}) => <p className="mb-2 text-gray-100" {...props} />,
+                            ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 text-gray-100" {...props} />,
+                            ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 text-gray-100" {...props} />,
+                            li: ({node, ...props}) => <li className="mb-1 text-gray-100" {...props} />,
+                            strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
+                            em: ({node, ...props}) => <em className="italic text-gray-200" {...props} />,
+                            code: ({node, className, children, ...props}) => {
+                              const inline = !className;
+                              return inline ? (
+                                <code className="bg-gray-900 px-1 py-0.5 rounded text-blue-300 text-sm" {...props}>{children}</code>
+                              ) : (
+                                <code className="block bg-gray-900 p-2 rounded text-green-300 text-sm overflow-x-auto" {...props}>{children}</code>
+                              );
+                            },
+                            table: ({node, ...props}) => <table className="border-collapse border border-gray-600 my-2 text-sm" {...props} />,
+                            th: ({node, ...props}) => <th className="border border-gray-600 px-2 py-1 bg-gray-700 font-semibold text-white" {...props} />,
+                            td: ({node, ...props}) => <td className="border border-gray-600 px-2 py-1 text-gray-100" {...props} />,
+                            blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-blue-500 pl-3 italic text-gray-300 my-2" {...props} />,
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      ) : (
+                        <div className="whitespace-pre-wrap text-white">{message.content}</div>
+                      )}
+                    </div>
                   )}
-                  <div className="text-xs opacity-70 mt-1">
+                  <div className="text-xs opacity-60 mt-2 text-gray-400">
                     {new Date(message.timestamp).toLocaleTimeString()}
                   </div>
                 </div>
@@ -829,20 +865,20 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
         )}
 
         <div className="flex gap-2">
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
             value={input}
             onChange={handleInputChange}
-            onKeyPress={handleKeyPress}
-            placeholder={`Ask about ${symbol} or market analysis... Try: "BTC price", "NQ futures", "Apple stock"`}
-            className="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+            onKeyDown={handleKeyPress}
+            placeholder={`Ask about ${symbol} or market analysis...\n\nTry: "How's Real Estate performing?", "Compare BTC to gold", "NQ futures analysis"\n\nPress Enter to send, Shift+Enter for new line`}
+            className="flex-1 px-4 py-3 bg-gray-800 border-2 border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all resize-none min-h-[100px] font-sans"
             disabled={isLoading}
+            rows={3}
           />
           <button
             onClick={sendMessage}
             disabled={!input.trim() || isLoading}
-            className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2"
+            className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2 self-end h-fit"
           >
             {isLoading ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -853,8 +889,8 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
           </button>
         </div>
         <div className="mt-2 text-xs text-gray-500">
-          Powered by AI • Market data integrated • {isConnected ? 'Connected' : 'Disconnected'} •
-          Try asking about BTC, ETH, NQ=F, AAPL, Gold, Oil, etc.
+          <span className="font-semibold text-gray-400">💡 Tip:</span> Press <kbd className="px-1 py-0.5 bg-gray-700 rounded text-gray-300 text-xs">Enter</kbd> to send, <kbd className="px-1 py-0.5 bg-gray-700 rounded text-gray-300 text-xs">Shift+Enter</kbd> for new line •
+          {isConnected ? <span className="text-green-500 ml-1">● Connected</span> : <span className="text-red-500 ml-1">● Disconnected</span>}
         </div>
       </div>
     </div>
