@@ -65,6 +65,54 @@ interface LLMChatProps {
   marketData?: any;
 }
 
+// Sector to keyword/topic mapping for enriched AI context
+const SECTOR_CONTEXT_MAP: Record<string, { keywords: string[]; description: string }> = {
+  'Real Estate': {
+    keywords: ['housing', 'mortgages', 'interest rates', 'real estate market', 'home prices', 'REIT', 'property'],
+    description: 'Real estate sector including residential and commercial property markets'
+  },
+  'Technology': {
+    keywords: ['tech stocks', 'semiconductors', 'software', 'cloud computing', 'AI', 'innovation', 'FAANG'],
+    description: 'Technology sector including hardware, software, and semiconductors'
+  },
+  'Financials': {
+    keywords: ['banks', 'interest rates', 'lending', 'financial services', 'insurance', 'credit'],
+    description: 'Financial sector including banks, insurance, and investment firms'
+  },
+  'Healthcare': {
+    keywords: ['pharmaceuticals', 'biotech', 'medical devices', 'hospitals', 'healthcare services'],
+    description: 'Healthcare sector including pharma, biotech, and medical services'
+  },
+  'Consumer Discretionary': {
+    keywords: ['retail', 'e-commerce', 'consumer spending', 'luxury goods', 'automobiles', 'restaurants'],
+    description: 'Consumer discretionary including retail and non-essential goods'
+  },
+  'Consumer Staples': {
+    keywords: ['food', 'beverages', 'household products', 'essentials', 'groceries'],
+    description: 'Consumer staples including food, beverages, and household items'
+  },
+  'Energy': {
+    keywords: ['oil', 'gas', 'crude', 'renewable energy', 'utilities', 'petroleum', 'OPEC'],
+    description: 'Energy sector including oil, gas, and renewables'
+  },
+  'Materials': {
+    keywords: ['commodities', 'metals', 'mining', 'chemicals', 'construction materials'],
+    description: 'Materials sector including mining, metals, and chemicals'
+  },
+  'Industrials': {
+    keywords: ['manufacturing', 'aerospace', 'defense', 'machinery', 'transportation', 'logistics'],
+    description: 'Industrial sector including manufacturing and transportation'
+  },
+  'Communication Services': {
+    keywords: ['telecom', 'media', 'entertainment', 'social media', 'streaming', 'advertising'],
+    description: 'Communication services including telecom and media companies'
+  },
+  'Utilities': {
+    keywords: ['electricity', 'water', 'gas utilities', 'power generation', 'infrastructure'],
+    description: 'Utilities sector including electric, water, and gas providers'
+  }
+};
+
 export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -212,7 +260,13 @@ export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
       role: 'assistant',
       content: `Hello! I'm your AI trading assistant. I can help you analyze market conditions, discuss trading strategies, and provide insights about ${symbol} and other assets.
 
-What would you like to know about the current market?`,
+I have access to:
+• Real-time market data (indices, crypto, commodities)
+• Sector performance and analysis
+• Market breadth indicators (TICK, A/D ratio, McClellan)
+• Technical levels and patterns
+
+Try asking about specific sectors (e.g., "How's Real Estate performing?") or assets (e.g., "What's the trend for BTC?")`,
       timestamp: new Date().toISOString()
     }]);
   }, [symbol]);
@@ -326,9 +380,41 @@ What would you like to know about the current market?`,
       return sym;
     });
 
+    // Detect sector mentions in the query
+    const detectedSectors: string[] = [];
+    const sectorContext: any[] = [];
+
+    Object.entries(SECTOR_CONTEXT_MAP).forEach(([sectorName, sectorInfo]) => {
+      // Check if sector name is mentioned
+      if (query.toLowerCase().includes(sectorName.toLowerCase())) {
+        detectedSectors.push(sectorName);
+        sectorContext.push({
+          sector: sectorName,
+          keywords: sectorInfo.keywords,
+          description: sectorInfo.description,
+          performance: marketData?.sector_performance?.[sectorName] || null
+        });
+      }
+      // Check if any sector keywords are mentioned
+      sectorInfo.keywords.forEach(keyword => {
+        if (query.toLowerCase().includes(keyword.toLowerCase()) && !detectedSectors.includes(sectorName)) {
+          detectedSectors.push(sectorName);
+          sectorContext.push({
+            sector: sectorName,
+            keywords: sectorInfo.keywords,
+            description: sectorInfo.description,
+            performance: marketData?.sector_performance?.[sectorName] || null
+          });
+        }
+      });
+    });
+
+    // Build comprehensive context
     return {
       primary_symbol: symbol,
       detected_symbols: enhancedSymbols,
+      detected_sectors: detectedSectors,
+      sector_context: sectorContext,
       query_type: determineQueryType(query),
       symbol_context: enhancedSymbols.map(sym => {
         const mapping = symbolMappings.find(m => m.symbol === sym);
@@ -340,8 +426,18 @@ What would you like to know about the current market?`,
         };
       }),
       market_data_available: !!marketData,
-      market_bias: marketData?.market_bias || 'Market bias not available',
-      volatility_regime: marketData?.market_context?.volatility_regime || 'Volatility regime not available',
+      market_bias: marketData?.marketBias || marketData?.market_bias || 'Market bias not available',
+      volatility_regime: marketData?.volatilityRegime || marketData?.market_context?.volatility_regime || 'Volatility regime not available',
+      sector_performance: marketData?.sector_performance || {},
+      market_breadth: marketData?.breadth_data ? {
+        nyse_ad_ratio: marketData.breadth_data.nyse_ad_ratio,
+        nasdaq_ad_ratio: marketData.breadth_data.nasdaq_ad_ratio,
+        tick_value: marketData.breadth_data.tick_value,
+        mcclellan_oscillator: marketData.breadth_data.mcclellan_oscillator,
+        interpretation: marketData.breadth_data.interpretation
+      } : null,
+      current_prices: marketData?.symbols || {},
+      macro_data: marketData?.macro_data || {},
       key_levels: {
         support: marketData?.key_levels?.support?.slice(0, 2) || [],
         resistance: marketData?.key_levels?.resistance?.slice(0, 2) || []
@@ -524,7 +620,7 @@ What would you like to know about the current market?`,
   ];
 
   return (
-    <div className="flex flex-col h-full bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50">
+    <div className="flex flex-col h-full bg-transparent">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-800/50">
         <div className="flex items-center gap-3">

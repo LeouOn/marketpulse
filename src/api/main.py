@@ -698,7 +698,7 @@ async def chat_with_llm(request: ChatRequest):
                     client.generate_completion(
                         model=selected_model,  # Use the selected model
                         messages=messages,
-                        max_tokens=500,  # Allow longer responses for chat
+                        max_tokens=2000,  # Allow much longer responses for detailed analysis
                         temperature=0.7  # More conversational temperature
                     ),
                     timeout=180.0  # 3 minutes timeout
