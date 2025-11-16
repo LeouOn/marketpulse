@@ -105,10 +105,30 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Global exception handler to ensure JSON responses
+from fastapi.responses import JSONResponse
+from fastapi import Request, status
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global exception handler caught: {exc}")
+    logger.error(f"Request: {request.method} {request.url}")
+    import traceback
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "success": False,
+            "error": str(exc),
+            "detail": "Internal server error",
+            "timestamp": datetime.now().isoformat()
+        }
+    )
+
 # CORS middleware - more permissive for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"],  # Next.js dev server
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
