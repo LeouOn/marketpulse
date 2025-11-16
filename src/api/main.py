@@ -172,6 +172,28 @@ async def root():
         "timestamp": datetime.now().isoformat()
     }
 
+@app.get("/api/debug/routes")
+async def debug_routes():
+    """Debug endpoint to list all registered routes"""
+    routes = []
+    for route in app.routes:
+        if hasattr(route, 'path') and hasattr(route, 'methods'):
+            routes.append({
+                "path": route.path,
+                "methods": list(route.methods) if route.methods else []
+            })
+        elif hasattr(route, 'path'):
+            routes.append({
+                "path": route.path,
+                "methods": ["WebSocket" if "ws" in route.path else "Unknown"]
+            })
+    return {
+        "total_routes": len(routes),
+        "routes": sorted(routes, key=lambda x: x["path"]),
+        "market_routes": [r for r in routes if "/api/market" in r["path"]],
+        "llm_routes": [r for r in routes if "/api/llm" in r["path"]]
+    }
+
 @app.get("/api/test/status")
 async def test_status():
     """Test endpoint to check global variables"""
