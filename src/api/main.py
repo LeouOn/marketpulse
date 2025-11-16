@@ -2142,6 +2142,16 @@ except Exception as e:
     logger.warning(f"Could not load AI endpoints: {e}")
 
 
+# ==================== BACKTESTING & OPTIMIZATION ENDPOINTS ====================
+# Include backtesting & optimization router
+try:
+    from .backtest_endpoints import backtest_router
+    app.include_router(backtest_router)
+    logger.info("Backtesting & optimization endpoints loaded successfully")
+except Exception as e:
+    logger.warning(f"Could not load backtest endpoints: {e}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
