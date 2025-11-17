@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { LLMChat } from './llm-chat';
 import { Sparkline } from './ui/Sparkline';
+import RiskManagerTab from './RiskManagerTab';
+import BacktestTab from './BacktestTab';
+import OptionsFlowTab from './OptionsFlowTab';
+import StrategyTab from './StrategyTab';
 import {
   RefreshCw, Activity, TrendingUp, TrendingDown, Clock, Globe,
   BarChart3, Bot, Target, BarChart2, Settings, AlertCircle
@@ -241,10 +245,10 @@ export function ThreeColumnDashboard() {
 
   const tabs = [
     { id: 'overview', label: 'Market Overview', icon: Activity },
-    { id: 'backtest', label: 'Backtests', icon: BarChart2, missing: true },
-    { id: 'risk', label: 'Risk Manager', icon: Target, missing: true },
-    { id: 'options', label: 'Options', icon: TrendingUp, missing: true },
-    { id: 'strategy', label: 'Strategy', icon: Settings, missing: true }
+    { id: 'backtest', label: 'Backtests', icon: BarChart2 },
+    { id: 'risk', label: 'Risk Manager', icon: Target },
+    { id: 'options', label: 'Options', icon: TrendingUp },
+    { id: 'strategy', label: 'Strategy', icon: Settings }
   ];
 
   if (loading) {
@@ -546,9 +550,6 @@ export function ThreeColumnDashboard() {
                 >
                   <tab.icon size={16} />
                   <span className="text-sm">{tab.label}</span>
-                  {tab.missing && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                  )}
                 </button>
               ))}
             </div>
@@ -578,18 +579,13 @@ export function ThreeColumnDashboard() {
               </>
             )}
 
-            {(activeTab === 'backtest' || activeTab === 'risk' || activeTab === 'options' || activeTab === 'strategy') && (
-              <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center min-h-[600px]">
-                <AlertCircle size={48} className="text-yellow-500 mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">Feature Coming Soon</h3>
-                <p className="text-gray-400 text-center max-w-md">
-                  This tab will show {activeTab === 'backtest' ? 'historical backtesting results' :
-                  activeTab === 'risk' ? 'risk management and position sizing' :
-                  activeTab === 'options' ? 'options flow and unusual activity' :
-                  'strategy testing and pattern scanning'}.
-                </p>
-              </div>
-            )}
+            {activeTab === 'backtest' && <BacktestTab />}
+
+            {activeTab === 'risk' && <RiskManagerTab />}
+
+            {activeTab === 'options' && <OptionsFlowTab />}
+
+            {activeTab === 'strategy' && <StrategyTab />}
           </div>
         </div>
 
