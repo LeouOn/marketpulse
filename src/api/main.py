@@ -615,45 +615,185 @@ class ChatRequest(BaseModel):
 async def chat_with_llm(request: ChatRequest):
     """Chat with the LLM trading assistant"""
     try:
-        # Add system prompt for trading assistant
-        system_prompt = """You are a professional AI trading assistant. You help users analyze market conditions,
-        understand trading strategies, and provide insights about financial markets. Always be helpful,
-        educational, and responsible with your advice. Never provide guaranteed financial advice.
+        # Enhanced system prompt for professional trading analysis
+        system_prompt = """You are an expert quantitative trading analyst specializing in futures and derivatives. Your expertise includes:
 
-        When users ask about market data, reference the provided context. When you don't have specific data,
-        acknowledge the limitations and provide general guidance."""
+**CORE COMPETENCIES:**
+- Technical analysis: Support/Resistance (swing highs/lows), Fibonacci retracements, pivot points
+- Market microstructure and order flow analysis
+- ICT concepts (Fair Value Gaps, liquidity sweeps, order blocks, Optimal Trade Entry zones)
+- Cumulative Volume Delta (CVD) and volume profile analysis
+- Position scaling strategies and risk management
+- ATR-based stop placement and profit targets
+- Multi-timeframe analysis and confluence
 
-        # Build enhanced context-aware prompt
+**COMMUNICATION GUIDELINES:**
+- Be precise with trading terminology and specific price levels
+- When discussing trades, ALWAYS provide exact entry, stop, and target levels
+- Use ATR (Average True Range) for dynamic stop placement - typically 1.5-2x ATR
+- Suggest specific scaling strategies (partial exits at 1R, 2R, 3R)
+- Reference support/resistance levels from the provided market data
+- Acknowledge risk and uncertainty - trading involves probability, not certainty
+- Distinguish between high probability setups (multiple confluence factors) vs speculative trades
+
+**TRADE SETUP FRAMEWORK:**
+When providing trade ideas or analyzing setups, structure your response with:
+
+1. **Setup Identification**
+   - Type: (Breakout, Reversal, FVG Fill, Order Block, etc.)
+   - Timeframe: What timeframe is this setup on?
+   - Confluence factors: What supports this trade? (trend, S/R, volume, indicators)
+
+2. **Entry Strategy**
+   - Entry Zone: Specific price level or tight range
+   - Entry Type: Market order, limit order, or scale in?
+   - Confirmation required: What needs to happen before entry?
+
+3. **Stop Loss Placement**
+   - Stop Price: Exact level (use ATR: typically 1.5-2x ATR from entry)
+   - Invalidation: Why would you exit? What price action negates the setup?
+   - Risk in dollars: How much are you risking? (1-2% of account max)
+
+4. **Take Profit Targets with Scaling Plan**
+   - TP1 (1R): Close 25-33% of position, move stop to breakeven
+   - TP2 (2R): Close 40-50% of position, trail stop
+   - TP3 (3R+): Let remaining 25% run, trail stop aggressively
+   - Final target: Key resistance/support or extension level
+
+5. **Risk/Reward Assessment**
+   - Minimum acceptable R:R is 1:2
+   - Ideal setups offer 1:3 or better
+   - Calculate: (Target - Entry) / (Entry - Stop)
+
+6. **Position Sizing**
+   - Based on account size and risk tolerance
+   - Never risk more than 1-2% of account per trade
+   - Scale in gradually on confirmation (don't go all-in at once)
+   - Scale out at predetermined levels (take emotion out of exits)
+
+7. **Trade Management Rules**
+   - After TP1: Move stop to breakeven (protect capital)
+   - After TP2: Trail stop using swing lows/highs or ATR bands
+   - Never let a winner turn into a loser
+   - Re-evaluate if thesis changes
+
+**SCALING STRATEGIES:**
+- **Scale In**: Enter 50% at signal, add 25% on confirmation, final 25% on strength
+- **Scale Out**: Exit 25% at 1R (quick profit), 50% at 2R (lock in gains), 25% runner for 3R+
+- **Breakeven Rule**: Once TP1 hit, immediately move stop to entry (risk-free trade)
+- **Trail Stop**: After TP2, use trailing stop (ATR-based or swing points)
+
+**SUPPORT/RESISTANCE ANALYSIS:**
+When analyzing levels:
+- Identify the 3 strongest support levels below current price
+- Identify the 3 strongest resistance levels above current price
+- Note the strength: How many times has it been tested? Recent or old level?
+- Consider confluences: Does it align with Fibonacci, round numbers, previous close?
+- Provide specific prices, not vague ranges
+
+**ATR USAGE:**
+- Current ATR value indicates average price movement
+- Stop loss: 1.5-2x ATR from entry (gives room to breathe)
+- Profit targets: 2-3x ATR for conservative, 4-5x ATR for aggressive
+- Position size: Adjust contracts based on ATR (higher ATR = wider stops = smaller position)
+
+**RISK MANAGEMENT PRINCIPLES:**
+1. Risk 1-2% of account per trade maximum
+2. Use proper position sizing: Risk Amount / Stop Distance = Position Size
+3. Diversify across uncorrelated setups
+4. Scale position size based on setup quality and confidence
+5. Never average down on losing trades
+6. Always have a pre-defined exit plan before entering
+
+Remember: You are providing education and analysis, not financial advice. Every trade should be backed by a clear thesis, defined risk, and objective criteria for both entries and exits."""
+
+        # Build comprehensive market context for AI
         context_info = ""
         if request.context:
-            # Handle enhanced context with symbol detection
             context_data = request.context
-            context_info = f"Current Market Context:\n{json.dumps(context_data, indent=2)}\n\n"
 
-            # Add symbol-specific context information
+            # Start with clear section headers
+            context_info = "=== CURRENT MARKET DATA ===\n\n"
+
+            # Symbol and detected symbols
+            primary_symbol = request.symbol or context_data.get('primary_symbol', 'Unknown')
+            context_info += f"**Primary Symbol:** {primary_symbol}\n"
+
             if 'detected_symbols' in context_data and context_data['detected_symbols']:
                 detected_syms = context_data['detected_symbols']
-                context_info += f"Symbols Mentioned: {', '.join(detected_syms)}\n"
+                context_info += f"**Related Symbols:** {', '.join(detected_syms)}\n\n"
 
-            # Add query type context
+            # Market bias and regime
+            if 'market_bias' in context_data:
+                context_info += f"**Market Bias:** {context_data['market_bias']}\n"
+            if 'volatility_regime' in context_data:
+                context_info += f"**Volatility Regime:** {context_data['volatility_regime']}\n\n"
+
+            # Current prices
+            if 'current_prices' in context_data and context_data['current_prices']:
+                context_info += "**Current Prices:**\n"
+                for sym, data in list(context_data['current_prices'].items())[:5]:
+                    if isinstance(data, dict) and 'price' in data:
+                        change = data.get('change_pct', 0)
+                        context_info += f"  - {sym.upper()}: ${data['price']:.2f} ({'+' if change >= 0 else ''}{change:.2f}%)\n"
+                context_info += "\n"
+
+            # Sector performance context
+            if 'detected_sectors' in context_data and context_data['detected_sectors']:
+                context_info += "**Sector Analysis:**\n"
+                for sector_info in context_data['sector_context']:
+                    sector = sector_info['sector']
+                    perf = sector_info.get('performance')
+                    context_info += f"  - {sector}: {'+' if perf >= 0 else ''}{perf:.2f}% today\n"
+                    context_info += f"    Keywords: {', '.join(sector_info['keywords'][:5])}\n"
+                context_info += "\n"
+
+            # Market breadth (TICK, A/D, etc.)
+            if 'market_breadth' in context_data and context_data['market_breadth']:
+                breadth = context_data['market_breadth']
+                context_info += "**Market Breadth Indicators:**\n"
+                context_info += f"  - NYSE A/D Ratio: {breadth.get('nyse_ad_ratio', 'N/A')}\n"
+                context_info += f"  - NASDAQ A/D Ratio: {breadth.get('nasdaq_ad_ratio', 'N/A')}\n"
+                context_info += f"  - TICK: {breadth.get('tick_value', 'N/A')}\n"
+                context_info += f"  - McClellan Oscillator: {breadth.get('mcclellan_oscillator', 'N/A')}\n"
+                if 'interpretation' in breadth:
+                    context_info += f"  - Interpretation: {breadth['interpretation']}\n"
+                context_info += "\n"
+
+            # Sector performance summary
+            if 'sector_performance' in context_data and context_data['sector_performance']:
+                context_info += "**Sector Performance (Today):**\n"
+                sectors = sorted(context_data['sector_performance'].items(), key=lambda x: x[1], reverse=True)
+                for sector, perf in sectors[:5]:  # Top 5
+                    context_info += f"  - {sector}: {'+' if perf >= 0 else ''}{perf:.2f}%\n"
+                context_info += "\n"
+
+            # Add query-specific guidance
             if 'query_type' in context_data:
                 query_type = context_data['query_type']
-                context_info += f"Query Type: {query_type}\n"
+                context_info += f"**Query Type:** {query_type}\n"
 
-                # Add specialized instructions based on query type
                 if query_type == 'trend_analysis':
-                    context_info += "Focus on trend direction, momentum, and price patterns.\n"
+                    context_info += "**Focus:** Identify trend direction, strength, and potential reversal points. Use multi-timeframe confluence.\n\n"
                 elif query_type == 'technical_levels':
-                    context_info += "Focus on support/resistance levels and price targets.\n"
+                    context_info += "**Focus:** Provide exact support/resistance levels. Use S/R, Fibonacci, and pivot points. Give specific entry/exit prices.\n\n"
                 elif query_type == 'volatility_analysis':
-                    context_info += "Focus on volatility patterns, risk assessment, and timing.\n"
+                    context_info += "**Focus:** Assess current volatility vs historical average. Discuss ATR-based position sizing and stop placement.\n\n"
                 elif query_type == 'trading_strategy':
-                    context_info += "Focus on actionable strategies, entries, exits, and risk management.\n"
-                elif query_type == 'symbol_specific':
-                    context_info += "Focus analysis on the detected symbols mentioned.\n"
+                    context_info += "**Focus:** Provide actionable trade setup with entry, stop, targets. Include scaling plan and risk management.\n\n"
 
-        if request.symbol:
-            context_info += f"Primary Symbol: {request.symbol}\n"
+            # Add trade management context
+            context_info += "=== TRADE MANAGEMENT REQUIREMENTS ===\n"
+            context_info += "When providing trade ideas, ALWAYS include:\n"
+            context_info += "1. Entry price or zone\n"
+            context_info += "2. Stop loss (ATR-based preferred)\n"
+            context_info += "3. Take profit targets (TP1, TP2, TP3)\n"
+            context_info += "4. Scaling plan (when to exit partial positions)\n"
+            context_info += "5. Risk/reward ratio\n"
+            context_info += "6. Invalidation criteria\n\n"
+
+        if request.symbol and not context_info:
+            context_info = f"Primary Symbol: {request.symbol}\n"
 
         # Build conversation history in OpenAI format
         messages = []
