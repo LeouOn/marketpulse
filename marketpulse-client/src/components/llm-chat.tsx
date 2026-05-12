@@ -71,7 +71,7 @@ export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('aquif-3.5-max-42b-a3b-i1');
+  const [selectedModel, setSelectedModel] = useState<string>('');
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [detectedSymbols, setDetectedSymbols] = useState<string[]>([]);
@@ -234,7 +234,7 @@ What would you like to know about the current market?`,
 
   const fetchAvailableModels = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/llm/models');
+      const response = await fetch('/api/llm/models');
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data?.models) {
@@ -249,7 +249,7 @@ What would you like to know about the current market?`,
 
   const fetchModelStatus = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/llm/model-status');
+      const response = await fetch('/api/llm/model-status');
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data) {
@@ -266,7 +266,7 @@ What would you like to know about the current market?`,
 
   const selectModel = async (modelId: string) => {
     try {
-      const response = await fetch('http://localhost:8000/api/llm/select-model', {
+      const response = await fetch('/api/llm/select-model', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model_id: modelId, provider: 'lm_studio' })
@@ -404,7 +404,7 @@ What would you like to know about the current market?`,
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
 
-      const response = await fetch('http://localhost:8000/api/llm/chat', {
+      const response = await fetch('/api/llm/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

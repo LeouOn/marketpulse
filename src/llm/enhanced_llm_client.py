@@ -4,6 +4,7 @@ Combines LM Studio client with RAG and enhanced prompts
 
 import asyncio
 import json
+import re
 from typing import Dict, Any, Optional, List
 from loguru import logger
 

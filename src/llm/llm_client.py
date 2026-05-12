@@ -18,29 +18,30 @@ class LMStudioClient:
         self.settings = settings or get_settings()
         self.base_url = self.settings.llm.primary.base_url
         self.timeout = self.settings.llm.primary.timeout
-        self.model = getattr(self.settings.llm.primary, 'model', 'aquif-3.5-max-42b-a3b-i1')
+        self.model = getattr(self.settings.llm.primary, 'model', None)
         self.session = None
+        self._detected_model = None
         
         # Model capabilities and purposes
         self.model_capabilities = {
             'fast_analysis': {
                 'purpose': 'Quick market analysis and data validation',
-                'max_tokens': 150,
+                'max_tokens': 300,
                 'temperature': 0.3
             },
             'deep_analysis': {
                 'purpose': 'Comprehensive market analysis',
-                'max_tokens': 400,
+                'max_tokens': 800,
                 'temperature': 0.5
             },
             'trade_review': {
                 'purpose': 'Trade setup review and validation',
-                'max_tokens': 250,
+                'max_tokens': 400,
                 'temperature': 0.4
             },
             'data_validation': {
                 'purpose': 'Sanity checks and data interpretation validation',
-                'max_tokens': 100,
+                'max_tokens': 150,
                 'temperature': 0.2
             }
         }
@@ -48,15 +49,38 @@ class LMStudioClient:
     async def __aenter__(self):
         """Async context manager entry"""
         import aiohttp
-        # Use longer timeout for chat requests
-        timeout = max(self.timeout, 200)  # At least 200 seconds for chat
+        timeout = max(self.timeout, 200)
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout))
+        if not self._detected_model:
+            await self._auto_detect_model()
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
         if self.session:
             await self.session.close()
+    
+    async def _auto_detect_model(self):
+        """Query LM Studio for loaded models and pick one."""
+        if self._detected_model:
+            return
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s:
+                async with s.get(f"{self.base_url}/models") as r:
+                    if r.status == 200:
+                        data = await r.json()
+                        models = [m['id'] for m in data.get('data', [])]
+                        if self.model and self.model in models:
+                            self._detected_model = self.model
+                        elif models:
+                            self._detected_model = models[0]
+                            logger.info(f"Auto-detected LM Studio model: {self._detected_model}")
+        except Exception as e:
+            logger.debug(f"Model auto-detect failed: {e}")
+    
+    def get_active_model(self) -> str:
+        """Return the model that will actually be used."""
+        return self._detected_model or self.model or 'unknown'
     
     async def generate_completion(self, 
                                 model: str = 'fast_analysis',
@@ -78,8 +102,7 @@ class LMStudioClient:
             Completion response or None if error
         """
         try:
-            # Use configured model from settings
-            actual_model = self.model
+            actual_model = self._detected_model or self.model
             
             # Get model configuration if available
             model_config = self.model_capabilities.get(model, {})
@@ -148,7 +171,7 @@ Focus on: market bias, volatility regime, trading opportunities, and key levels.
             model='fast_analysis',
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=150,
+            max_tokens=300,
             temperature=0.3
         )
         
@@ -198,7 +221,7 @@ Provide comprehensive analysis with clear reasoning for trading decisions."""
             model='deep_analysis',
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=400,
+            max_tokens=800,
             temperature=0.5
         )
         
@@ -207,8 +230,8 @@ Provide comprehensive analysis with clear reasoning for trading decisions."""
         return None
     
     async def review_trade_setup(self, 
-                                trade_context: Dict[str, Any],
-                                market_internals: Dict[str, Any]) -> Optional[str]:
+                                 trade_context: Dict[str, Any],
+                                 market_internals: Dict[str, Any]) -> Optional[str]:
         """
         Review trading setup using reviewer model
         """
@@ -243,7 +266,7 @@ focusing on risk management, execution quality, and learning opportunities."""
             model='trade_review',
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=250,
+            max_tokens=400,
             temperature=0.4
         )
         
@@ -440,18 +463,16 @@ Provide technical analysis focusing on actionable insights."""
     
     def get_model_status(self) -> Dict[str, Any]:
         """Get status of available models"""
-        status = {}
-        for model_type, model_name in self.models.items():
-            status[model_type] = {
-                'name': model_name,
-                'available': True,  # Would check actual availability in real implementation
-                'purpose': {
-                    'fast': 'Quick market analysis (59 tok/s)',
-                    'analyst': 'Deep market analysis (19 tok/s)',
-                    'reviewer': 'Trade setup review (12 tok/s)'
-                }.get(model_type, 'General purpose')
+        active = self._detected_model or self.model or 'unknown'
+        return {
+            'active_model': active,
+            'config_model': self.model or 'not configured',
+            'auto_detected': self._detected_model is not None,
+            'capabilities': {
+                k: {'purpose': v['purpose'], 'max_tokens': v['max_tokens']}
+                for k, v in self.model_capabilities.items()
             }
-        return status
+        }
 
 
 class OpenRouterClient:

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from loguru import logger
 
-from ..api.yahoo_client import YahooFinanceClient as AlpacaClient
+from ..api.yahoo_client import YahooFinanceClient
 from ..core.config import get_settings
 from ..core.database import DatabaseManager
 from ..llm.llm_client import LLMManager
@@ -20,8 +20,8 @@ class MarketPulseCollector:
     def __init__(self):
         self.settings = get_settings()
         self.db_manager = DatabaseManager(self.settings.database_url)
-        self.alpaca_client = None
-        self.llm_manager = LLMManager()  # Add LLM manager
+        self.yahoo_client = None
+        self.llm_manager = LLMManager()
         self.running = False
         
         # Market symbols to monitor
@@ -50,7 +50,7 @@ class MarketPulseCollector:
                 # Continue without database - some features will be limited
 
             # Initialize API clients
-            self.alpaca_client = AlpacaClient(self.settings)
+            self.yahoo_client = YahooFinanceClient(self.settings)
             logger.success("API clients initialized")
 
             return True
@@ -66,11 +66,10 @@ class MarketPulseCollector:
         # Try to collect raw data from Alpaca first
         internals = None
         try:
-            if not self.alpaca_client:
-                self.alpaca_client = AlpacaClient(self.settings)
+            if not self.yahoo_client:
+                self.yahoo_client = YahooFinanceClient(self.settings)
 
-            # Use the new synchronous client
-            raw_internals = self.alpaca_client.get_market_internals(list(self.symbols.values()))
+            raw_internals = self.yahoo_client.get_market_internals(list(self.symbols.values()))
 
             if raw_internals:
                 # Map uppercase symbols to lowercase keys expected by frontend
@@ -86,17 +85,17 @@ class MarketPulseCollector:
                         logger.warning(f"⚠️ Symbol {symbol} not found in API response")
 
                 if internals:
-                    logger.info("📈 Successfully collected data from Alpaca")
-                    internals['data_source'] = 'alpaca'
+                    logger.info("Successfully collected data from Yahoo Finance")
+                    internals['data_source'] = 'yahoo_finance'
                 else:
-                    logger.warning("⚠️ No matching symbols found in Alpaca response")
+                    logger.warning("No matching symbols found in Yahoo Finance response")
                     internals = None
             else:
-                logger.warning("⚠️ No data returned from Alpaca")
+                logger.warning("No data returned from Yahoo Finance")
                 internals = None
 
         except Exception as api_error:
-            logger.warning(f"⚠️ Alpaca API unavailable: {api_error}")
+            logger.warning(f"Yahoo Finance API unavailable: {api_error}")
             internals = None
 
         # Fallback to mock data if API fails
@@ -143,7 +142,7 @@ class MarketPulseCollector:
                 else:
                     return 1.0  # Mixed
             return None
-        except:
+        except Exception:
             return None
     
     def _calculate_momentum(self, internals: Dict[str, Any]) -> Optional[float]:
@@ -151,9 +150,9 @@ class MarketPulseCollector:
         try:
             if 'spy' in internals:
                 spy_change_pct = internals['spy']['change_pct']
-                return max(min(spy_change_pct / 2.0, 5.0), -5.0)  # Normalize to -5 to +5
+                return max(min(spy_change_pct / 2.0, 5.0), -5.0)
             return None
-        except:
+        except Exception:
             return None
     
     def _classify_volatility(self, internals: Dict[str, Any]) -> str:
@@ -170,7 +169,7 @@ class MarketPulseCollector:
                 else:
                     return "LOW"
             return "UNKNOWN"
-        except:
+        except Exception:
             return "UNKNOWN"
     
     def _calculate_correlation(self, internals: Dict[str, Any]) -> Optional[float]:
@@ -180,12 +179,11 @@ class MarketPulseCollector:
                 spy_change = internals['spy']['change_pct']
                 qqq_change = internals['qqq']['change_pct']
                 
-                # Simple correlation measure
                 if abs(spy_change) > 0.1 and abs(qqq_change) > 0.1:
                     correlation = (spy_change * qqq_change) / (abs(spy_change) * abs(qqq_change))
                     return max(min(correlation, 1.0), -1.0)
             return None
-        except:
+        except Exception:
             return None
     
     def _calculate_support(self, internals: Dict[str, Any]) -> Optional[float]:
@@ -193,10 +191,9 @@ class MarketPulseCollector:
         try:
             if 'spy' in internals:
                 spy_price = internals['spy']['price']
-                # Simple support calculation (would be more sophisticated in real implementation)
-                return spy_price * 0.98  # 2% below current price
+                return spy_price * 0.98
             return None
-        except:
+        except Exception:
             return None
     
     def _calculate_resistance(self, internals: Dict[str, Any]) -> Optional[float]:
@@ -204,10 +201,9 @@ class MarketPulseCollector:
         try:
             if 'spy' in internals:
                 spy_price = internals['spy']['price']
-                # Simple resistance calculation
-                return spy_price * 1.02  # 2% above current price
+                return spy_price * 1.02
             return None
-        except:
+        except Exception:
             return None
     
     def format_internals_display(self, internals: Dict[str, Any]) -> str:

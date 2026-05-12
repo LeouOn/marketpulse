@@ -200,11 +200,9 @@ def build_enhanced_prompt(base_prompt: str, context_chunks: list, query: str = "
             hypothesis_injection = f"ACTIVE HYPOTHESIS:\n{hypothesis_text}\n"
     
     # Build data injection
-    data_injection = ""
-    if market_data:
-        import json
-        data_summary = json.dumps(market_data, indent=2)
-        data_injection = f"MARKET DATA:\n{data_summary}\n"
+    import json
+    data_summary = json.dumps(market_data, indent=2) if market_data else ""
+    data_injection = f"MARKET DATA:\n{data_summary}\n" if market_data else ""
     
     # Replace placeholders in base prompt
     enhanced_prompt = base_prompt.replace(

@@ -213,3 +213,63 @@ class DatabaseManager:
             return query.all()
         finally:
             session.close()
+
+    def save_user_comment(self, comment_data: dict):
+        """Save user comment on an LLM analysis"""
+        session = self.get_session()
+        try:
+            from sqlalchemy import Column, Integer, String, Text, DateTime, JSON
+            from sqlalchemy import text
+            session.execute(text(
+                "CREATE TABLE IF NOT EXISTS user_comments ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "analysis_id VARCHAR(100), "
+                "user_id VARCHAR(100), "
+                "comment TEXT, "
+                "timestamp VARCHAR(100), "
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            session.execute(text(
+                "INSERT INTO user_comments (analysis_id, user_id, comment, timestamp) "
+                "VALUES (:analysis_id, :user_id, :comment, :timestamp)"
+            ), {
+                'analysis_id': comment_data.get('analysis_id', ''),
+                'user_id': comment_data.get('user_id', 'anonymous'),
+                'comment': comment_data.get('comment', ''),
+                'timestamp': comment_data.get('timestamp', datetime.now().isoformat())
+            })
+            session.commit()
+            logger.info(f"User comment saved for analysis {comment_data.get('analysis_id')}")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error saving user comment: {e}")
+            raise e
+        finally:
+            session.close()
+
+    def get_analysis_conversation(self, analysis_id: str):
+        """Get conversation history for an analysis"""
+        session = self.get_session()
+        try:
+            from sqlalchemy import text
+            result = session.execute(text(
+                "SELECT * FROM user_comments WHERE analysis_id = :analysis_id "
+                "ORDER BY created_at ASC"
+            ), {'analysis_id': analysis_id})
+            rows = result.fetchall()
+            return [
+                {
+                    'id': row[0],
+                    'analysis_id': row[1],
+                    'user_id': row[2],
+                    'comment': row[3],
+                    'timestamp': row[4],
+                    'created_at': str(row[5]) if len(row) > 5 else None
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            logger.error(f"Error retrieving conversation history: {e}")
+            return []
+        finally:
+            session.close()

@@ -1,75 +1,100 @@
 @echo off
-REM MarketPulse Development Startup Script for Windows
-REM This script starts both backend and frontend services
-
-echo ========================================
-echo    MarketPulse Development Environment
-echo ========================================
-echo.
-
-REM Check if venv exists
-if not exist "venv\Scripts\python.exe" (
-    echo [ERROR] Virtual environment not found!
-    echo Please run: python -m venv venv
-    echo Then run: venv\Scripts\activate
-    echo Then run: pip install -r requirements.txt
-    pause
-    exit /b 1
-)
-
-REM Check if node_modules exists
-if not exist "marketpulse-client\node_modules" (
-    echo [INFO] Installing frontend dependencies...
-    cd marketpulse-client
-    npm install
-    cd ..
-)
-
-echo [INFO] Starting MarketPulse services...
-echo.
-echo Backend will run on: http://localhost:8000
-echo Frontend will run on: http://localhost:3000
-echo.
-echo Press Ctrl+C to stop the services
-echo.
-
-REM Start backend in first window
-start "MarketPulse Backend" cmd /k "title MarketPulse Backend && venv\Scripts\python.exe -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload"
-
-REM Wait 3 seconds for backend to start
-timeout /t 3 /nobreak >nul
-
-REM Start frontend in second window
-start "MarketPulse Frontend" cmd /k "cd marketpulse-client && title MarketPulse Frontend && npm run dev"
-
-REM Wait 5 seconds for services to initialize
-timeout /t 5 /nobreak >nul
+chcp 65001 >nul 2>&1
+setlocal enabledelayedexpansion
 
 echo.
-echo ========================================
-echo    Services Started!
-echo ========================================
+echo  ============================================================
+echo   MarketPulse Development Start
+echo  ============================================================
 echo.
-echo Testing services...
 
-REM Test backend
-curl -s http://localhost:8000/ >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [SUCCESS] Backend API is running on http://localhost:8000
-    echo          API Docs: http://localhost:8000/docs
+set "BACKEND_PORT=8000"
+set "FRONTEND_PORT=3000"
+set "LMSTUDIO_PORT=1234"
+set "PYTHON=python"
+set "BACKEND_OK=0"
+set "FRONTEND_OK=0"
+
+REM --- Check for venv or system python ---
+if exist "venv\Scripts\python.exe" (
+    set "PYTHON=venv\Scripts\python.exe"
+    echo  [OK] Using venv Python
 ) else (
-    echo [WARNING] Backend may still be starting...
+    where python >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo  [ERROR] Python not found. Install Python or create venv.
+        pause
+        exit /b 1
+    )
+    echo  [OK] Using system Python
 )
 
-REM Test frontend
-curl -s http://localhost:3000/ >nul 2>&1
+REM --- Check LM Studio ---
+netstat -ano 2>nul | find ":%LMSTUDIO_PORT% " | find "LISTENING" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo [SUCCESS] Frontend is running on http://localhost:3000
+    echo  [OK] LM Studio running on port %LMSTUDIO_PORT%
 ) else (
-    echo [WARNING] Frontend may still be starting...
+    echo  [WARN] LM Studio not detected on port %LMSTUDIO_PORT% - LLM features will be limited
+)
+
+REM --- Check if backend port already in use ---
+netstat -ano 2>nul | find ":%BACKEND_PORT% " | find "LISTENING" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo  [SKIP] Backend already running on port %BACKEND_PORT%
+    set "BACKEND_OK=1"
+) else (
+    echo  [START] Backend on http://localhost:%BACKEND_PORT%
+    start "MarketPulse-Backend" /min cmd /c "%PYTHON% -m uvicorn src.api.main:app --host 0.0.0.0 --port %BACKEND_PORT% --reload"
+)
+
+REM --- Check if frontend port already in use ---
+netstat -ano 2>nul | find ":%FRONTEND_PORT% " | find "LISTENING" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo  [SKIP] Frontend already running on port %FRONTEND_PORT%
+    set "FRONTEND_OK=1"
+) else (
+    REM Install deps if needed
+    if not exist "marketpulse-client\node_modules" (
+        echo  [INSTALL] Frontend dependencies...
+        pushd marketpulse-client
+        call npm install
+        popd
+    )
+    echo  [START] Frontend on http://localhost:%FRONTEND_PORT%
+    pushd marketpulse-client
+    start "MarketPulse-Frontend" /min cmd /c "npm run dev"
+    popd
+)
+
+REM --- Wait and health check ---
+echo.
+echo  Waiting for services to start...
+timeout /t 6 /nobreak >nul
+
+if %BACKEND_OK% equ 0 (
+    curl -s -o nul -w "%%{http_code}" http://localhost:%BACKEND_PORT%/docs 2>nul | find "200" >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo  [OK] Backend:  http://localhost:%BACKEND_PORT%  ^(API docs: /docs^)
+    ) else (
+        echo  [WAIT] Backend still starting - check http://localhost:%BACKEND_PORT%/docs
+    )
+)
+
+if %FRONTEND_OK% equ 0 (
+    curl -s -o nul -w "%%{http_code}" http://localhost:%FRONTEND_PORT%/ 2>nul | find "200" >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo  [OK] Frontend: http://localhost:%FRONTEND_PORT%
+    ) else (
+        echo  [WAIT] Frontend still starting - check http://localhost:%FRONTEND_PORT%
+    )
 )
 
 echo.
-echo Two command windows have been opened for each service.
-echo Close this window or press any key to continue...
-pause >nul
+echo  ------------------------------------------------------------
+echo  Backend:  http://localhost:%BACKEND_PORT%  (/docs for Swagger)
+echo  Frontend: http://localhost:%FRONTEND_PORT%
+echo  LM Studio: http://localhost:%LMSTUDIO_PORT%
+echo.
+echo  Run stop-dev.bat to shut down all services.
+echo  ------------------------------------------------------------
+echo.

@@ -2,6 +2,6 @@
 Contains API client implementations for market data providers
 """
 
-from .alpaca_client import AlpacaClient
+from .yahoo_client import YahooFinanceClient
 
-__all__ = ['AlpacaClient']
+__all__ = ['YahooFinanceClient']
