@@ -89,7 +89,12 @@ async def get_dashboard_data():
             },
             "volumeFlow": internals.get('volume_flow', {}),
             "aiAnalysis": ai_analysis,
-            "dataSource": internals.get('data_source', 'unknown')
+            "dataSource": internals.get('data_source', 'unknown'),
+            "dataQuality": internals.get('data_quality', 'unknown'),
+            "qualityIssues": internals.get('quality_issues', []),
+            "synthetic": internals.get('synthetic', False),
+            "freshnessStatus": internals.get('freshness_status', 'unknown'),
+            "dataAgeSeconds": internals.get('spy', {}).get('data_age_seconds') if 'spy' in internals else None
         }
 
         return MarketResponse(

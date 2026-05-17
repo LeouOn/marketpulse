@@ -10,12 +10,35 @@ from loguru import logger
 
 from ..core.config import Settings
 
+try:
+    from ..core.cache import get_cache
+    CacheService = None
+except ImportError:
+    CacheService = None
+
 
 class YahooFinanceClient:
-    """Yahoo Finance client for market data"""
+    """Yahoo Finance client for market data with Redis caching"""
 
     def __init__(self, settings: Settings = None):
         self.settings = settings
+        self._cache = None
+        self._cache_ttl = 30  # 30 seconds for market internals
+
+    async def _get_cache(self):
+        """Lazy load cache"""
+        if self._cache is None:
+            try:
+                self._cache = await get_cache()
+            except Exception as e:
+                logger.debug(f"Cache not available: {e}")
+                self._cache = None
+        return self._cache
+
+    def _cache_key(self, symbols: List[str]) -> str:
+        """Generate cache key for symbols"""
+        sorted_syms = sorted(symbols)
+        return f"yahoo:internals:{':'.join(sorted_syms)}"
 
         # Market symbols to monitor
         self.market_symbols = [
@@ -122,6 +145,7 @@ class YahooFinanceClient:
                 return {}
 
             market_data = {}
+            request_time = datetime.now()
 
             for symbol in symbols:
                 try:
@@ -132,6 +156,18 @@ class YahooFinanceClient:
                         if len(close_prices) > 0:
                             latest_price = close_prices.iloc[-1]
                             latest_volume = volumes.iloc[-1] if len(volumes) > 0 else 0
+
+                            # Get actual timestamp from Yahoo dataframe index
+                            # The index is a DatetimeIndex with the bar timestamps
+                            bar_timestamp = data.index[-1] if len(data.index) > 0 else None
+                            api_timestamp = bar_timestamp.isoformat() if bar_timestamp else None
+
+                            # Calculate data age in seconds
+                            if bar_timestamp:
+                                now = datetime.now(bar_timestamp.tzinfo) if bar_timestamp.tzinfo else datetime.now()
+                                data_age_seconds = (now - bar_timestamp.replace(tzinfo=None)).total_seconds() if not bar_timestamp.tzinfo else (now - bar_timestamp).total_seconds()
+                            else:
+                                data_age_seconds = None
 
                             # Calculate change and change percent
                             change = 0.0
@@ -152,7 +188,9 @@ class YahooFinanceClient:
                                 'change': float(change),
                                 'change_pct': float(change_pct),
                                 'volume': int(latest_volume) if pd.notna(latest_volume) else 0,
-                                'timestamp': datetime.now().isoformat(),
+                                'timestamp': api_timestamp,  # Actual Yahoo timestamp
+                                'data_age_seconds': data_age_seconds,  # How old is this data
+                                'request_time': request_time.isoformat(),  # When we made the request
                                 'high': float(high_price),
                                 'low': float(low_price),
                                 'open': float(open_price)
@@ -172,6 +210,31 @@ class YahooFinanceClient:
         except Exception as e:
             logger.error(f"Error fetching market data from Yahoo Finance: {e}")
             return {}
+
+    async def get_market_internals_cached(self, symbols: List[str] = None, timeframe: str = '1d', period: str = '2d') -> Dict[str, Any]:
+        """Get market data with Redis caching"""
+        if symbols is None:
+            symbols = self.market_symbols
+
+        cache = await self._get_cache()
+        cache_key = self._cache_key(symbols)
+
+        # Try cache first
+        if cache:
+            cached = await cache.get(cache_key)
+            if cached:
+                logger.debug(f"Cache hit for {cache_key}")
+                return cached
+
+        # Fetch fresh data (sync call)
+        data = self.get_market_internals(symbols, timeframe, period)
+
+        # Cache result
+        if cache and data:
+            await cache.set(cache_key, data, self._cache_ttl)
+            logger.debug(f"Cached {cache_key} for {self._cache_ttl}s")
+
+        return data
 
     def get_macro_data(self) -> Dict[str, Any]:
         """Get macro economic indicators"""

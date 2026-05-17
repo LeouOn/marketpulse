@@ -532,23 +532,24 @@ class OpenRouterClient:
 
 class LLMManager:
     """Orchestrates LLM operations with fallback support"""
-    
+
     def __init__(self):
         self.settings = get_settings()
         self.lm_studio = None
         self.openrouter = None
-    
-    async def analyze_market(self, 
+        self.minimax = None
+
+    async def analyze_market(self,
                            internals_data: Dict[str, Any],
                            analysis_type: str = 'quick') -> Optional[str]:
         """
         Analyze market using appropriate LLM based on analysis type
-        
+
         Args:
             internals_data: Market internals data
             analysis_type: 'quick', 'deep', or 'review'
         """
-        
+
         try:
             # Try LM Studio first (local, faster)
             if analysis_type == 'quick':
@@ -556,46 +557,59 @@ class LLMManager:
                     result = await client.analyze_market_internals(internals_data)
                     if result:
                         return f"🤖 LM Studio (Fast Analysis):\n{result}"
-            
+
             elif analysis_type == 'deep':
                 async with LMStudioClient(self.settings) as client:
                     result = await client.deep_market_analysis(internals_data)
                     if result:
                         return f"🤖 LM Studio (Deep Analysis):\n{result}"
-            
+
             elif analysis_type == 'review':
                 async with LMStudioClient(self.settings) as client:
                     result = await client.review_trade_setup(internals_data, internals_data)
                     if result:
                         return f"🤖 LM Studio (Trade Review):\n{result}"
-            
-            # Fallback to OpenRouter if LM Studio fails
-            logger.warning("LM Studio unavailable, trying OpenRouter fallback...")
+
+            # Fallback to cloud LLMs if LM Studio fails
+            logger.warning("LM Studio unavailable, trying cloud fallbacks...")
+
+            # Try MiniMax first (if configured)
+            minimax_client = None
+            try:
+                from .minimax_client import MiniMaxClient
+                minimax_client = MiniMaxClient(self.settings)
+                result = await minimax_client.analyze_market(internals_data, analysis_type)
+                if result:
+                    return f"🔵 MiniMax (Cloud Analysis):\n{result}"
+            except Exception as e:
+                logger.debug(f"MiniMax analysis failed: {e}")
+
+            # Try OpenRouter as final fallback
             async with OpenRouterClient(self.settings) as client:
                 if analysis_type == 'quick':
                     prompt = f"Analyze these market internals briefly: {json.dumps(internals_data)}"
                 else:
                     prompt = f"Provide detailed analysis of: {json.dumps(internals_data)}"
-                
+
                 messages = [{'role': 'user', 'content': prompt}]
-                
+
                 result = await client.generate_completion(
                     model="openai/gpt-4o-mini",
                     messages=messages,
                     max_tokens=300 if analysis_type == 'deep' else 150,
                     temperature=0.3
                 )
-                
+
                 if result and 'choices' in result:
                     return f"☁️ OpenRouter (Cloud Analysis):\n{result['choices'][0]['message']['content']}"
-            
+
             logger.error("All LLM services failed")
             return None
-            
+
         except Exception as e:
             logger.error(f"LLM analysis error: {e}")
             return None
-    
+
     def get_status(self) -> Dict[str, Any]:
         """Get status of all LLM services"""
         status = {
@@ -611,6 +625,12 @@ class LLMManager:
             'openrouter': {
                 'available': bool(self.settings.llm.fallback.api_key),
                 'endpoint': self.settings.llm.fallback.base_url
+            },
+            'minimax': {
+                'available': bool(self.settings.llm.minimax.api_key and
+                                 self.settings.llm.minimax.api_key != "your_minimax_api_key"),
+                'endpoint': self.settings.llm.minimax.base_url,
+                'model': self.settings.llm.minimax.model
             }
         }
         return status

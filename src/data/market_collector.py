@@ -8,124 +8,175 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from loguru import logger
 
-from ..api.yahoo_client import YahooFinanceClient
+from ..api.market_data_collector import get_collector, MarketDataCollector
 from ..core.config import get_settings
 from ..core.database import DatabaseManager
+from ..core.cache import get_cache
+from ..core.validators import (
+    validate_market_internals,
+    flag_data_quality,
+    is_data_usable,
+    ValidationResult
+)
 from ..llm.llm_client import LLMManager
 
 
 class MarketPulseCollector:
     """Main market data collection service for MarketPulse"""
-    
+
     def __init__(self):
         self.settings = get_settings()
         self.db_manager = DatabaseManager(self.settings.database_url)
-        self.yahoo_client = None
+        self.collector: Optional[MarketDataCollector] = None
+        self.cache = None
         self.llm_manager = LLMManager()
         self.running = False
-        
+
         # Market symbols to monitor
         self.symbols = {
-            'NQ=F': self.settings.nq_symbol,  # Use full symbol as key for consistency
+            'NQ=F': self.settings.nq_symbol,
             'BTC-USD': self.settings.btc_symbol,
             'ETH-USD': self.settings.eth_symbol,
             'SPY': 'SPY',
             'QQQ': 'QQQ',
-            'VIX': '^VIX',  # Fixed: VIX needs ^ prefix for Yahoo Finance
+            'VIX': '^VIX',
             'IWM': 'IWM'
         }
-    
+
     async def initialize(self):
         """Initialize the market collector"""
         logger.info("Initializing MarketPulse Collector...")
-        
+
         try:
-            # Initialize database (handle missing psycopg2 gracefully)
+            # Initialize cache
+            try:
+                self.cache = await get_cache()
+                logger.success("Cache initialized")
+            except Exception as e:
+                logger.warning(f"Cache initialization failed (continuing without): {e}")
+
+            # Initialize database
             try:
                 self.db_manager.create_engine()
                 self.db_manager.create_tables()
                 logger.success("Database initialized")
             except Exception as db_error:
                 logger.warning(f"Database initialization failed (continuing without database): {db_error}")
-                # Continue without database - some features will be limited
 
-            # Initialize API clients
-            self.yahoo_client = YahooFinanceClient(self.settings)
-            logger.success("API clients initialized")
+            # Initialize market data collector (Alpaca/Rithmic/Coinbase)
+            self.collector = await get_collector()
+            logger.success("Market data collector initialized")
 
             return True
 
         except Exception as e:
             logger.error(f"Failed to initialize MarketPulse: {e}")
             return False
-    
+
     async def collect_market_internals(self) -> Dict[str, Any]:
         """Collect and analyze current market internals"""
         logger.info("📊 Starting market internals collection...")
 
-        # Try to collect raw data from Alpaca first
         internals = None
-        try:
-            if not self.yahoo_client:
-                self.yahoo_client = YahooFinanceClient(self.settings)
 
-            raw_internals = self.yahoo_client.get_market_internals(list(self.symbols.values()))
+        try:
+            if not self.collector:
+                self.collector = await get_collector()
+
+            raw_internals = await self.collector.get_all_market_data(use_cache=True)
 
             if raw_internals:
-                # Map uppercase symbols to lowercase keys expected by frontend
                 internals = {}
-                for key, symbol in self.symbols.items():
-                    # Normalize symbol for lookup (remove ^ prefix)
-                    lookup_symbol = symbol
-                    if symbol in raw_internals:
-                        internals[key.lower()] = raw_internals[symbol]
-                    elif symbol.replace('^', '') in raw_internals:
-                        internals[key.lower()] = raw_internals[symbol.replace('^', '')]
+
+                # Normalize raw_internals keys to lowercase for consistent lookup
+                raw_internals_normalized = {}
+                for k, v in raw_internals.items():
+                    if isinstance(v, dict):  # Only normalize symbol keys, not metadata
+                        raw_internals_normalized[k.lower()] = v
                     else:
-                        logger.warning(f"⚠️ Symbol {symbol} not found in API response")
+                        raw_internals_normalized[k] = v
+
+                logger.debug(f"Normalized internals keys: {list(raw_internals_normalized.keys())}")
+
+                for key, symbol in self.symbols.items():
+                    # Normalize to lowercase for lookup
+                    symbol_lower = symbol.lower()
+                    key_lower = key.lower()
+
+                    # Try various lookups
+                    if symbol_lower in raw_internals_normalized:
+                        internals[key_lower] = raw_internals_normalized[symbol_lower]
+                    elif symbol_lower.replace('^', '') in raw_internals_normalized:
+                        internals[key_lower] = raw_internals_normalized[symbol_lower.replace('^', '')]
+                    else:
+                        logger.warning(f"Symbol {symbol} not found in API response")
 
                 if internals:
-                    logger.info("Successfully collected data from Yahoo Finance")
-                    internals['data_source'] = 'yahoo_finance'
+                    logger.info("Successfully collected data from market APIs")
+                    internals['data_source'] = raw_internals.get('data_source', 'primary_apis')
                 else:
-                    logger.warning("No matching symbols found in Yahoo Finance response")
+                    logger.warning("No matching symbols found in market data response")
                     internals = None
             else:
-                logger.warning("No data returned from Yahoo Finance")
+                logger.warning("No data returned from market APIs")
                 internals = None
 
         except Exception as api_error:
-            logger.warning(f"Yahoo Finance API unavailable: {api_error}")
+            logger.warning(f"Market data collection error: {api_error}")
             internals = None
 
         # Fallback to mock data if API fails
         if not internals:
-            logger.info("🎭 Using mock market data for testing")
+            logger.info("Using mock market data")
             from ..api.mock_market import mock_provider
-            internals = await mock_provider.get_market_internals()
-            internals['data_source'] = 'mock'
+            mock_data = await mock_provider.get_market_internals()
+            mock_data['data_source'] = 'mock'
+            mock_data['synthetic'] = True
+            internals = mock_data
 
-        # Ensure we have the required symbols for the frontend
+            # Validate mock data - strict mode will reject if issues
+            validation = validate_market_internals(internals)
+            if not validation.is_valid:
+                logger.error(f"Mock data validation failed: {validation.issues}")
+                raise ValueError(f"Mock data validation failed: {'; '.join(validation.issues)}")
+
+            # Check usability
+            is_usable, reason = is_data_usable(internals)
+            if not is_usable:
+                logger.error(f"Mock data not usable: {reason}")
+                raise ValueError(f"Mock data not usable: {reason}")
+
+        # Strict validation - if data fails, raise error instead of returning bad data
         required_symbols = ['spy', 'qqq', 'vix']
-        for symbol in required_symbols:
-            if symbol not in internals:
-                logger.warning(f"⚠️ Missing {symbol.upper()} data, adding placeholder")
-                internals[symbol] = {
-                    'price': 0.0,
-                    'change': 0.0,
-                    'change_pct': 0.0,
-                    'volume': 0,
-                    'timestamp': datetime.now().isoformat()
-                }
+        validation = validate_market_internals(internals)
+
+        if not validation.is_valid:
+            logger.error(f"Data validation failed: {validation.issues}")
+            # Instead of returning bad data with zeros, raise an error
+            raise ValueError(f"Market data validation failed: {'; '.join(validation.issues)}")
+
+        # Check data usability
+        is_usable, reason = is_data_usable(internals)
+        if not is_usable:
+            logger.error(f"Data not usable for trading: {reason}")
+            raise ValueError(f"Market data not usable: {reason}")
+
+        # Add data quality flags
+        quality_flags = flag_data_quality(internals)
+        internals['data_quality'] = quality_flags['data_quality']
+        internals['quality_issues'] = quality_flags['issues']
+        if quality_flags['missing_symbols']:
+            internals['missing_symbols'] = quality_flags['missing_symbols']
 
         # Add volume flow if missing
         if 'volume_flow' not in internals:
+            valid_volume_syms = [sym for sym in required_symbols if sym in internals and isinstance(internals[sym], dict)]
             internals['volume_flow'] = {
-                'total_volume_60min': sum(internals[sym]['volume'] for sym in required_symbols if sym in internals),
-                'symbols_tracked': len(required_symbols)
+                'total_volume_60min': sum(internals[sym].get('volume', 0) for sym in valid_volume_syms),
+                'symbols_tracked': len(valid_volume_syms)
             }
 
-        logger.success("✅ Market internals collected successfully")
+        logger.success("Market internals collected and validated successfully")
         return internals
     
     def _calculate_ad_line(self, internals: Dict[str, Any]) -> Optional[float]:

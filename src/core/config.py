@@ -27,50 +27,71 @@ def interpolate_env_vars(value: str, env_vars: Dict[str, str]) -> str:
     return re.sub(pattern, replace_match, value)
 
 
+class RedisSettings(BaseSettings):
+    """Redis configuration"""
+    host: str = "localhost"
+    port: int = 6379
+    db: int = 0
+    password: Optional[str] = None
+    enabled: bool = True
+
+
 class ApiKeys(BaseSettings):
     """API Keys configuration"""
-    
+
     class AlpacaConfig(BaseSettings):
         key_id: str = "your_alpaca_key_here"
         secret_key: str = "your_alpaca_secret_here"
         base_url: str = "https://paper-api.alpaca.markets"
-    
+
     class RithmicConfig(BaseSettings):
         username: str = "your_rithmic_username"
         password: str = "your_rithmic_password"
         system_name: str = "your_system_name"
         login_prefix: str = "your_login_prefix"
-    
+
     class CoinbaseConfig(BaseSettings):
         api_key: str = "your_coinbase_api_key"
         api_secret: str = "your_coinbase_secret"
         passphrase: str = "your_coinbase_passphrase"
-    
+
     class OpenRouterConfig(BaseSettings):
         api_key: str = "your_openrouter_api_key"
-    
+
+    class MiniMaxConfig(BaseSettings):
+        api_key: str = "your_minimax_api_key"
+        base_url: str = "https://api.minimax.chat/v1"
+
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     rithmic: RithmicConfig = Field(default_factory=RithmicConfig)
     coinbase: CoinbaseConfig = Field(default_factory=CoinbaseConfig)
     openrouter: OpenRouterConfig = Field(default_factory=OpenRouterConfig)
+    minimax: MiniMaxConfig = Field(default_factory=MiniMaxConfig)
 
 
 class LLMSettings(BaseSettings):
     """LLM Configuration"""
-    
+
     class PrimaryConfig(BaseSettings):
         base_url: str = "http://localhost:1234/v1"
         api_key: str = "not-needed"
         timeout: int = 30
         model: str = ""
-    
+
     class FallbackConfig(BaseSettings):
         base_url: str = "https://openrouter.ai/api/v1"
         api_key: str = "your_openrouter_api_key"
         timeout: int = 60
-    
+
+    class MiniMaxConfig(BaseSettings):
+        base_url: str = "https://api.minimax.chat/v1"
+        api_key: str = "your_minimax_api_key"
+        timeout: int = 60
+        model: str = "MiniMax-Text-01"
+
     primary: PrimaryConfig = Field(default_factory=PrimaryConfig)
     fallback: FallbackConfig = Field(default_factory=FallbackConfig)
+    minimax: MiniMaxConfig = Field(default_factory=MiniMaxConfig)
 
 
 class MarketSettings(BaseSettings):
@@ -127,24 +148,33 @@ class LoggingSettings(BaseSettings):
 
 class Settings(BaseSettings):
     """Main MarketPulse settings"""
-    
+
     # Database
     database_host: str = "localhost"
     database_port: int = 5432
     database_name: str = "marketpulse"
     database_user: str = "marketpulse"
     database_password: str = "marketpulse_password"
-    
+
+    # Redis
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_db: int = 0
+    redis_password: Optional[str] = None
+
     # API Keys
     api_keys: ApiKeys = Field(default_factory=ApiKeys)
-    
+
     # LLM Settings
     llm: LLMSettings = Field(default_factory=LLMSettings)
-    
+
     # Market settings
     markets: MarketSettings = Field(default_factory=MarketSettings)
     analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+
+    # API Keys for authentication
+    api_keys_list: str = ""  # Comma-separated list of valid API keys
     
     # Convenience aliases for backward compatibility
     nq_symbol: str = "NQ=F"
@@ -204,20 +234,31 @@ class Settings(BaseSettings):
                         for key, value in api_keys_data['openrouter'].items():
                             if hasattr(self.api_keys.openrouter, key):
                                 setattr(self.api_keys.openrouter, key, value)
+
+                    # Update MiniMax config
+                    if 'minimax' in api_keys_data:
+                        for key, value in api_keys_data['minimax'].items():
+                            if hasattr(self.api_keys.minimax, key):
+                                setattr(self.api_keys.minimax, key, value)
                 
                 # Update LLM section
                 if 'llm' in yaml_data:
                     llm_data = self._interpolate_dict(yaml_data['llm'], env_vars)
-                    
+
                     if 'primary' in llm_data:
                         for key, value in llm_data['primary'].items():
                             if hasattr(self.llm.primary, key):
                                 setattr(self.llm.primary, key, value)
-                    
+
                     if 'fallback' in llm_data:
                         for key, value in llm_data['fallback'].items():
                             if hasattr(self.llm.fallback, key):
                                 setattr(self.llm.fallback, key, value)
+
+                    if 'minimax' in llm_data:
+                        for key, value in llm_data['minimax'].items():
+                            if hasattr(self.llm.minimax, key):
+                                setattr(self.llm.minimax, key, value)
                 
                 # Update Markets section
                 if 'markets' in yaml_data:
@@ -261,7 +302,7 @@ class Settings(BaseSettings):
                 # Update Database section
                 if 'database' in yaml_data:
                     db_data = self._interpolate_dict(yaml_data['database'], env_vars)
-                    
+
                     if 'host' in db_data:
                         self.database_host = db_data['host']
                     if 'port' in db_data:
@@ -272,6 +313,19 @@ class Settings(BaseSettings):
                         self.database_user = db_data['username']
                     if 'password' in db_data:
                         self.database_password = db_data['password']
+
+                # Update Redis section
+                if 'redis' in yaml_data:
+                    redis_data = self._interpolate_dict(yaml_data['redis'], env_vars)
+
+                    if 'host' in redis_data:
+                        self.redis_host = redis_data['host']
+                    if 'port' in redis_data:
+                        self.redis_port = redis_data['port']
+                    if 'db' in redis_data:
+                        self.redis_db = redis_data['db']
+                    if 'password' in redis_data:
+                        self.redis_password = redis_data['password']
                 
                 # Update Logging section
                 if 'logging' in yaml_data:
@@ -315,8 +369,17 @@ class Settings(BaseSettings):
             return getattr(self.api_keys.coinbase, key_type)
         elif service == "openrouter":
             return getattr(self.api_keys.openrouter, key_type)
+        elif service == "minimax":
+            return getattr(self.api_keys.minimax, key_type)
         else:
             return ""
+
+    def validate_api_key(self, api_key: str) -> bool:
+        """Validate an API key against the allowed keys list"""
+        if not self.api_keys_list:
+            return True  # No validation if no keys configured
+        allowed_keys = [k.strip() for k in self.api_keys_list.split(',')]
+        return api_key in allowed_keys
 
 
 # Global settings instance

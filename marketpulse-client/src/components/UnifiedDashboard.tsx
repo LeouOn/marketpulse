@@ -30,6 +30,11 @@ interface DashboardData {
     market_session?: string;
     sector_performance?: Record<string, number>;
     dataSource?: string;
+    dataQuality?: string;
+    qualityIssues?: string[];
+    synthetic?: boolean;
+    freshnessStatus?: string;
+    dataAgeSeconds?: number;
   };
 }
 
@@ -494,6 +499,40 @@ export function UnifiedDashboard() {
         )}
       </AnimatePresence>
 
+      {/* Data quality warning banner */}
+      <AnimatePresence>
+        {dashboardData?.data?.dataQuality === 'poor' && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-4 bg-red-900/30 border border-red-600/30 rounded-lg px-4 py-2.5 flex items-center gap-3"
+          >
+            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <p className="text-red-200 text-xs">
+              <strong>Data Quality Issues</strong> &mdash; {dashboardData.data.qualityIssues?.join('; ') || 'Validation failed'}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Stale data warning */}
+      <AnimatePresence>
+        {dashboardData?.data?.freshnessStatus === 'stale' && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-4 bg-orange-900/30 border border-orange-600/30 rounded-lg px-4 py-2.5 flex items-center gap-3"
+          >
+            <Clock className="w-4 h-4 text-orange-400 flex-shrink-0" />
+            <p className="text-orange-200 text-xs">
+              <strong>Stale Data</strong> &mdash; Data is {dashboardData.data.dataAgeSeconds ? `${Math.floor(dashboardData.data.dataAgeSeconds / 60)}m old` : 'old'}. Prices may be outdated.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Connection error toast */}
       <AnimatePresence>
         {error && dashboardData && (
@@ -519,6 +558,15 @@ export function UnifiedDashboard() {
             <p className="text-gray-500 text-xs mt-0.5">Real-time Market Dashboard</p>
           </div>
           <div className="flex items-center gap-3">
+            {dashboardData?.data?.dataQuality && dashboardData.data.dataQuality !== 'unknown' && (
+              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                dashboardData.data.dataQuality === 'good' ? 'bg-green-900/50 text-green-400 border border-green-700/30' :
+                dashboardData.data.dataQuality === 'partial' ? 'bg-yellow-900/50 text-yellow-400 border border-yellow-700/30' :
+                'bg-red-900/50 text-red-400 border border-red-700/30'
+              }`}>
+                {dashboardData.data.dataQuality.toUpperCase()} QUALITY
+              </span>
+            )}
             {lastUpdate && (
               <span className="text-xs text-gray-600 hidden sm:block">
                 {lastUpdate.toLocaleTimeString()}
@@ -596,15 +644,20 @@ export function UnifiedDashboard() {
       })()}
 
       {/* Footer */}
-      <footer className="mt-6 pt-4 border-t border-gray-800/50">
-        <div className="flex items-center justify-between text-xs text-gray-600">
-          <div className="flex items-center gap-2">
-            <Wifi className={`w-3 h-3 ${isMock ? 'text-yellow-500' : 'text-green-500'}`} />
-            <span>{isMock ? 'Mock Data' : 'Live'} &bull; 60s refresh</span>
+        <footer className="mt-6 pt-4 border-t border-gray-800/50">
+          <div className="flex items-center justify-between text-xs text-gray-600">
+            <div className="flex items-center gap-2">
+              <Wifi className={`w-3 h-3 ${isMock ? 'text-yellow-500' : 'text-green-500'}`} />
+              <span>{isMock ? 'Mock Data' : 'Live'} &bull; 60s refresh</span>
+              {dashboardData?.data?.freshnessStatus && (
+                <span className={`ml-2 ${dashboardData.data.freshnessStatus === 'fresh' ? 'text-green-600' : 'text-orange-600'}`}>
+                  ({dashboardData.data.freshnessStatus})
+                </span>
+              )}
+            </div>
+            <div>MarketPulse v0.2.0</div>
           </div>
-          <div>MarketPulse v0.2.0</div>
-        </div>
-      </footer>
+        </footer>
     </div>
   );
 }

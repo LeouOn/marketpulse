@@ -92,8 +92,9 @@ async def test_yahoo_finance():
         results = {}
 
         for symbol in test_symbols:
-            if symbol in internals and isinstance(internals[symbol], dict):
-                data = internals[symbol]
+            # Normalize to lowercase for lookup (collector returns lowercase keys)
+            data = internals.get(symbol.lower())
+            if data and isinstance(data, dict):
                 results[symbol] = {
                     "success": True,
                     "price": data.get("price"),
@@ -104,13 +105,14 @@ async def test_yahoo_finance():
                     "raw_keys": list(data.keys())
                 }
             else:
-                results[symbol] = {"success": False, "error": "Symbol not found in response"}
+                results[symbol] = {"success": False, "error": f"Symbol not found. Available: {list(internals.keys())}"}
 
         logger.info(f"Yahoo Finance test completed for {len(results)} symbols")
         return {
             "success": True,
             "yahoo_finance_results": results,
             "data_source": internals.get("data_source", "unknown"),
+            "all_keys": list(internals.keys()),
             "timestamp": datetime.now().isoformat()
         }
 

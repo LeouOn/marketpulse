@@ -547,7 +547,7 @@ What would you like to know about the current market?`,
           <div className="flex items-center gap-2 px-2 py-1 bg-gray-800/50 rounded-lg">
             <div className={`w-2 h-2 rounded-full ${modelStatus?.lm_studio_connected ? 'bg-green-400' : 'bg-red-400'}`} />
             <span className="text-xs text-gray-400">
-              {modelStatus?.current_model?.split('-')[0] || 'Loading...'}
+              {modelStatus?.current_model ? modelStatus.current_model.split('/').pop()?.split('-')[0] || modelStatus.current_model : 'Loading...'}
             </span>
           </div>
 
@@ -584,7 +584,7 @@ What would you like to know about the current market?`,
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-white truncate">
-                              {model.id.split('-')[0]}
+                              {model.id.split('/').pop()?.split('-')[0] || model.id}
                             </span>
                             {model.recommended && (
                               <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">

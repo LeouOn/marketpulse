@@ -3,6 +3,7 @@ from loguru import logger
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, UniqueConstraint, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
+from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
 from datetime import datetime
 
 Base = declarative_base()
@@ -12,7 +13,7 @@ class PriceData(Base):
     """OHLCV price data model"""
     __tablename__ = 'prices'
     __table_args__ = (UniqueConstraint('symbol', 'timeframe', 'timestamp', name='_symbol_timeframe_timestamp_uc'),)
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
     timeframe = Column(String(10), nullable=False, index=True)
@@ -25,7 +26,7 @@ class PriceData(Base):
     trade_count = Column(Integer, default=0)
     vwap = Column(Float)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     def __repr__(self):
         return f"<PriceData(symbol='{self.symbol}', timestamp='{self.timestamp}', close={self.close_price})>"
 
@@ -34,7 +35,7 @@ class MarketInternals(Base):
     """Market internals analysis model"""
     __tablename__ = 'market_internals'
     __table_args__ = (UniqueConstraint('symbol', 'timestamp', name='_symbol_timestamp_uc'),)
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -46,7 +47,7 @@ class MarketInternals(Base):
     support_level = Column(Float)
     resistance_level = Column(Float)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     def __repr__(self):
         return f"<MarketInternals(symbol='{self.symbol}', timestamp='{self.timestamp}', regime='{self.volatility_regime}')>"
 
@@ -54,7 +55,7 @@ class MarketInternals(Base):
 class LLMInsight(Base):
     """LLM analysis results model"""
     __tablename__ = 'llm_insights'
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -64,7 +65,7 @@ class LLMInsight(Base):
     analysis_result = Column(Text)
     confidence_score = Column(Float)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     def __repr__(self):
         return f"<LLMInsight(symbol='{self.symbol}', analysis_type='{self.analysis_type}', model='{self.model_used}')>"
 
@@ -72,7 +73,7 @@ class LLMInsight(Base):
 class Alert(Base):
     """Market alerts and signals model"""
     __tablename__ = 'alerts'
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
     alert_type = Column(String(50), nullable=False, index=True)
@@ -83,7 +84,7 @@ class Alert(Base):
     acknowledged = Column(Boolean, default=False, index=True)
     resolved_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     def __repr__(self):
         return f"<Alert(symbol='{self.symbol}', type='{self.alert_type}', severity='{self.severity}')>"
 
@@ -91,7 +92,7 @@ class Alert(Base):
 class MarketRegime(Base):
     """Market regime classification model"""
     __tablename__ = 'market_regime'
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
     regime_type = Column(String(50), nullable=False, index=True)
@@ -100,30 +101,68 @@ class MarketRegime(Base):
     end_time = Column(DateTime(timezone=True), index=True)
     characteristics = Column(JSON)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     def __repr__(self):
         return f"<MarketRegime(symbol='{self.symbol}', type='{self.regime_type}', confidence={self.confidence})>"
 
 
 class DatabaseManager:
-    """Database connection and operations manager"""
-    
+    """Database connection and operations manager with connection pooling"""
+
     def __init__(self, database_url: str):
         self.database_url = database_url
         self.engine = None
-        
+        self._pool_size = 5
+        self._max_overflow = 10
+        self._pool_timeout = 30
+        self._pool_recycle = 3600
+
     def create_engine(self):
-        """Create SQLAlchemy engine"""
+        """Create SQLAlchemy engine with connection pooling"""
         from sqlalchemy import create_engine
-        self.engine = create_engine(self.database_url, pool_pre_ping=True)
+
+        is_sqlite = 'sqlite' in self.database_url.lower()
+        is_postgres = 'postgresql' in self.database_url.lower()
+
+        if is_sqlite:
+            self.engine = create_engine(
+                self.database_url,
+                poolclass=NullPool,
+                connect_args={'check_same_thread': False}
+            )
+        elif is_postgres:
+            # Try to use asyncpg, fall back to sync if not available
+            try:
+                self.engine = create_engine(
+                    self.database_url,
+                    poolclass=AsyncAdaptedQueuePool,
+                    pool_size=self._pool_size,
+                    max_overflow=self._max_overflow,
+                    pool_timeout=self._pool_timeout,
+                    pool_recycle=self._pool_recycle,
+                    pool_pre_ping=True
+                )
+                logger.info(f"Database pool configured: size={self._pool_size}, max_overflow={self._max_overflow}")
+            except Exception as e:
+                logger.warning(f"Failed to create async pool, trying sync: {e}")
+                # Fall back to regular sync engine
+                self.engine = create_engine(
+                    self.database_url,
+                    pool_pre_ping=True,
+                    pool_size=self._pool_size,
+                    max_overflow=self._max_overflow
+                )
+        else:
+            self.engine = create_engine(self.database_url)
+
         return self.engine
-    
+
     def create_tables(self):
         """Create all database tables"""
         if not self.engine:
             self.create_engine()
         Base.metadata.create_all(bind=self.engine)
-        
+
     def get_session(self):
         """Get database session"""
         from sqlalchemy.orm import sessionmaker
@@ -131,12 +170,48 @@ class DatabaseManager:
             self.create_engine()
         Session = sessionmaker(bind=self.engine)
         return Session()
-    
+
+    async def get_async_session(self):
+        """Get async database session for use with async code"""
+        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+
+        is_sqlite = 'sqlite' in self.database_url.lower()
+
+        if is_sqlite:
+            async_engine = create_async_engine(
+                self.database_url.replace('sqlite://', 'sqlite+aiosqlite://'),
+                poolclass=NullPool
+            )
+        else:
+            async_url = self.database_url.replace('postgresql://', 'postgresql+asyncpg://')
+            async_engine = create_async_engine(
+                async_url,
+                pool_size=self._pool_size,
+                max_overflow=self._max_overflow,
+                pool_timeout=self._pool_timeout,
+                pool_recycle=self._pool_recycle,
+                pool_pre_ping=True
+            )
+
+        async_session = AsyncSession(async_engine, expire_on_commit=False)
+        return async_session
+
     def save_price_data(self, symbol: str, timeframe: str, data_list: list):
-        """Save price data to database"""
+        """Save price data to database with OHLC validation"""
         session = self.get_session()
         try:
             for data in data_list:
+                # Validate OHLC consistency before saving
+                ohlc_valid, ohlc_issues = self._validate_ohlc(
+                    data.get('open'),
+                    data.get('high'),
+                    data.get('low'),
+                    data.get('close')
+                )
+                if not ohlc_valid:
+                    logger.warning(f"Skipping invalid OHLC for {symbol}: {ohlc_issues}")
+                    continue
+
                 price_record = PriceData(
                     symbol=symbol,
                     timeframe=timeframe,
@@ -156,9 +231,36 @@ class DatabaseManager:
             raise e
         finally:
             session.close()
-    
+
+    def _validate_ohlc(self, open_price, high_price, low_price, close_price) -> tuple:
+        """Validate OHLC data consistency. Returns (is_valid, issues)"""
+        issues = []
+
+        if None in (open_price, high_price, low_price, close_price):
+            return False, ["One or more OHLC values are None"]
+
+        if any(p <= 0 for p in [open_price, high_price, low_price, close_price]):
+            issues.append(f"Non-positive price: O={open_price}, H={high_price}, L={low_price}, C={close_price}")
+
+        if high_price < max(open_price, close_price):
+            issues.append(f"High {high_price} < max(O={open_price}, C={close_price})")
+
+        if low_price > min(open_price, close_price):
+            issues.append(f"Low {low_price} > min(O={open_price}, C={close_price})")
+
+        return len(issues) == 0, issues
+
     def save_market_internals(self, symbol: str, internals_data: dict):
-        """Save market internals to database"""
+        """Save market internals to database with validation"""
+        # Validate price ranges for critical symbols
+        if symbol.upper() in ['SPY', 'QQQ', 'VIX']:
+            price = internals_data.get('price')
+            if price is not None:
+                valid, issues = self._validate_symbol_price(symbol.upper(), price)
+                if not valid:
+                    logger.warning(f"Skipping invalid {symbol} internals: {issues}")
+                    return  # Skip saving invalid data
+
         session = self.get_session()
         try:
             internals_record = MarketInternals(
@@ -179,7 +281,24 @@ class DatabaseManager:
             raise e
         finally:
             session.close()
-    
+
+    def _validate_symbol_price(self, symbol: str, price: float) -> tuple:
+        """Validate symbol price is within reasonable bounds. Returns (is_valid, issues)"""
+        from ..core.validators import REASONABLE_RANGES
+
+        issues = []
+        if price is None or price <= 0:
+            return False, ["price is None or <= 0"]
+
+        if symbol in REASONABLE_RANGES:
+            min_p, max_p = REASONABLE_RANGES[symbol]
+            if price < min_p:
+                issues.append(f"{symbol} price ${price:.2f} below minimum ${min_p}")
+            if price > max_p:
+                issues.append(f"{symbol} price ${price:.2f} above maximum ${max_p}")
+
+        return len(issues) == 0, issues
+
     def save_llm_insight(self, symbol: str, analysis_type: str, input_data: dict, analysis_result: str, model_used: str = 'lm_studio_fast', confidence_score: float = 0.8):
         """Save LLM insight to database"""
         session = self.get_session()
@@ -202,7 +321,7 @@ class DatabaseManager:
             raise e
         finally:
             session.close()
-    
+
     def get_latest_internals(self, symbol: str, limit: int = 10):
         """Get latest market internals for a symbol"""
         session = self.get_session()
@@ -273,3 +392,18 @@ class DatabaseManager:
             return []
         finally:
             session.close()
+
+    def configure_pool(self, pool_size: int = 5, max_overflow: int = 10, pool_timeout: int = 30, pool_recycle: int = 3600):
+        """Configure connection pool settings"""
+        self._pool_size = pool_size
+        self._max_overflow = max_overflow
+        self._pool_timeout = pool_timeout
+        self._pool_recycle = pool_recycle
+        if self.engine:
+            logger.warning("Pool settings will take effect on next engine creation")
+
+    def close(self):
+        """Close database engine and all connections"""
+        if self.engine:
+            self.engine.dispose()
+            logger.info("Database engine closed")
