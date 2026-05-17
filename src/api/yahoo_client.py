@@ -25,21 +25,6 @@ class YahooFinanceClient:
         self._cache = None
         self._cache_ttl = 30  # 30 seconds for market internals
 
-    async def _get_cache(self):
-        """Lazy load cache"""
-        if self._cache is None:
-            try:
-                self._cache = await get_cache()
-            except Exception as e:
-                logger.debug(f"Cache not available: {e}")
-                self._cache = None
-        return self._cache
-
-    def _cache_key(self, symbols: List[str]) -> str:
-        """Generate cache key for symbols"""
-        sorted_syms = sorted(symbols)
-        return f"yahoo:internals:{':'.join(sorted_syms)}"
-
         # Market symbols to monitor
         self.market_symbols = [
             'SPY',    # S&P 500 ETF
@@ -90,6 +75,21 @@ class YahooFinanceClient:
             'USDCAD': 'USDCAD=X',  # US Dollar / Canadian Dollar
             'USDCHF': 'USDCHF=X',  # US Dollar / Swiss Franc
         }
+
+    async def _get_cache(self):
+        """Lazy load cache"""
+        if self._cache is None:
+            try:
+                self._cache = await get_cache()
+            except Exception as e:
+                logger.debug(f"Cache not available: {e}")
+                self._cache = None
+        return self._cache
+
+    def _cache_key(self, symbols: List[str]) -> str:
+        """Generate cache key for symbols"""
+        sorted_syms = sorted(symbols)
+        return f"yahoo:internals:{':'.join(sorted_syms)}"
 
     def get_market_internals(self, symbols: List[str] = None, timeframe: str = '1d', period: str = '2d') -> Dict[str, Any]:
         """Get market data for specified symbols

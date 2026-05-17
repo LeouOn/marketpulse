@@ -75,7 +75,7 @@ class LLMSettings(BaseSettings):
     class PrimaryConfig(BaseSettings):
         base_url: str = "http://localhost:1234/v1"
         api_key: str = "not-needed"
-        timeout: int = 30
+        timeout: int = 300
         model: str = ""
 
     class FallbackConfig(BaseSettings):

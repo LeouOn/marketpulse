@@ -6,6 +6,23 @@
   --foreground-rgb: 255, 255, 255;
   --background-start-rgb: 10, 10, 10;
   --background-end-rgb: 0, 0, 0;
+
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #2a2a2a;
+
+  --text-primary: #ffffff;
+  --text-secondary: #a0a0a0;
+
+  --green-bright: #10b981;
+  --green-dim: rgba(16, 185, 129, 0.1);
+
+  --red-bright: #ef4444;
+  --red-dim: rgba(239, 68, 68, 0.1);
+
+  --blue-accent: #3b82f6;
+  --border-color: #333333;
+  --border-color-light: #444444;
 }
 
 body {
@@ -81,26 +98,6 @@ body {
 /* Smooth transitions for color changes */
 .price-change {
   transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
-}
-
-/* Enhanced CSS Variables for Professional Dashboard */
-:root {
-  --bg-primary: #0a0a0a;
-  --bg-secondary: #1a1a1a;
-  --bg-tertiary: #2a2a2a;
-
-  --text-primary: #ffffff;
-  --text-secondary: #a0a0a0;
-
-  --green-bright: #10b981;
-  --green-dim: rgba(16, 185, 129, 0.1);
-
-  --red-bright: #ef4444;
-  --red-dim: rgba(239, 68, 68, 0.1);
-
-  --blue-accent: #3b82f6;
-  --border-color: #333333;
-  --border-color-light: #444444;
 }
 
 /* Multi-column Dashboard Grid System */

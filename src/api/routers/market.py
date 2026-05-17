@@ -4,7 +4,7 @@ import json
 import asyncio
 from datetime import datetime
 from loguru import logger
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from typing import Dict, Any
 
 from .deps import (
@@ -13,6 +13,27 @@ from .deps import (
 )
 
 router = APIRouter(prefix="/api/market", tags=["market"])
+
+# Cache for AI analysis so dashboard returns immediately
+_cached_ai_analysis: str | None = None
+_ai_analysis_lock = asyncio.Lock()
+
+
+async def _refresh_ai_analysis(internals: dict):
+    """Background task to refresh AI analysis cache"""
+    global _cached_ai_analysis
+    try:
+        analysis = await asyncio.wait_for(
+            collector.analyze_with_ai(internals, 'quick'),
+            timeout=90.0
+        )
+        if analysis:
+            _cached_ai_analysis = analysis
+            logger.success("AI analysis cache refreshed")
+    except asyncio.TimeoutError:
+        logger.warning("Background AI analysis timed out (90s)")
+    except Exception as e:
+        logger.warning(f"Background AI analysis failed: {e}")
 
 
 @router.get("/internals", response_model=MarketResponse)
@@ -49,8 +70,9 @@ async def get_market_internals():
 
 
 @router.get("/dashboard", response_model=MarketResponse)
-async def get_dashboard_data():
-    """Get dashboard data with AI analysis"""
+async def get_dashboard_data(background_tasks: BackgroundTasks):
+    """Get dashboard data — returns immediately with cached AI analysis,
+    refreshes analysis in the background."""
     try:
         from .deps import collector
         internals = await collector.collect_market_internals()
@@ -67,16 +89,8 @@ async def get_dashboard_data():
             else:
                 market_bias = "MIXED"
 
-        ai_analysis = None
-        try:
-            ai_analysis = await asyncio.wait_for(
-                collector.analyze_with_ai(internals, 'quick'),
-                timeout=10.0
-            )
-        except asyncio.TimeoutError:
-            logger.warning("AI analysis timed out (10s), skipping")
-        except Exception as e:
-            logger.warning(f"AI analysis failed: {e}")
+        # Kick off background AI analysis refresh (non-blocking)
+        background_tasks.add_task(_refresh_ai_analysis, internals)
 
         dashboard_data = {
             "timestamp": datetime.now().isoformat(),
@@ -88,7 +102,7 @@ async def get_dashboard_data():
                 "vix": internals.get('vix')
             },
             "volumeFlow": internals.get('volume_flow', {}),
-            "aiAnalysis": ai_analysis,
+            "aiAnalysis": _cached_ai_analysis,
             "dataSource": internals.get('data_source', 'unknown'),
             "dataQuality": internals.get('data_quality', 'unknown'),
             "qualityIssues": internals.get('quality_issues', []),

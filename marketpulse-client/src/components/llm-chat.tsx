@@ -404,22 +404,30 @@ What would you like to know about the current market?`,
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
 
+      const payload = {
+        message: userMessage.content,
+        context: generateEnhancedContext(userMessage.content),
+        symbol: symbol,
+        conversation_history: messages.slice(-6).map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      };
+
+      console.log('[LLM Chat] Sending request...', { symbol, msgLen: userMessage.content.length });
+      const requestStart = Date.now();
+
       const response = await fetch('/api/llm/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: userMessage.content,
-          context: generateEnhancedContext(userMessage.content),
-          symbol: symbol,
-          conversation_history: messages.slice(-6).map(msg => ({
-            role: msg.role,
-            content: msg.content
-          }))
-        }),
+        body: JSON.stringify(payload),
         signal: controller.signal
       });
+
+      const elapsed = ((Date.now() - requestStart) / 1000).toFixed(1);
+      console.log(`[LLM Chat] Response: ${response.status} (${elapsed}s)`);
 
       clearTimeout(timeoutId);
 
@@ -452,10 +460,11 @@ What would you like to know about the current market?`,
         setMessages(prev => prev.filter(msg => !msg.isThinking));
 
         const errorText = await response.text();
+        console.error(`[LLM Chat] Error ${response.status}:`, errorText.slice(0, 300));
         const errorMessage: Message = {
           id: (Date.now() + 2).toString(),
           role: 'assistant',
-          content: `I encountered an error: ${errorText}. Please try again or contact support if the issue persists.`,
+          content: `I encountered an error (${response.status}): ${errorText.slice(0, 150)}. Please try again.`,
           timestamp: new Date().toISOString()
         };
         setMessages(prev => [...prev, errorMessage]);
@@ -463,6 +472,8 @@ What would you like to know about the current market?`,
     } catch (error) {
       // Remove thinking message
       setMessages(prev => prev.filter(msg => !msg.isThinking));
+
+      console.error('[LLM Chat] Fetch error:', error);
 
       let errorMessage = "I'm having trouble connecting to my AI services right now. This could be due to network issues or the AI service being temporarily unavailable. Please try again in a moment.";
 

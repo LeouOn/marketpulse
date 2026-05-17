@@ -49,7 +49,7 @@ class LMStudioClient:
     async def __aenter__(self):
         """Async context manager entry"""
         import aiohttp
-        timeout = max(self.timeout, 200)
+        timeout = max(self.timeout, 300)
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout))
         if not self._detected_model:
             await self._auto_detect_model()
@@ -65,7 +65,7 @@ class LMStudioClient:
             return
         try:
             import aiohttp
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as s:
                 async with s.get(f"{self.base_url}/models") as r:
                     if r.status == 200:
                         data = await r.json()

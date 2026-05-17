@@ -172,16 +172,30 @@ export function UnifiedDashboard() {
     return volume.toString();
   };
 
-  const generateSparklineData = (currentPrice: number, change: number): number[] => {
+  /** Deterministic seeded PRNG so server and client produce identical sparklines */
+  const seededRandom = (seed: string) => {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
+    }
+    let state = Math.abs(hash) || 1;
+    return () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state / 0xffffffff;
+    };
+  };
+
+  const generateSparklineData = (currentPrice: number, change: number, symbol: string): number[] => {
     const points = 12;
     const data: number[] = [];
     const previousPrice = currentPrice - change;
     const priceRange = Math.abs(change) || currentPrice * 0.005;
+    const rand = seededRandom(symbol);
 
     for (let i = 0; i < points; i++) {
       const progress = i / (points - 1);
       const baseValue = previousPrice + (change * progress);
-      const noise = (Math.random() - 0.5) * priceRange * 0.15;
+      const noise = (rand() - 0.5) * priceRange * 0.15;
       data.push(baseValue + noise);
     }
     data[data.length - 1] = currentPrice;
@@ -221,7 +235,7 @@ export function UnifiedDashboard() {
               {entries.map(([symbol, marketData]) => {
                 const changeInfo = formatChange(marketData.change, marketData.change_pct);
                 const displayLabel = labels[symbol] || symbol;
-                const sparklineData = generateSparklineData(marketData.price, marketData.change);
+                const sparklineData = generateSparklineData(marketData.price, marketData.change, symbol);
 
                 return (
                   <tr key={symbol} className="group">

@@ -15,6 +15,26 @@ from .deps import (
 
 router = APIRouter(prefix="/api/llm", tags=["llm"])
 
+# Shared LLM client so we reuse the aiohttp session across requests
+_shared_client: LMStudioClient | None = None
+_client_lock = asyncio.Lock()
+
+
+async def _get_llm_client() -> LMStudioClient:
+    """Get or create a shared LMStudioClient (reuses session)."""
+    global _shared_client
+    if _shared_client is not None and _shared_client.session is not None and not _shared_client.session.closed:
+        return _shared_client
+    async with _client_lock:
+        # Double-check after acquiring lock
+        if _shared_client is not None and _shared_client.session is not None and not _shared_client.session.closed:
+            return _shared_client
+        client = LMStudioClient()
+        await client.__aenter__()
+        _shared_client = client
+        logger.info(f"Created shared LLM client, model={client.get_active_model()}")
+    return _shared_client
+
 
 @router.post("/chat", response_model=MarketResponse)
 async def chat_with_llm(request: ChatRequest):
@@ -69,22 +89,23 @@ async def chat_with_llm(request: ChatRequest):
         response_text = None
 
         try:
-            async with LMStudioClient() as client:
-                selected_model = client.get_active_model()
+            client = await _get_llm_client()
+            selected_model = client.get_active_model()
+            logger.info(f"LLM chat: model={selected_model}, msg_count={len(messages)}")
 
-                response = await asyncio.wait_for(
-                    client.generate_completion(
-                        model=selected_model,
-                        messages=messages,
-                        max_tokens=500,
-                        temperature=0.7
-                    ),
-                    timeout=180.0
-                )
+            response = await asyncio.wait_for(
+                client.generate_completion(
+                    model=selected_model,
+                    messages=messages,
+                    max_tokens=600,
+                    temperature=0.7
+                ),
+                timeout=180.0
+            )
 
-                if response and 'choices' in response and len(response['choices']) > 0:
-                    response_text = response['choices'][0]['message']['content']
-                    logger.info("Successfully got response from LM Studio")
+            if response and 'choices' in response and len(response['choices']) > 0:
+                response_text = response['choices'][0]['message']['content']
+                logger.info(f"LLM chat success: {len(response_text)} chars")
 
         except asyncio.TimeoutError:
             logger.error("LM Studio request timed out after 3 minutes")
@@ -94,7 +115,15 @@ async def chat_with_llm(request: ChatRequest):
                 timestamp=datetime.now().isoformat()
             )
         except Exception as e:
-            logger.error(f"LM Studio error: {e}")
+            logger.error(f"LM Studio error: {type(e).__name__}: {e}")
+            # Reset shared client on error so next request creates a fresh one
+            global _shared_client
+            if _shared_client:
+                try:
+                    await _shared_client.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                _shared_client = None
 
         if not response_text:
             logger.warning("LM Studio failed, providing fallback response")
@@ -116,7 +145,8 @@ async def chat_with_llm(request: ChatRequest):
         )
 
     except Exception as e:
-        logger.error(f"Error in LLM chat: {e}")
+        logger.error(f"Error in LLM chat: {type(e).__name__}: {e}")
+        # Always return a proper response, never let FastAPI generate a 500
         return MarketResponse(
             success=False,
             error=f"An error occurred while processing your request: {str(e)}",
