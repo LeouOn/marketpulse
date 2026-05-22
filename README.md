@@ -110,27 +110,6 @@ MarketPulse/
 └── docs/             # Documentation
 ```
 
-## Quick Start
-
-1. **Start Database**:
-   ```bash
-   docker-compose up -d
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure APIs**:
-   - Copy `config/credentials.example.yaml` to `config/credentials.yaml`
-   - Add your API keys
-
-4. **Run Market Monitor**:
-   ```bash
-   python -m src.core.market_monitor
-   ```
-
 ## Data Sources
 
 - **Alpaca**: Stock market data (SPY, QQQ, etc.)
