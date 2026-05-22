@@ -22,6 +22,7 @@ from src.api.routers.deps import (
     MarketPulseCollector,
     OHLCAnalyzer,
 )
+from src.scheduler.scheduler import MarketScheduler
 
 
 @asynccontextmanager
@@ -53,8 +54,15 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("OHLCAnalyzer not available - OHLC features disabled")
 
+    scheduler = MarketScheduler()
+    try:
+        await scheduler.start()
+    except Exception as e:
+        logger.warning(f"Scheduler initialization failed: {e}")
+
     yield
 
+    await scheduler.stop()
     logger.info("Shutting down MarketPulse API...")
 
 
