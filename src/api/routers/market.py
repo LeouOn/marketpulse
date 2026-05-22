@@ -98,6 +98,20 @@ async def get_dashboard_data(background_tasks: BackgroundTasks):
             "dataAgeSeconds": internals.get("spy", {}).get("data_age_seconds") if "spy" in internals else None,
         }
 
+        try:
+            from src.core.cache import get_cache
+
+            cache = await get_cache()
+            if cache:
+                gainers = await cache.get("screener:gainers")
+                losers = await cache.get("screener:losers")
+                dashboard_data["screener_summary"] = {
+                    "top_gainers": (gainers or [])[:3],
+                    "top_losers": (losers or [])[:3],
+                }
+        except Exception:
+            dashboard_data["screener_summary"] = {"top_gainers": [], "top_losers": []}
+
         return MarketResponse(success=True, data=dashboard_data, timestamp=datetime.now().isoformat())
     except Exception as e:
         logger.error(f"Error fetching dashboard data: {e}")
@@ -137,6 +151,35 @@ async def get_historical_data(symbol: str, timeframe: str = "1Min", limit: int =
         return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
+@router.get("/historical/{symbol}", response_model=MarketResponse)
+async def get_historical_by_path(symbol: str, timeframe: str = "1d", period: str = "1mo"):
+    """Get historical price data by symbol path"""
+    try:
+        from src.api.yahoo_client import YahooFinanceClient
+
+        client = YahooFinanceClient(settings)
+        data = client.get_bars(symbol, period, timeframe)
+
+        if data is not None:
+            historical_data = []
+            for _, row in data.iterrows():
+                historical_data.append(
+                    {
+                        "timestamp": row.name.isoformat(),
+                        "open": float(row["open"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "close": float(row["close"]),
+                        "volume": int(row["volume"]),
+                    }
+                )
+            return MarketResponse(success=True, data={"symbol": symbol, "data": historical_data}, timestamp=datetime.now().isoformat())
+        return MarketResponse(success=False, error="No data available", timestamp=datetime.now().isoformat())
+    except Exception as e:
+        logger.error(f"Error fetching historical data for {symbol}: {e}")
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
+
+
 @router.get("/ai-analysis", response_model=MarketResponse)
 async def get_ai_analysis():
     """Get AI analysis of current market conditions"""
@@ -168,6 +211,19 @@ async def get_macro_data():
         macro_data["risk_appetite"] = mock_data.get("risk_appetite", "Balanced")
         macro_data["sector_performance"] = mock_data.get("sector_performance", {})
 
+        try:
+            client_52w = YahooFinanceClient(settings)
+            for indicator in ["DXY", "TNX", "GC", "BTC"]:
+                if indicator in macro_data and isinstance(macro_data[indicator], dict) and "price" in macro_data[indicator]:
+                    yahoo_sym = client_52w.macro_symbols.get(indicator, indicator)
+                    range_data = client_52w.get_52w_range(yahoo_sym)
+                    if range_data:
+                        macro_data[indicator]["high_52w"] = range_data.get("high_52w")
+                        macro_data[indicator]["low_52w"] = range_data.get("low_52w")
+                        macro_data[indicator]["pct_from_52w_high"] = range_data.get("pct_from_high")
+        except Exception as e:
+            logger.debug(f"Could not enrich macro data with 52W ranges: {e}")
+
         return MarketResponse(success=True, data=macro_data, timestamp=datetime.now().isoformat())
 
     except Exception as e:
@@ -185,10 +241,21 @@ async def get_macro_data():
 async def get_market_breadth():
     """Get market breadth indicators (A/D, TICK, VOLD, McClellan)"""
     try:
+        from src.core.cache import get_cache
+
+        cache = await get_cache()
+        if cache:
+            cached = await cache.get("market:breadth")
+            if cached:
+                return MarketResponse(success=True, data=cached, timestamp=datetime.now().isoformat())
+
         from src.data.market_breadth import MarketBreadthCollector
 
         breadth_collector = MarketBreadthCollector()
         breadth_data = breadth_collector.get_market_internals()
+
+        if cache and breadth_data:
+            await cache.set("market:breadth", breadth_data, 60)
 
         return MarketResponse(success=True, data=breadth_data, timestamp=datetime.now().isoformat())
 
