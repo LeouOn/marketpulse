@@ -14,6 +14,14 @@ MAX_DAILY_CHANGE_PCT = 8.0  # Maximum allowed daily change (%)
 MAX_CROSS_SYMBOL_DIVERGENCE_PCT = 10.0  # SPY/QQQ allowed to diverge before flag
 MAX_FUTURES_SPOT_DIFF_PCT = 1.0  # Futures vs spot max divergence
 
+REASONABLE_RANGES: dict[str, tuple[float, float]] = {
+    "SPY": (300.0, 700.0),
+    "QQQ": (300.0, 600.0),
+    "VIX": (8.0, 40.0),
+    "IWM": (150.0, 300.0),
+    "DIA": (300.0, 500.0),
+}
+
 
 class ValidationResult:
     """Result of a validation check"""
