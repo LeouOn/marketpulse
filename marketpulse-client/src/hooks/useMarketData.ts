@@ -9,6 +9,11 @@ export const marketKeys = {
   dashboard: () => [...marketKeys.all, 'dashboard'] as const,
   macro: () => [...marketKeys.all, 'macro'] as const,
   ai: () => [...marketKeys.all, 'ai'] as const,
+  screener: (type: string) => [...marketKeys.all, 'screener', type] as const,
+  symbol: (symbol: string) => [...marketKeys.all, 'symbol', symbol] as const,
+  stats: (symbol: string) => [...marketKeys.all, 'stats', symbol] as const,
+  search: (query: string) => [...marketKeys.all, 'search', query] as const,
+  historical: (symbol: string, tf: string) => [...marketKeys.all, 'historical', symbol, tf] as const,
 };
 
 // Hook for dashboard data
