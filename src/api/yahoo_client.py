@@ -455,6 +455,132 @@ class YahooFinanceClient:
             logger.error(f"Error fetching bars for {symbol}: {e}")
             return None
 
+    def get_screener_data(self, screener_type: str) -> list[dict]:
+        """Get screener data from Yahoo Finance.
+
+        Args:
+            screener_type: 'gainers', 'losers', 'most_active'
+
+        Returns:
+            List of dicts with: symbol, name, price, change_pct, volume, market_cap
+        """
+        try:
+            predefined_screeners = {
+                "gainers": "day_gainers",
+                "losers": "day_losers",
+                "most_active": "most_actives",
+            }
+
+            if screener_type not in predefined_screeners:
+                logger.error(f"Unknown screener type: {screener_type}")
+                return []
+
+            try:
+                from yfinance import Screener
+
+                screener = Screener()
+                data = screener.predefined_screeners[predefined_screeners[screener_type]]()
+
+                results = []
+                for row in data.get("quotes", []):
+                    results.append(
+                        {
+                            "symbol": row.get("symbol", ""),
+                            "name": row.get("shortName", row.get("longName", "")),
+                            "price": float(row.get("regularMarketPrice", 0)),
+                            "change_pct": float(row.get("regularMarketChangePercent", 0)),
+                            "volume": int(row.get("regularMarketVolume", 0)),
+                            "market_cap": int(row.get("marketCap", 0)),
+                        }
+                    )
+                return results
+            except (ImportError, AttributeError, TypeError):
+                url_map = {
+                    "gainers": "https://finance.yahoo.com/markets/stocks/gainers/",
+                    "losers": "https://finance.yahoo.com/markets/stocks/losers/",
+                    "most_active": "https://finance.yahoo.com/markets/stocks/most-active/",
+                }
+                tables = pd.read_html(url_map[screener_type])
+                df = tables[0]
+
+                results = []
+                for _, row in df.iterrows():
+                    try:
+                        results.append(
+                            {
+                                "symbol": str(row.get("Symbol", "")),
+                                "name": str(row.get("Name", "")),
+                                "price": float(str(row.get("Price (Intraday)", 0)).replace(",", "")),
+                                "change_pct": float(
+                                    str(row.get("% Change", "0")).replace("%", "").replace(",", "")
+                                ),
+                                "volume": int(
+                                    str(row.get("Volume", "0")).replace(",", "").replace("-", "0")
+                                ),
+                                "market_cap": 0,
+                            }
+                        )
+                    except (ValueError, TypeError):
+                        continue
+                return results
+
+        except Exception as e:
+            logger.error(f"Error fetching screener data ({screener_type}): {e}")
+            return []
+
+    def get_symbol_info(self, symbol: str) -> dict | None:
+        """Get detailed info for a symbol from Yahoo Finance.
+
+        Returns dict with: symbol, name, sector, industry, exchange, market_cap, pe_ratio
+        """
+        try:
+            info = yf.Ticker(symbol).info
+
+            return {
+                "symbol": symbol,
+                "name": info.get("shortName") or info.get("longName", ""),
+                "sector": info.get("sector", ""),
+                "industry": info.get("industry", ""),
+                "exchange": info.get("exchange", ""),
+                "market_cap": info.get("marketCap", 0),
+                "pe_ratio": info.get("trailingPE"),
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching symbol info for {symbol}: {e}")
+            return None
+
+    def get_52w_range(self, symbol: str) -> dict | None:
+        """Get 52-week range from Yahoo Finance.
+
+        Returns dict with: high_52w, low_52w, current_price, pct_from_high, pct_from_low
+        """
+        try:
+            info = yf.Ticker(symbol).info
+
+            high_52w = info.get("fiftyTwoWeekHigh")
+            low_52w = info.get("fiftyTwoWeekLow")
+            current = info.get("currentPrice") or info.get("regularMarketPrice")
+
+            if high_52w is None or low_52w is None or current is None:
+                logger.warning(f"Incomplete 52w range data for {symbol}")
+                return None
+
+            pct_from_high = ((current - high_52w) / high_52w) * 100
+            pct_from_low = ((current - low_52w) / low_52w) * 100
+
+            return {
+                "high_52w": float(high_52w),
+                "low_52w": float(low_52w),
+                "current_price": float(current),
+                "pct_from_high": round(float(pct_from_high), 2),
+                "pct_from_low": round(float(pct_from_low), 2),
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching 52w range for {symbol}: {e}")
+            return None
+
 
 # Convenience function
 def create_yahoo_client(settings: Settings = None) -> YahooFinanceClient:
