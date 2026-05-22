@@ -43,9 +43,13 @@ SYMBOLS = [
 
 
 def seed_symbols():
-    settings = get_settings()
-    db = DatabaseManager(settings.database_url)
-    session = db.get_session()
+    try:
+        settings = get_settings()
+        db = DatabaseManager(settings.database_url)
+        session = db.get_session()
+    except Exception as e:
+        logger.error(f"Cannot connect to database for seeding: {e}")
+        return
     try:
         for symbol, name, asset_type, yahoo_symbol in SYMBOLS:
             row = Symbol(
@@ -60,7 +64,6 @@ def seed_symbols():
     except Exception as e:
         session.rollback()
         logger.error(f"Failed to seed symbols: {e}")
-        raise
     finally:
         session.close()
 

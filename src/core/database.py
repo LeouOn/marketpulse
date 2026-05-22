@@ -15,7 +15,7 @@ class PriceData(Base):
     """OHLCV price data model"""
 
     __tablename__ = "prices"
-    __table_args__ = (UniqueConstraint("symbol", "timeframe", "timestamp", name="_symbol_timeframe_timestamp_uc"),)
+    __table_args__ = (UniqueConstraint("symbol", "timeframe", "timestamp", name="_symbol_timeframe_timestamp_uc"), {"schema": "market_data"})
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -41,8 +41,8 @@ class PriceData(Base):
 class MarketInternals(Base):
     """Market internals analysis model"""
 
-    __tablename__ = "market_internals"
-    __table_args__ = (UniqueConstraint("symbol", "timestamp", name="_symbol_timestamp_uc"),)
+    __tablename__ = "internals"
+    __table_args__ = (UniqueConstraint("symbol", "timestamp", name="_symbol_timestamp_uc"), {"schema": "market_data"})
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -64,6 +64,7 @@ class LLMInsight(Base):
     """LLM analysis results model"""
 
     __tablename__ = "llm_insights"
+    __table_args__ = ({"schema": "analysis"},)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -83,6 +84,7 @@ class Alert(Base):
     """Market alerts and signals model"""
 
     __tablename__ = "alerts"
+    __table_args__ = ({"schema": "analysis"},)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -103,6 +105,7 @@ class MarketRegime(Base):
     """Market regime classification model"""
 
     __tablename__ = "market_regime"
+    __table_args__ = ({"schema": "analysis"},)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -502,7 +505,7 @@ class DatabaseManager:
             session.execute(
                 text(
                     "CREATE TABLE IF NOT EXISTS user_comments ("
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "id SERIAL PRIMARY KEY, "
                     "analysis_id VARCHAR(100), "
                     "user_id VARCHAR(100), "
                     "comment TEXT, "
