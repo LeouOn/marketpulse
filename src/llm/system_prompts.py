@@ -168,75 +168,67 @@ Be objective and educational. Focus on process, not just outcome.
 TRADE REVIEW:
 """
 
+
 def build_enhanced_prompt(base_prompt: str, context_chunks: list, query: str = "", market_data: dict = None) -> str:
     """
     Build enhanced prompt by injecting context and data
-    
+
     Args:
         base_prompt: Base system prompt template
         context_chunks: List of relevant knowledge chunks
         query: User query or hypothesis
         market_data: Market data for analysis
-        
+
     Returns:
         Formatted prompt with context injection
     """
     # Build context injection
     if context_chunks:
-        context_text = "\n\n".join([
-            f"**Relevant Knowledge:**\n{chunk.get('content', chunk)}" 
-            for chunk in context_chunks
-        ])
+        context_text = "\n\n".join(
+            [f"**Relevant Knowledge:**\n{chunk.get('content', chunk)}" for chunk in context_chunks]
+        )
         context_injection = f"RELEVANT CONTEXT:\n{context_text}\n"
     else:
         context_injection = ""
-    
+
     # Build hypothesis injection
     hypothesis_injection = ""
     if "hypothesis" in query.lower() or "test" in query.lower():
-        hypothesis_docs = [chunk for chunk in context_chunks if chunk.get('type', '').endswith('_hypothesis')]
+        hypothesis_docs = [chunk for chunk in context_chunks if chunk.get("type", "").endswith("_hypothesis")]
         if hypothesis_docs:
-            hypothesis_text = "\n\n".join([doc['content'] for doc in hypothesis_docs])
+            hypothesis_text = "\n\n".join([doc["content"] for doc in hypothesis_docs])
             hypothesis_injection = f"ACTIVE HYPOTHESIS:\n{hypothesis_text}\n"
-    
+
     # Build data injection
     import json
+
     data_summary = json.dumps(market_data, indent=2) if market_data else ""
     data_injection = f"MARKET DATA:\n{data_summary}\n" if market_data else ""
-    
+
     # Replace placeholders in base prompt
-    enhanced_prompt = base_prompt.replace(
-        "{CONTEXT_INJECTION}", context_injection
-    ).replace(
-        "{HYPOTHESIS_INJECTION}", hypothesis_injection
-    ).replace(
-        "{DATA_INJECTION}", data_injection
-    ).replace(
-        "{HYPOTHESIS_TEXT}", query
-    ).replace(
-        "{DATA_SUMMARY}", data_injection
-    ).replace(
-        "{MARKET_DATA}", data_summary if market_data else "No market data provided"
-    ).replace(
-        "{CHART_DATA}", data_summary if market_data else "No chart data provided"
-    ).replace(
-        "{DATA_TO_VALIDATE}", data_summary if market_data else "No data to validate"
-    ).replace(
-        "{TRADE_CONTEXT}", query
-    ).replace(
-        "{MARKET_CONDITIONS}", data_summary if market_data else "No market conditions provided"
+    enhanced_prompt = (
+        base_prompt.replace("{CONTEXT_INJECTION}", context_injection)
+        .replace("{HYPOTHESIS_INJECTION}", hypothesis_injection)
+        .replace("{DATA_INJECTION}", data_injection)
+        .replace("{HYPOTHESIS_TEXT}", query)
+        .replace("{DATA_SUMMARY}", data_injection)
+        .replace("{MARKET_DATA}", data_summary if market_data else "No market data provided")
+        .replace("{CHART_DATA}", data_summary if market_data else "No chart data provided")
+        .replace("{DATA_TO_VALIDATE}", data_summary if market_data else "No data to validate")
+        .replace("{TRADE_CONTEXT}", query)
+        .replace("{MARKET_CONDITIONS}", data_summary if market_data else "No market conditions provided")
     )
-    
+
     return enhanced_prompt
 
 
 def get_system_prompt(prompt_type: str = "trading_analyst") -> str:
     """
     Get system prompt by type
-    
+
     Args:
         prompt_type: Type of prompt to retrieve
-        
+
     Returns:
         System prompt template
     """
@@ -246,7 +238,7 @@ def get_system_prompt(prompt_type: str = "trading_analyst") -> str:
         "market_analysis": MARKET_ANALYSIS_PROMPT,
         "chart_analysis": CHART_ANALYSIS_PROMPT,
         "data_validation": DATA_VALIDATION_PROMPT,
-        "trade_review": TRADE_REVIEW_PROMPT
+        "trade_review": TRADE_REVIEW_PROMPT,
     }
-    
+
     return prompts.get(prompt_type, TRADING_ANALYST_BASE)

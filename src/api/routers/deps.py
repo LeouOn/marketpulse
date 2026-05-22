@@ -6,11 +6,11 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from loguru import logger
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Any
+
+from loguru import logger
 from pydantic import BaseModel
-from fastapi import WebSocket
 
 from src.core.config import get_settings
 
@@ -49,36 +49,36 @@ db_manager = DatabaseManager(settings.database_url) if DatabaseManager else None
 
 class MarketResponse(BaseModel):
     success: bool
-    data: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    data: dict[str, Any] | None = None
+    error: str | None = None
     timestamp: str
 
 
 class UserComment(BaseModel):
     analysis_id: str
     comment: str
-    user_id: Optional[str] = "anonymous"
-    timestamp: Optional[str] = None
+    user_id: str | None = "anonymous"
+    timestamp: str | None = None
 
 
 class RefinedAnalysisRequest(BaseModel):
     original_analysis: str
-    user_comments: List[str]
-    additional_context: Optional[Dict[str, Any]] = None
-    focus_areas: Optional[List[str]] = None
+    user_comments: list[str]
+    additional_context: dict[str, Any] | None = None
+    focus_areas: list[str] | None = None
 
 
 class ChartAnalysisRequest(BaseModel):
-    chart_data: Dict[str, Any]
+    chart_data: dict[str, Any]
     analysis_type: str = "technical"
-    specific_questions: Optional[List[str]] = None
+    specific_questions: list[str] | None = None
 
 
 class ChatRequest(BaseModel):
     message: str
-    context: Optional[Dict[str, Any]] = None
-    symbol: Optional[str] = None
-    conversation_history: Optional[List[Dict[str, str]]] = None
+    context: dict[str, Any] | None = None
+    symbol: str | None = None
+    conversation_history: list[dict[str, str]] | None = None
 
 
 class ModelSelectionRequest(BaseModel):

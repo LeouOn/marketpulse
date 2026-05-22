@@ -1,16 +1,23 @@
 """LLM chat and analysis endpoints"""
 
-import json
 import asyncio
+import json
 from datetime import datetime
-from loguru import logger
+
 from fastapi import APIRouter
-from typing import Dict, Any
+from loguru import logger
 
 from .deps import (
-    settings, LMStudioClient, LLMManager, db_manager, model_cache,
-    MarketResponse, ChatRequest, ModelSelectionRequest,
-    UserComment, RefinedAnalysisRequest, ChartAnalysisRequest,
+    ChartAnalysisRequest,
+    ChatRequest,
+    LMStudioClient,
+    MarketResponse,
+    ModelSelectionRequest,
+    RefinedAnalysisRequest,
+    UserComment,
+    db_manager,
+    model_cache,
+    settings,
 )
 from .deps import collector as _collector
 
@@ -70,9 +77,7 @@ async def _get_cached_market_context() -> str:
             change_pct = data.get("change_pct", "N/A")
             volume = data.get("volume", "N/A")
             sign = "+" if isinstance(change, (int, float)) and change >= 0 else ""
-            lines.append(
-                f"  {label}: ${price} | {sign}{change} ({sign}{change_pct}%) | Vol: {volume}"
-            )
+            lines.append(f"  {label}: ${price} | {sign}{change} ({sign}{change_pct}%) | Vol: {volume}")
 
         if "data_source" in internals:
             lines.append(f"  Data Source: {internals['data_source']}")
@@ -80,7 +85,7 @@ async def _get_cached_market_context() -> str:
             lines.append(f"  Data Quality: {internals['data_quality']}")
 
         return "\n".join(lines) + "\n"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("Timed out fetching cached market data for chat context")
         return ""
     except Exception as e:
@@ -104,23 +109,23 @@ async def chat_with_llm(request: ChatRequest):
             context_data = request.context
             context_info = f"Current Market Context:\n{json.dumps(context_data, indent=2)}\n\n"
 
-            if 'detected_symbols' in context_data and context_data['detected_symbols']:
-                detected_syms = context_data['detected_symbols']
+            if "detected_symbols" in context_data and context_data["detected_symbols"]:
+                detected_syms = context_data["detected_symbols"]
                 context_info += f"Symbols Mentioned: {', '.join(detected_syms)}\n"
 
-            if 'query_type' in context_data:
-                query_type = context_data['query_type']
+            if "query_type" in context_data:
+                query_type = context_data["query_type"]
                 context_info += f"Query Type: {query_type}\n"
 
-                if query_type == 'trend_analysis':
+                if query_type == "trend_analysis":
                     context_info += "Focus on trend direction, momentum, and price patterns.\n"
-                elif query_type == 'technical_levels':
+                elif query_type == "technical_levels":
                     context_info += "Focus on support/resistance levels and price targets.\n"
-                elif query_type == 'volatility_analysis':
+                elif query_type == "volatility_analysis":
                     context_info += "Focus on volatility patterns, risk assessment, and timing.\n"
-                elif query_type == 'trading_strategy':
+                elif query_type == "trading_strategy":
                     context_info += "Focus on actionable strategies, entries, exits, and risk management.\n"
-                elif query_type == 'symbol_specific':
+                elif query_type == "symbol_specific":
                     context_info += "Focus analysis on the detected symbols mentioned.\n"
 
         if request.symbol:
@@ -131,16 +136,16 @@ async def chat_with_llm(request: ChatRequest):
             context_info += f"\n{cached_market}\n"
 
         messages = []
-        messages.append({'role': 'system', 'content': system_prompt})
+        messages.append({"role": "system", "content": system_prompt})
 
         if request.conversation_history:
             for msg in request.conversation_history[-6:]:
-                messages.append({'role': msg['role'], 'content': msg['content']})
+                messages.append({"role": msg["role"], "content": msg["content"]})
 
         if context_info:
-            messages.append({'role': 'system', 'content': context_info})
+            messages.append({"role": "system", "content": context_info})
 
-        messages.append({'role': 'user', 'content': request.message})
+        messages.append({"role": "user", "content": request.message})
 
         response_text = None
 
@@ -150,25 +155,20 @@ async def chat_with_llm(request: ChatRequest):
             logger.info(f"LLM chat: model={selected_model}, msg_count={len(messages)}")
 
             response = await asyncio.wait_for(
-                client.generate_completion(
-                    model=selected_model,
-                    messages=messages,
-                    max_tokens=600,
-                    temperature=0.7
-                ),
-                timeout=180.0
+                client.generate_completion(model=selected_model, messages=messages, max_tokens=600, temperature=0.7),
+                timeout=180.0,
             )
 
-            if response and 'choices' in response and len(response['choices']) > 0:
-                response_text = response['choices'][0]['message']['content']
+            if response and "choices" in response and len(response["choices"]) > 0:
+                response_text = response["choices"][0]["message"]["content"]
                 logger.info(f"LLM chat success: {len(response_text)} chars")
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("LM Studio request timed out after 3 minutes")
             return MarketResponse(
                 success=False,
                 error="The AI request timed out after 3 minutes. The query might be too complex or the AI service is overloaded. Please try again with a simpler question.",
-                timestamp=datetime.now().isoformat()
+                timestamp=datetime.now().isoformat(),
             )
         except Exception as e:
             logger.error(f"LM Studio error: {type(e).__name__}: {e}")
@@ -194,11 +194,7 @@ async def chat_with_llm(request: ChatRequest):
             else:
                 response_text = "I apologize, but I'm having trouble connecting to my AI analysis service right now. This could be due to technical difficulties with the LM Studio service. Please check if LM Studio is running and try again in a moment."
 
-        return MarketResponse(
-            success=True,
-            data={'response': response_text},
-            timestamp=datetime.now().isoformat()
-        )
+        return MarketResponse(success=True, data={"response": response_text}, timestamp=datetime.now().isoformat())
 
     except Exception as e:
         logger.error(f"Error in LLM chat: {type(e).__name__}: {e}")
@@ -206,7 +202,7 @@ async def chat_with_llm(request: ChatRequest):
         return MarketResponse(
             success=False,
             error=f"An error occurred while processing your request: {str(e)}",
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
 
 
@@ -215,33 +211,39 @@ async def get_available_models():
     """Get available models from LM Studio and cache them"""
     try:
         import aiohttp
+
         current_time = datetime.now().timestamp()
 
-        if (model_cache["models"] and
-            model_cache["timestamp"] and
-            current_time - model_cache["timestamp"] < model_cache["cache_duration"]):
-
+        if (
+            model_cache["models"]
+            and model_cache["timestamp"]
+            and current_time - model_cache["timestamp"] < model_cache["cache_duration"]
+        ):
             return MarketResponse(
                 success=True,
                 data={
                     "models": model_cache["models"],
                     "cached": True,
                     "cache_age": int(current_time - model_cache["timestamp"]),
-                    "provider": "lm_studio"
+                    "provider": "lm_studio",
                 },
-                timestamp=datetime.now().isoformat()
+                timestamp=datetime.now().isoformat(),
             )
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get("http://localhost:1234/v1/models", timeout=aiohttp.ClientTimeout(total=10)) as response:
+                async with session.get(
+                    "http://localhost:1234/v1/models", timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
                     if response.status == 200:
                         models_data = await response.json()
 
                         models = []
                         loaded_ids = [m.get("id") for m in models_data.get("data", [])]
-                        config_model = getattr(settings.llm.primary, 'model', '')
-                        recommended_id = config_model if config_model in loaded_ids else (loaded_ids[0] if loaded_ids else None)
+                        config_model = getattr(settings.llm.primary, "model", "")
+                        recommended_id = (
+                            config_model if config_model in loaded_ids else (loaded_ids[0] if loaded_ids else None)
+                        )
 
                         for model in models_data.get("data", []):
                             model_id = model.get("id")
@@ -250,7 +252,7 @@ async def get_available_models():
                                 "object": model.get("object"),
                                 "owned_by": model.get("owned_by"),
                                 "size": _estimate_model_size(model_id or ""),
-                                "recommended": model_id == recommended_id
+                                "recommended": model_id == recommended_id,
                             }
                             models.append(model_info)
 
@@ -264,9 +266,9 @@ async def get_available_models():
                                 "cached": False,
                                 "cache_age": 0,
                                 "provider": "lm_studio",
-                                "total_count": len(models)
+                                "total_count": len(models),
                             },
-                            timestamp=datetime.now().isoformat()
+                            timestamp=datetime.now().isoformat(),
                         )
                     else:
                         raise Exception(f"LM Studio API returned status {response.status}")
@@ -280,21 +282,23 @@ async def get_available_models():
                     data={
                         "models": model_cache["models"],
                         "cached": True,
-                        "cache_age": int(current_time - model_cache["timestamp"]) if model_cache["timestamp"] else 999999,
+                        "cache_age": int(current_time - model_cache["timestamp"])
+                        if model_cache["timestamp"]
+                        else 999999,
                         "provider": "lm_studio",
-                        "warning": "Using stale cache - LM Studio unavailable"
+                        "warning": "Using stale cache - LM Studio unavailable",
                     },
-                    timestamp=datetime.now().isoformat()
+                    timestamp=datetime.now().isoformat(),
                 )
 
-            default_model = getattr(settings.llm.primary, 'model', '')
+            default_model = getattr(settings.llm.primary, "model", "")
             fallback_models = [
                 {
                     "id": default_model or "no-model-loaded",
                     "object": "model",
                     "owned_by": "organization_owner",
                     "size": "Unknown",
-                    "recommended": True
+                    "recommended": True,
                 }
             ]
 
@@ -305,18 +309,14 @@ async def get_available_models():
                     "cached": False,
                     "cache_age": 0,
                     "provider": "fallback",
-                    "warning": "LM Studio unavailable - using fallback models"
+                    "warning": "LM Studio unavailable - using fallback models",
                 },
-                timestamp=datetime.now().isoformat()
+                timestamp=datetime.now().isoformat(),
             )
 
     except Exception as e:
         logger.error(f"Error fetching models: {e}")
-        return MarketResponse(
-            success=False,
-            error=str(e),
-            timestamp=datetime.now().isoformat()
-        )
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
 def _estimate_model_size(model_id: str) -> str:
@@ -351,10 +351,10 @@ async def select_model(request: ModelSelectionRequest):
                 return MarketResponse(
                     success=False,
                     error=f"Model '{request.model_id}' not available. Available models: {', '.join(model_ids[:5])}...",
-                    timestamp=datetime.now().isoformat()
+                    timestamp=datetime.now().isoformat(),
                 )
 
-        if hasattr(LMStudioClient, 'default_model'):
+        if hasattr(LMStudioClient, "default_model"):
             LMStudioClient.default_model = request.model_id
 
         return MarketResponse(
@@ -362,18 +362,14 @@ async def select_model(request: ModelSelectionRequest):
             data={
                 "selected_model": request.model_id,
                 "provider": request.provider,
-                "message": f"Model '{request.model_id}' selected successfully"
+                "message": f"Model '{request.model_id}' selected successfully",
             },
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
 
     except Exception as e:
         logger.error(f"Error selecting model: {e}")
-        return MarketResponse(
-            success=False,
-            error=str(e),
-            timestamp=datetime.now().isoformat()
-        )
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
 @router.get("/model-status", response_model=MarketResponse)
@@ -382,7 +378,7 @@ async def get_model_status():
     try:
         import aiohttp
 
-        config_model = getattr(settings.llm.primary, 'model', '') or 'not configured'
+        config_model = getattr(settings.llm.primary, "model", "") or "not configured"
 
         status_info = {
             "lm_studio_connected": False,
@@ -391,43 +387,36 @@ async def get_model_status():
             "auto_detected": False,
             "loaded_models": [],
             "last_check": datetime.now().isoformat(),
-            "response_time_ms": None
+            "response_time_ms": None,
         }
 
         try:
             start_time = datetime.now().timestamp()
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{settings.llm.primary.base_url}/models",
-                    timeout=aiohttp.ClientTimeout(total=5)
-                ) as response:
-                    if response.status == 200:
-                        status_info["lm_studio_connected"] = True
-                        status_info["response_time_ms"] = int((datetime.now().timestamp() - start_time) * 1000)
-                        md = await response.json()
-                        loaded = [m['id'] for m in md.get('data', [])]
-                        status_info["loaded_models"] = loaded
-                        if loaded:
-                            active = config_model if config_model in loaded else loaded[0]
-                            status_info["active_model"] = active
-                            status_info["auto_detected"] = active != config_model
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(
+                    f"{settings.llm.primary.base_url}/models", timeout=aiohttp.ClientTimeout(total=5)
+                ) as response,
+            ):
+                if response.status == 200:
+                    status_info["lm_studio_connected"] = True
+                    status_info["response_time_ms"] = int((datetime.now().timestamp() - start_time) * 1000)
+                    md = await response.json()
+                    loaded = [m["id"] for m in md.get("data", [])]
+                    status_info["loaded_models"] = loaded
+                    if loaded:
+                        active = config_model if config_model in loaded else loaded[0]
+                        status_info["active_model"] = active
+                        status_info["auto_detected"] = active != config_model
         except Exception as connection_error:
             logger.warning(f"LM Studio connection test failed: {connection_error}")
             status_info["connection_error"] = str(connection_error)
 
-        return MarketResponse(
-            success=True,
-            data=status_info,
-            timestamp=datetime.now().isoformat()
-        )
+        return MarketResponse(success=True, data=status_info, timestamp=datetime.now().isoformat())
 
     except Exception as e:
         logger.error(f"Error getting model status: {e}")
-        return MarketResponse(
-            success=False,
-            error=str(e),
-            timestamp=datetime.now().isoformat()
-        )
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
 @router.post("/comment", response_model=MarketResponse)
@@ -435,10 +424,10 @@ async def add_user_comment(comment: UserComment):
     """Add user comment to LLM analysis"""
     try:
         comment_data = {
-            'analysis_id': comment.analysis_id,
-            'user_id': comment.user_id,
-            'comment': comment.comment,
-            'timestamp': comment.timestamp or datetime.now().isoformat()
+            "analysis_id": comment.analysis_id,
+            "user_id": comment.user_id,
+            "comment": comment.comment,
+            "timestamp": comment.timestamp or datetime.now().isoformat(),
         }
 
         if db_manager:
@@ -447,15 +436,11 @@ async def add_user_comment(comment: UserComment):
         return MarketResponse(
             success=True,
             data={"message": "Comment added successfully", "comment_id": comment.analysis_id},
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
     except Exception as e:
         logger.error(f"Error adding comment: {e}")
-        return MarketResponse(
-            success=False,
-            error=str(e),
-            timestamp=datetime.now().isoformat()
-        )
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
 @router.post("/refine", response_model=MarketResponse)
@@ -479,47 +464,38 @@ async def refine_analysis(request: RefinedAnalysisRequest):
         and focuses on the areas they mentioned.
 
         Additional Context:
-        {json.dumps(request.additional_context, indent=2) if request.additional_context else 'None'}
+        {json.dumps(request.additional_context, indent=2) if request.additional_context else "None"}
 
         Provide a refined, more accurate analysis.
         """
 
-        messages = [{'role': 'user', 'content': refinement_prompt}]
+        messages = [{"role": "user", "content": refinement_prompt}]
 
         async with LMStudioClient() as client:
             response = await client.generate_completion(
-                model='deep_analysis',
-                messages=messages,
-                max_tokens=400,
-                temperature=0.4
+                model="deep_analysis", messages=messages, max_tokens=400, temperature=0.4
             )
 
-            if response and 'choices' in response:
-                refined_analysis = response['choices'][0]['message']['content']
+            if response and "choices" in response:
+                refined_analysis = response["choices"][0]["message"]["content"]
 
                 return MarketResponse(
                     success=True,
                     data={
                         "refined_analysis": refined_analysis,
                         "original_analysis": request.original_analysis,
-                        "user_comments_count": len(request.user_comments)
+                        "user_comments_count": len(request.user_comments),
                     },
-                    timestamp=datetime.now().isoformat()
+                    timestamp=datetime.now().isoformat(),
                 )
 
         return MarketResponse(
-            success=False,
-            error="Failed to generate refined analysis",
-            timestamp=datetime.now().isoformat()
+            success=False, error="Failed to generate refined analysis", timestamp=datetime.now().isoformat()
         )
 
     except Exception as e:
         logger.error(f"Error refining analysis: {e}")
-        return MarketResponse(
-            success=False,
-            error=str(e),
-            timestamp=datetime.now().isoformat()
-        )
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
 @router.post("/analyze-chart", response_model=MarketResponse)
@@ -534,25 +510,19 @@ async def analyze_chart(request: ChartAnalysisRequest):
                     success=True,
                     data={
                         "chart_analysis": analysis,
-                        "symbol": request.chart_data.get('symbol'),
-                        "timeframe": request.chart_data.get('timeframe')
+                        "symbol": request.chart_data.get("symbol"),
+                        "timeframe": request.chart_data.get("timeframe"),
                     },
-                    timestamp=datetime.now().isoformat()
+                    timestamp=datetime.now().isoformat(),
                 )
             else:
                 return MarketResponse(
-                    success=False,
-                    error="Failed to analyze chart data",
-                    timestamp=datetime.now().isoformat()
+                    success=False, error="Failed to analyze chart data", timestamp=datetime.now().isoformat()
                 )
 
     except Exception as e:
         logger.error(f"Error analyzing chart: {e}")
-        return MarketResponse(
-            success=False,
-            error=str(e),
-            timestamp=datetime.now().isoformat()
-        )
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
 @router.get("/validation/sanity-check", response_model=MarketResponse)
@@ -563,18 +533,14 @@ async def run_sanity_check():
 
         if not collector:
             return MarketResponse(
-                success=False,
-                error="Collector not initialized",
-                timestamp=datetime.now().isoformat()
+                success=False, error="Collector not initialized", timestamp=datetime.now().isoformat()
             )
 
         internals = await collector.collect_market_internals()
 
         if not internals:
             return MarketResponse(
-                success=False,
-                error="No market data available for validation",
-                timestamp=datetime.now().isoformat()
+                success=False, error="No market data available for validation", timestamp=datetime.now().isoformat()
             )
 
         async with LMStudioClient() as client:
@@ -582,20 +548,13 @@ async def run_sanity_check():
 
             return MarketResponse(
                 success=True,
-                data={
-                    "validation_result": validation_result,
-                    "market_data": internals
-                },
-                timestamp=datetime.now().isoformat()
+                data={"validation_result": validation_result, "market_data": internals},
+                timestamp=datetime.now().isoformat(),
             )
 
     except Exception as e:
         logger.error(f"Error running sanity check: {e}")
-        return MarketResponse(
-            success=False,
-            error=str(e),
-            timestamp=datetime.now().isoformat()
-        )
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
 @router.get("/conversation-history/{analysis_id}", response_model=MarketResponse)
@@ -612,15 +571,11 @@ async def get_conversation_history(analysis_id: str):
             data={
                 "analysis_id": analysis_id,
                 "conversation_history": history,
-                "turns_count": len(history) if history else 0
+                "turns_count": len(history) if history else 0,
             },
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
 
     except Exception as e:
         logger.error(f"Error retrieving conversation history: {e}")
-        return MarketResponse(
-            success=False,
-            error=str(e),
-            timestamp=datetime.now().isoformat()
-        )
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())

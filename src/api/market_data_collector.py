@@ -2,17 +2,17 @@
 Orchestrates data collection from Alpaca, Rithmic, Coinbase, Yahoo Finance with Redis caching
 """
 
-import asyncio
-from typing import Dict, Any, Optional, List
 from datetime import datetime
+from typing import Any
+
 from loguru import logger
 
-from .alpaca_client import AlpacaClient, get_alpaca_client
-from .rithmic_client import RithmicClient, get_rithmic_client
-from .coinbase_client import CoinbaseClient, get_coinbase_client
-from .yahoo_client import YahooFinanceClient
+from ..core.cache import CacheService, get_cache
 from ..core.config import get_settings
-from ..core.cache import get_cache, CacheService
+from .alpaca_client import AlpacaClient, get_alpaca_client
+from .coinbase_client import CoinbaseClient, get_coinbase_client
+from .rithmic_client import RithmicClient, get_rithmic_client
+from .yahoo_client import YahooFinanceClient
 
 
 class MarketDataCollector:
@@ -20,20 +20,20 @@ class MarketDataCollector:
 
     def __init__(self):
         self.settings = get_settings()
-        self.alpaca: Optional[AlpacaClient] = None
-        self.rithmic: Optional[RithmicClient] = None
-        self.coinbase: Optional[CoinbaseClient] = None
-        self.yahoo: Optional[YahooFinanceClient] = None
-        self.cache: Optional[CacheService] = None
+        self.alpaca: AlpacaClient | None = None
+        self.rithmic: RithmicClient | None = None
+        self.coinbase: CoinbaseClient | None = None
+        self.yahoo: YahooFinanceClient | None = None
+        self.cache: CacheService | None = None
 
         self.symbols = {
-            'stocks': ['SPY', 'QQQ', 'IWM'],
-            'futures': ['NQ=F'],
-            'crypto': ['BTC-USD', 'ETH-USD'],
-            'indices': ['^VIX']
+            "stocks": ["SPY", "QQQ", "IWM"],
+            "futures": ["NQ=F"],
+            "crypto": ["BTC-USD", "ETH-USD"],
+            "indices": ["^VIX"],
         }
 
-        self.all_symbols = ['SPY', 'QQQ', 'IWM', 'NQ=F', 'BTC-USD', 'ETH-USD', '^VIX']
+        self.all_symbols = ["SPY", "QQQ", "IWM", "NQ=F", "BTC-USD", "ETH-USD", "^VIX"]
 
     async def initialize(self) -> bool:
         """Initialize all clients and cache"""
@@ -90,7 +90,7 @@ class MarketDataCollector:
 
         return True
 
-    async def get_stocks_data(self, symbols: List[str]) -> Dict[str, Any]:
+    async def get_stocks_data(self, symbols: list[str]) -> dict[str, Any]:
         """Get stock data from Alpaca"""
         if not self.alpaca:
             return {}
@@ -101,7 +101,7 @@ class MarketDataCollector:
             logger.error(f"Alpaca stocks error: {e}")
             return {}
 
-    async def get_futures_data(self, symbols: List[str]) -> Dict[str, Any]:
+    async def get_futures_data(self, symbols: list[str]) -> dict[str, Any]:
         """Get futures data from Rithmic"""
         if not self.rithmic:
             return {}
@@ -112,7 +112,7 @@ class MarketDataCollector:
             logger.error(f"Rithmic futures error: {e}")
             return {}
 
-    async def get_crypto_data(self, symbols: List[str]) -> Dict[str, Any]:
+    async def get_crypto_data(self, symbols: list[str]) -> dict[str, Any]:
         """Get crypto data from Coinbase"""
         if not self.coinbase:
             return {}
@@ -123,7 +123,7 @@ class MarketDataCollector:
             logger.error(f"Coinbase crypto error: {e}")
             return {}
 
-    async def get_all_market_data(self, use_cache: bool = True) -> Dict[str, Any]:
+    async def get_all_market_data(self, use_cache: bool = True) -> dict[str, Any]:
         """
         Collect all market data with caching
 
@@ -142,22 +142,22 @@ class MarketDataCollector:
         sources_used = []
 
         # Try Alpaca for stocks
-        stocks = await self.get_stocks_data(self.symbols['stocks'])
+        stocks = await self.get_stocks_data(self.symbols["stocks"])
         if stocks:
             internals.update(stocks)
-            sources_used.append('alpaca')
+            sources_used.append("alpaca")
 
         # Try Rithmic for futures
-        futures = await self.get_futures_data(self.symbols['futures'])
+        futures = await self.get_futures_data(self.symbols["futures"])
         if futures:
             internals.update(futures)
-            sources_used.append('rithmic')
+            sources_used.append("rithmic")
 
         # Try Coinbase for crypto
-        crypto = await self.get_crypto_data(self.symbols['crypto'])
+        crypto = await self.get_crypto_data(self.symbols["crypto"])
         if crypto:
             internals.update(crypto)
-            sources_used.append('coinbase')
+            sources_used.append("coinbase")
 
         # If all external APIs failed, fall back to Yahoo Finance
         if not internals or len(internals) < 3:
@@ -167,7 +167,7 @@ class MarketDataCollector:
                     yahoo_data = self.yahoo.get_market_internals(self.all_symbols)
                     if yahoo_data:
                         internals.update(yahoo_data)
-                        sources_used.append('yahoo')
+                        sources_used.append("yahoo")
                         logger.info("Yahoo Finance fallback successful")
                 except Exception as e:
                     logger.error(f"Yahoo Finance fallback failed: {e}")
@@ -176,20 +176,20 @@ class MarketDataCollector:
         if not internals or len(internals) < 3:
             logger.warning("All data sources failed, using mock data")
             from .mock_market import mock_provider
-            internals = await mock_provider.get_market_internals()
-            internals['data_source'] = 'mock'
-        else:
-            internals['data_source'] = ','.join(sources_used) if sources_used else 'unknown'
 
-        internals['timestamp'] = datetime.now().isoformat()
+            internals = await mock_provider.get_market_internals()
+            internals["data_source"] = "mock"
+        else:
+            internals["data_source"] = ",".join(sources_used) if sources_used else "unknown"
+
+        internals["timestamp"] = datetime.now().isoformat()
 
         if use_cache and self.cache and internals:
             await self.cache.set(cache_key, internals, ttl_seconds=30)
 
         return internals
 
-    async def get_ohlc_data(self, symbol: str, timeframe: str = "1Min",
-                           use_cache: bool = True) -> Optional[List[Dict]]:
+    async def get_ohlc_data(self, symbol: str, timeframe: str = "1Min", use_cache: bool = True) -> list[dict] | None:
         """Get OHLCV data for a symbol"""
         cache_key = f"ohlc:{symbol}:{timeframe}"
 
@@ -200,14 +200,14 @@ class MarketDataCollector:
 
         data = None
 
-        if symbol in self.symbols['stocks'] and self.alpaca:
+        if symbol in self.symbols["stocks"] and self.alpaca:
             data = await self.alpaca.get_bars(symbol, timeframe, limit=100)
 
-        if symbol == 'NQ=F' and self.rithmic:
-            rithmic_symbol = "NQ" if symbol == 'NQ=F' else symbol
+        if symbol == "NQ=F" and self.rithmic:
+            rithmic_symbol = "NQ" if symbol == "NQ=F" else symbol
             data = await self.rithmic.get_ohlc(rithmic_symbol, timeframe, limit=100)
 
-        if ('-USD' in symbol or '-USD' in symbol) and self.coinbase:
+        if ("-USD" in symbol or "-USD" in symbol) and self.coinbase:
             data = await self.coinbase.get_candles(symbol, granularity=60, limit=100)
 
         if data and self.cache:
@@ -215,17 +215,17 @@ class MarketDataCollector:
 
         return data
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Check health of all data sources"""
         return {
-            'alpaca': self.alpaca is not None and await self.alpaca.is_available(),
-            'rithmic': self.rithmic is not None and await self.rithmic.is_available(),
-            'coinbase': self.coinbase is not None and await self.coinbase.is_available(),
-            'cache': self.cache is not None and self.cache.is_connected
+            "alpaca": self.alpaca is not None and await self.alpaca.is_available(),
+            "rithmic": self.rithmic is not None and await self.rithmic.is_available(),
+            "coinbase": self.coinbase is not None and await self.coinbase.is_available(),
+            "cache": self.cache is not None and self.cache.is_connected,
         }
 
 
-_collector_instance: Optional[MarketDataCollector] = None
+_collector_instance: MarketDataCollector | None = None
 
 
 async def get_collector() -> MarketDataCollector:

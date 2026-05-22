@@ -2,13 +2,13 @@
 Provides caching layer for market data to reduce API calls
 """
 
-import json
 import asyncio
-from typing import Any, Optional, Dict
-from datetime import timedelta
-from loguru import logger
+import json
+from typing import Any
 
 import redis.asyncio as redis
+from loguru import logger
+
 from ..core.config import get_settings
 
 
@@ -17,14 +17,14 @@ class CacheService:
 
     def __init__(self):
         self.settings = get_settings()
-        self._client: Optional[redis.Redis] = None
+        self._client: redis.Redis | None = None
         self._connected = False
 
         # Default TTLs
         self.ttl_market_internals = 30  # 30 seconds for real-time data
-        self.ttl_ohlc = 300             # 5 minutes for OHLC data
-        self.ttl_breadth = 60           # 1 minute for breadth indicators
-        self.ttl_llm_response = 600     # 10 minutes for LLM responses
+        self.ttl_ohlc = 300  # 5 minutes for OHLC data
+        self.ttl_breadth = 60  # 1 minute for breadth indicators
+        self.ttl_llm_response = 600  # 10 minutes for LLM responses
 
     async def connect(self) -> bool:
         """Connect to Redis"""
@@ -36,7 +36,7 @@ class CacheService:
                 password=self.settings.redis_password or None,
                 decode_responses=True,
                 socket_connect_timeout=2,
-                socket_timeout=2
+                socket_timeout=2,
             )
             await asyncio.wait_for(self._client.ping(), timeout=3)
             self._connected = True
@@ -57,7 +57,7 @@ class CacheService:
     def is_connected(self) -> bool:
         return self._connected and self._client is not None
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """Get value from cache"""
         if not self.is_connected:
             return None
@@ -93,7 +93,7 @@ class CacheService:
             logger.debug(f"Cache delete error for {key}: {e}")
             return False
 
-    async def get_or_set(self, key: str, fetch_func, ttl_seconds: int = 60) -> Optional[Any]:
+    async def get_or_set(self, key: str, fetch_func, ttl_seconds: int = 60) -> Any | None:
         """
         Get from cache or fetch and cache if missing
         Args:
@@ -113,17 +113,17 @@ class CacheService:
         return data
 
     # Market data caching methods
-    async def get_market_internals(self, symbols: list) -> Optional[Dict]:
+    async def get_market_internals(self, symbols: list) -> dict | None:
         """Get cached market internals"""
         key = f"market:internals:{':'.join(sorted(symbols))}"
         return await self.get(key)
 
-    async def set_market_internals(self, symbols: list, data: Dict) -> bool:
+    async def set_market_internals(self, symbols: list, data: dict) -> bool:
         """Cache market internals"""
         key = f"market:internals:{':'.join(sorted(symbols))}"
         return await self.set(key, data, self.ttl_market_internals)
 
-    async def get_ohlc(self, symbol: str, timeframe: str) -> Optional[list]:
+    async def get_ohlc(self, symbol: str, timeframe: str) -> list | None:
         """Get cached OHLC data"""
         key = f"ohlc:{symbol}:{timeframe}"
         return await self.get(key)
@@ -133,15 +133,15 @@ class CacheService:
         key = f"ohlc:{symbol}:{timeframe}"
         return await self.set(key, data, self.ttl_ohlc)
 
-    async def get_market_breadth(self) -> Optional[Dict]:
+    async def get_market_breadth(self) -> dict | None:
         """Get cached market breadth"""
         return await self.get("market:breadth")
 
-    async def set_market_breadth(self, data: Dict) -> bool:
+    async def set_market_breadth(self, data: dict) -> bool:
         """Cache market breadth"""
         return await self.set("market:breadth", data, self.ttl_breadth)
 
-    async def get_llm_response(self, cache_key: str) -> Optional[str]:
+    async def get_llm_response(self, cache_key: str) -> str | None:
         """Get cached LLM response"""
         return await self.get(f"llm:{cache_key}")
 
@@ -176,7 +176,7 @@ class CacheService:
 
 
 # Global cache instance
-_cache_instance: Optional[CacheService] = None
+_cache_instance: CacheService | None = None
 
 
 async def get_cache() -> CacheService:

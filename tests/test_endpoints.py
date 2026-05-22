@@ -1,11 +1,11 @@
 """Quick test script for MarketPulse endpoints"""
+
 import asyncio
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from loguru import logger
 
 async def test_endpoints():
     """Test MarketPulse endpoints"""
@@ -62,8 +62,8 @@ async def test_endpoints():
                 print(f"Status: {resp.status}")
                 data = await resp.json()
                 print(f"Success: {data.get('success')}")
-                if data.get('data'):
-                    symbols = list(data['data'].keys())[:5]
+                if data.get("data"):
+                    symbols = list(data["data"].keys())[:5]
                     print(f"Symbols: {symbols}")
         except Exception as e:
             print(f"Error: {e}")
@@ -71,18 +71,16 @@ async def test_endpoints():
         # Test 6: LLM Chat
         print("\n=== Test 6: LLM Chat ===")
         try:
-            payload = {
-                "message": "What is the current market trend for SPY?",
-                "symbol": "SPY"
-            }
+            payload = {"message": "What is the current market trend for SPY?", "symbol": "SPY"}
             async with session.post(f"{base_url}/api/llm/chat", json=payload) as resp:
                 print(f"Status: {resp.status}")
                 data = await resp.json()
                 print(f"Success: {data.get('success')}")
-                if data.get('data', {}).get('response'):
+                if data.get("data", {}).get("response"):
                     print(f"Response: {data['data']['response'][:200]}...")
         except Exception as e:
             print(f"Error: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(test_endpoints())

@@ -4,11 +4,10 @@ MarketPulse Test Suite
 Tests all major functionality of the application
 """
 
-import requests
-import json
-import time
-from typing import Dict, List, Any
 import sys
+
+import requests
+
 
 class MarketPulseTester:
     def __init__(self):
@@ -25,11 +24,7 @@ class MarketPulseTester:
         if details:
             print(f"     {details}")
 
-        self.results.append({
-            "test": test_name,
-            "passed": passed,
-            "details": details
-        })
+        self.results.append({"test": test_name, "passed": passed, "details": details})
 
         if passed:
             self.passed += 1
@@ -94,7 +89,7 @@ class MarketPulseTester:
             {"message": "Tell me about Apple stock", "expected_symbols": ["AAPL"]},
             {"message": "How are NQ futures doing?", "expected_symbols": ["NQ=F"]},
             {"message": "ETH vs BTC analysis", "expected_symbols": ["ETH-USD", "BTC-USD"]},
-            {"message": "General market analysis", "expected_symbols": []}
+            {"message": "General market analysis", "expected_symbols": []},
         ]
 
         for i, query_test in enumerate(test_queries):
@@ -104,19 +99,12 @@ class MarketPulseTester:
 
                 payload = {
                     "message": query_test["message"],
-                    "context": {
-                        "detected_symbols": detected_symbols,
-                        "query_type": "trend_analysis"
-                    },
+                    "context": {"detected_symbols": detected_symbols, "query_type": "trend_analysis"},
                     "symbol": "SPY",
-                    "conversation_history": []
+                    "conversation_history": [],
                 }
 
-                response = requests.post(
-                    f"{self.api_base}/api/llm/chat",
-                    json=payload,
-                    timeout=30
-                )
+                response = requests.post(f"{self.api_base}/api/llm/chat", json=payload, timeout=30)
 
                 passed = response.status_code == 200
                 if passed:
@@ -130,12 +118,12 @@ class MarketPulseTester:
                 else:
                     details = f"Status: {response.status_code}"
 
-                self.log_test(f"Chat Query {i+1}: {query_test['message']}", passed, details)
+                self.log_test(f"Chat Query {i + 1}: {query_test['message']}", passed, details)
 
             except Exception as e:
-                self.log_test(f"Chat Query {i+1}: {query_test['message']}", False, f"Error: {str(e)}")
+                self.log_test(f"Chat Query {i + 1}: {query_test['message']}", False, f"Error: {str(e)}")
 
-    def _detect_symbols(self, text: str) -> List[str]:
+    def _detect_symbols(self, text: str) -> list[str]:
         """Simple symbol detection for testing"""
         symbol_map = {
             "bitcoin": "BTC-USD",
@@ -147,7 +135,7 @@ class MarketPulseTester:
             "nq": "NQ=F",
             "nasdaq futures": "NQ=F",
             "spy": "SPY",
-            "qqq": "QQQ"
+            "qqq": "QQQ",
         }
 
         detected = []
@@ -183,7 +171,7 @@ class MarketPulseTester:
             {"input": "Apple vs Tesla", "expected": ["AAPL", "TSLA"]},
             {"input": "NQ futures trend", "expected": ["NQ=F"]},
             {"input": "Gold and oil", "expected": ["GC=F", "CL=F"]},
-            {"input": "market analysis", "expected": []}
+            {"input": "market analysis", "expected": []},
         ]
 
         for case in test_cases:
@@ -249,6 +237,7 @@ class MarketPulseTester:
                 print(f"    {result['details']}")
 
         return self.failed == 0
+
 
 if __name__ == "__main__":
     tester = MarketPulseTester()

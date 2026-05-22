@@ -2,13 +2,12 @@
 Provides real-time futures data (NQ, ES, etc.)
 """
 
-from typing import Dict, Any, Optional, List
 from datetime import datetime
-from loguru import logger
-import json
-import asyncio
+from typing import Any
 
 import aiohttp
+from loguru import logger
+
 from ..core.config import get_settings
 
 
@@ -22,14 +21,12 @@ class RithmicClient:
         self.system_name = self.settings.api_keys.rithmic.system_name
         self.login_prefix = self.settings.api_keys.rithmic.login_prefix
         self.base_url = "https://api.rithmic.com"  # Rithmic REST API base
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
         self._connected = False
-        self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
 
     async def __aenter__(self):
-        headers = {
-            'Content-Type': 'application/json'
-        }
+        headers = {"Content-Type": "application/json"}
         timeout = aiohttp.ClientTimeout(total=30)
         self.session = aiohttp.ClientSession(headers=headers, timeout=timeout)
         return self
@@ -44,15 +41,15 @@ class RithmicClient:
         try:
             login_url = f"{self.base_url}/auth/login"
             payload = {
-                'user': self.username,
-                'password': self.password,
-                'system': self.system_name,
-                'login_prefix': self.login_prefix
+                "user": self.username,
+                "password": self.password,
+                "system": self.system_name,
+                "login_prefix": self.login_prefix,
             }
             async with self.session.post(login_url, json=payload) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    self._token = data.get('token')
+                    self._token = data.get("token")
                     self._connected = True
                     logger.success("Rithmic connected")
                     return True
@@ -69,12 +66,12 @@ class RithmicClient:
             await self._ws.close()
         self._connected = False
 
-    async def _get(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
+    async def _get(self, endpoint: str, params: dict = None) -> dict | None:
         """Make authenticated GET request"""
         if not self._connected:
             return None
         try:
-            headers = {'Authorization': f'Bearer {self._token}'}
+            headers = {"Authorization": f"Bearer {self._token}"}
             url = f"{self.base_url}{endpoint}"
             async with self.session.get(url, headers=headers, params=params) as response:
                 if response.status == 200:
@@ -84,21 +81,21 @@ class RithmicClient:
             logger.debug(f"Rithmic API error: {e}")
             return None
 
-    async def get_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
+    async def get_quote(self, symbol: str) -> dict[str, Any] | None:
         """Get real-time quote for futures symbol"""
         data = await self._get(f"/quotes/{symbol}")
         if data:
             return {
-                'symbol': symbol,
-                'bid': float(data.get('bid', 0)),
-                'ask': float(data.get('ask', 0)),
-                'last': float(data.get('last', 0)),
-                'volume': int(data.get('volume', 0)),
-                'timestamp': data.get('timestamp', datetime.now().isoformat())
+                "symbol": symbol,
+                "bid": float(data.get("bid", 0)),
+                "ask": float(data.get("ask", 0)),
+                "last": float(data.get("last", 0)),
+                "volume": int(data.get("volume", 0)),
+                "timestamp": data.get("timestamp", datetime.now().isoformat()),
             }
         return None
 
-    async def get_quotes(self, symbols: List[str]) -> Dict[str, Dict]:
+    async def get_quotes(self, symbols: list[str]) -> dict[str, dict]:
         """Get quotes for multiple symbols"""
         result = {}
         for symbol in symbols:
@@ -107,33 +104,32 @@ class RithmicClient:
                 result[symbol] = quote
         return result
 
-    async def get_ohlc(self, symbol: str, timeframe: str = "1min",
-                       start: datetime = None, end: datetime = None,
-                       limit: int = 100) -> Optional[List[Dict]]:
+    async def get_ohlc(
+        self, symbol: str, timeframe: str = "1min", start: datetime = None, end: datetime = None, limit: int = 100
+    ) -> list[dict] | None:
         """Get historical OHLCV data for futures"""
-        params = {
-            'symbol': symbol,
-            'timeframe': timeframe,
-            'limit': limit
-        }
+        params = {"symbol": symbol, "timeframe": timeframe, "limit": limit}
         if start:
-            params['start'] = start.isoformat()
+            params["start"] = start.isoformat()
         if end:
-            params['end'] = end.isoformat()
+            params["end"] = end.isoformat()
 
         data = await self._get("/bars", params)
-        if data and 'bars' in data:
-            return [{
-                'timestamp': bar['t'],
-                'open': float(bar['o']),
-                'high': float(bar['h']),
-                'low': float(bar['l']),
-                'close': float(bar['c']),
-                'volume': int(bar['v'])
-            } for bar in data['bars']]
+        if data and "bars" in data:
+            return [
+                {
+                    "timestamp": bar["t"],
+                    "open": float(bar["o"]),
+                    "high": float(bar["h"]),
+                    "low": float(bar["l"]),
+                    "close": float(bar["c"]),
+                    "volume": int(bar["v"]),
+                }
+                for bar in data["bars"]
+            ]
         return None
 
-    async def get_futures_data(self, symbols: List[str]) -> Dict[str, Any]:
+    async def get_futures_data(self, symbols: list[str]) -> dict[str, Any]:
         """Get futures market data in standard format"""
         internals = {}
         for symbol in symbols:
@@ -141,13 +137,13 @@ class RithmicClient:
                 quote = await self.get_quote(symbol)
                 if quote:
                     internals[symbol] = {
-                        'price': quote['last'],
-                        'bid': quote['bid'],
-                        'ask': quote['ask'],
-                        'change': 0,
-                        'change_pct': 0,
-                        'volume': quote['volume'],
-                        'timestamp': quote['timestamp']
+                        "price": quote["last"],
+                        "bid": quote["bid"],
+                        "ask": quote["ask"],
+                        "change": 0,
+                        "change_pct": 0,
+                        "volume": quote["volume"],
+                        "timestamp": quote["timestamp"],
                     }
             except Exception as e:
                 logger.debug(f"Rithmic failed for {symbol}: {e}")

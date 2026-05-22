@@ -2,18 +2,16 @@
 Provides simple API key validation for protected endpoints
 """
 
-from typing import Optional
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 from loguru import logger
 
 from ..core.config import get_settings
 
-
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-async def validate_api_key(api_key: Optional[str] = Security(api_key_header)) -> str:
+async def validate_api_key(api_key: str | None = Security(api_key_header)) -> str:
     """
     Validate API key from header.
 
@@ -32,21 +30,17 @@ async def validate_api_key(api_key: Optional[str] = Security(api_key_header)) ->
         if not settings.api_keys_list:
             return "no-auth-required"
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key required. Provide X-API-Key header."
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required. Provide X-API-Key header."
         )
 
     if settings.validate_api_key(api_key):
-        logger.debug(f"API key validated for request")
+        logger.debug("API key validated for request")
         return api_key
 
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Invalid API key."
-    )
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
 
 
-async def optional_api_key(api_key: Optional[str] = Security(api_key_header)) -> Optional[str]:
+async def optional_api_key(api_key: str | None = Security(api_key_header)) -> str | None:
     """
     Optional API key validation - doesn't fail if missing.
 

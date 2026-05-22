@@ -1,10 +1,11 @@
-from loguru import logger
-
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, UniqueConstraint, JSON
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.sql import func
-from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
 from datetime import datetime
+
+from loguru import logger
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
+from sqlalchemy.sql import func
+
 
 class Base(DeclarativeBase):
     pass
@@ -12,8 +13,9 @@ class Base(DeclarativeBase):
 
 class PriceData(Base):
     """OHLCV price data model"""
-    __tablename__ = 'prices'
-    __table_args__ = (UniqueConstraint('symbol', 'timeframe', 'timestamp', name='_symbol_timeframe_timestamp_uc'),)
+
+    __tablename__ = "prices"
+    __table_args__ = (UniqueConstraint("symbol", "timeframe", "timestamp", name="_symbol_timeframe_timestamp_uc"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -34,8 +36,9 @@ class PriceData(Base):
 
 class MarketInternals(Base):
     """Market internals analysis model"""
-    __tablename__ = 'market_internals'
-    __table_args__ = (UniqueConstraint('symbol', 'timestamp', name='_symbol_timestamp_uc'),)
+
+    __tablename__ = "market_internals"
+    __table_args__ = (UniqueConstraint("symbol", "timestamp", name="_symbol_timestamp_uc"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -55,7 +58,8 @@ class MarketInternals(Base):
 
 class LLMInsight(Base):
     """LLM analysis results model"""
-    __tablename__ = 'llm_insights'
+
+    __tablename__ = "llm_insights"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -73,7 +77,8 @@ class LLMInsight(Base):
 
 class Alert(Base):
     """Market alerts and signals model"""
-    __tablename__ = 'alerts'
+
+    __tablename__ = "alerts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -81,7 +86,7 @@ class Alert(Base):
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
     trigger_condition = Column(Text)
     message = Column(Text)
-    severity = Column(String(20), default='INFO', index=True)
+    severity = Column(String(20), default="INFO", index=True)
     acknowledged = Column(Boolean, default=False, index=True)
     resolved_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -92,7 +97,8 @@ class Alert(Base):
 
 class MarketRegime(Base):
     """Market regime classification model"""
-    __tablename__ = 'market_regime'
+
+    __tablename__ = "market_regime"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -122,14 +128,12 @@ class DatabaseManager:
         """Create SQLAlchemy engine with connection pooling"""
         from sqlalchemy import create_engine
 
-        is_sqlite = 'sqlite' in self.database_url.lower()
-        is_postgres = 'postgresql' in self.database_url.lower()
+        is_sqlite = "sqlite" in self.database_url.lower()
+        is_postgres = "postgresql" in self.database_url.lower()
 
         if is_sqlite:
             self.engine = create_engine(
-                self.database_url,
-                poolclass=NullPool,
-                connect_args={'check_same_thread': False}
+                self.database_url, poolclass=NullPool, connect_args={"check_same_thread": False}
             )
         elif is_postgres:
             # Try to use asyncpg, fall back to sync if not available
@@ -141,17 +145,14 @@ class DatabaseManager:
                     max_overflow=self._max_overflow,
                     pool_timeout=self._pool_timeout,
                     pool_recycle=self._pool_recycle,
-                    pool_pre_ping=True
+                    pool_pre_ping=True,
                 )
                 logger.info(f"Database pool configured: size={self._pool_size}, max_overflow={self._max_overflow}")
             except Exception as e:
                 logger.warning(f"Failed to create async pool, trying sync: {e}")
                 # Fall back to regular sync engine
                 self.engine = create_engine(
-                    self.database_url,
-                    pool_pre_ping=True,
-                    pool_size=self._pool_size,
-                    max_overflow=self._max_overflow
+                    self.database_url, pool_pre_ping=True, pool_size=self._pool_size, max_overflow=self._max_overflow
                 )
         else:
             self.engine = create_engine(self.database_url)
@@ -167,6 +168,7 @@ class DatabaseManager:
     def get_session(self):
         """Get database session"""
         from sqlalchemy.orm import sessionmaker
+
         if not self.engine:
             self.create_engine()
         Session = sessionmaker(bind=self.engine)
@@ -174,24 +176,23 @@ class DatabaseManager:
 
     async def get_async_session(self):
         """Get async database session for use with async code"""
-        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-        is_sqlite = 'sqlite' in self.database_url.lower()
+        is_sqlite = "sqlite" in self.database_url.lower()
 
         if is_sqlite:
             async_engine = create_async_engine(
-                self.database_url.replace('sqlite://', 'sqlite+aiosqlite://'),
-                poolclass=NullPool
+                self.database_url.replace("sqlite://", "sqlite+aiosqlite://"), poolclass=NullPool
             )
         else:
-            async_url = self.database_url.replace('postgresql://', 'postgresql+asyncpg://')
+            async_url = self.database_url.replace("postgresql://", "postgresql+asyncpg://")
             async_engine = create_async_engine(
                 async_url,
                 pool_size=self._pool_size,
                 max_overflow=self._max_overflow,
                 pool_timeout=self._pool_timeout,
                 pool_recycle=self._pool_recycle,
-                pool_pre_ping=True
+                pool_pre_ping=True,
             )
 
         async_session = AsyncSession(async_engine, expire_on_commit=False)
@@ -204,10 +205,7 @@ class DatabaseManager:
             for data in data_list:
                 # Validate OHLC consistency before saving
                 ohlc_valid, ohlc_issues = self._validate_ohlc(
-                    data.get('open'),
-                    data.get('high'),
-                    data.get('low'),
-                    data.get('close')
+                    data.get("open"), data.get("high"), data.get("low"), data.get("close")
                 )
                 if not ohlc_valid:
                     logger.warning(f"Skipping invalid OHLC for {symbol}: {ohlc_issues}")
@@ -216,14 +214,14 @@ class DatabaseManager:
                 price_record = PriceData(
                     symbol=symbol,
                     timeframe=timeframe,
-                    timestamp=data['timestamp'],
-                    open_price=data['open'],
-                    high_price=data['high'],
-                    low_price=data['low'],
-                    close_price=data['close'],
-                    volume=data['volume'],
-                    trade_count=data.get('trade_count', 0),
-                    vwap=data.get('vwap')
+                    timestamp=data["timestamp"],
+                    open_price=data["open"],
+                    high_price=data["high"],
+                    low_price=data["low"],
+                    close_price=data["close"],
+                    volume=data["volume"],
+                    trade_count=data.get("trade_count", 0),
+                    vwap=data.get("vwap"),
                 )
                 session.merge(price_record)
             session.commit()
@@ -254,8 +252,8 @@ class DatabaseManager:
     def save_market_internals(self, symbol: str, internals_data: dict):
         """Save market internals to database with validation"""
         # Validate price ranges for critical symbols
-        if symbol.upper() in ['SPY', 'QQQ', 'VIX']:
-            price = internals_data.get('price')
+        if symbol.upper() in ["SPY", "QQQ", "VIX"]:
+            price = internals_data.get("price")
             if price is not None:
                 valid, issues = self._validate_symbol_price(symbol.upper(), price)
                 if not valid:
@@ -266,14 +264,14 @@ class DatabaseManager:
         try:
             internals_record = MarketInternals(
                 symbol=symbol,
-                timestamp=internals_data['timestamp'],
-                advance_decline_ratio=internals_data.get('advance_decline_ratio'),
-                volume_flow=internals_data.get('volume_flow'),
-                momentum_score=internals_data.get('momentum_score'),
-                volatility_regime=internals_data.get('volatility_regime'),
-                correlation_strength=internals_data.get('correlation_strength'),
-                support_level=internals_data.get('support_level'),
-                resistance_level=internals_data.get('resistance_level')
+                timestamp=internals_data["timestamp"],
+                advance_decline_ratio=internals_data.get("advance_decline_ratio"),
+                volume_flow=internals_data.get("volume_flow"),
+                momentum_score=internals_data.get("momentum_score"),
+                volatility_regime=internals_data.get("volatility_regime"),
+                correlation_strength=internals_data.get("correlation_strength"),
+                support_level=internals_data.get("support_level"),
+                resistance_level=internals_data.get("resistance_level"),
             )
             session.merge(internals_record)
             session.commit()
@@ -300,7 +298,15 @@ class DatabaseManager:
 
         return len(issues) == 0, issues
 
-    def save_llm_insight(self, symbol: str, analysis_type: str, input_data: dict, analysis_result: str, model_used: str = 'lm_studio_fast', confidence_score: float = 0.8):
+    def save_llm_insight(
+        self,
+        symbol: str,
+        analysis_type: str,
+        input_data: dict,
+        analysis_result: str,
+        model_used: str = "lm_studio_fast",
+        confidence_score: float = 0.8,
+    ):
         """Save LLM insight to database"""
         session = self.get_session()
         try:
@@ -311,7 +317,7 @@ class DatabaseManager:
                 model_used=model_used,
                 input_data=input_data,
                 analysis_result=analysis_result,
-                confidence_score=confidence_score
+                confidence_score=confidence_score,
             )
             session.merge(insight_record)
             session.commit()
@@ -327,9 +333,12 @@ class DatabaseManager:
         """Get latest market internals for a symbol"""
         session = self.get_session()
         try:
-            query = session.query(MarketInternals).filter(
-                MarketInternals.symbol == symbol
-            ).order_by(MarketInternals.timestamp.desc()).limit(limit)
+            query = (
+                session.query(MarketInternals)
+                .filter(MarketInternals.symbol == symbol)
+                .order_by(MarketInternals.timestamp.desc())
+                .limit(limit)
+            )
             return query.all()
         finally:
             session.close()
@@ -338,26 +347,31 @@ class DatabaseManager:
         """Save user comment on an LLM analysis"""
         session = self.get_session()
         try:
-            from sqlalchemy import Column, Integer, String, Text, DateTime, JSON
             from sqlalchemy import text
-            session.execute(text(
-                "CREATE TABLE IF NOT EXISTS user_comments ("
-                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                "analysis_id VARCHAR(100), "
-                "user_id VARCHAR(100), "
-                "comment TEXT, "
-                "timestamp VARCHAR(100), "
-                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-            ))
-            session.execute(text(
-                "INSERT INTO user_comments (analysis_id, user_id, comment, timestamp) "
-                "VALUES (:analysis_id, :user_id, :comment, :timestamp)"
-            ), {
-                'analysis_id': comment_data.get('analysis_id', ''),
-                'user_id': comment_data.get('user_id', 'anonymous'),
-                'comment': comment_data.get('comment', ''),
-                'timestamp': comment_data.get('timestamp', datetime.now().isoformat())
-            })
+
+            session.execute(
+                text(
+                    "CREATE TABLE IF NOT EXISTS user_comments ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "analysis_id VARCHAR(100), "
+                    "user_id VARCHAR(100), "
+                    "comment TEXT, "
+                    "timestamp VARCHAR(100), "
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+                )
+            )
+            session.execute(
+                text(
+                    "INSERT INTO user_comments (analysis_id, user_id, comment, timestamp) "
+                    "VALUES (:analysis_id, :user_id, :comment, :timestamp)"
+                ),
+                {
+                    "analysis_id": comment_data.get("analysis_id", ""),
+                    "user_id": comment_data.get("user_id", "anonymous"),
+                    "comment": comment_data.get("comment", ""),
+                    "timestamp": comment_data.get("timestamp", datetime.now().isoformat()),
+                },
+            )
             session.commit()
             logger.info(f"User comment saved for analysis {comment_data.get('analysis_id')}")
         except Exception as e:
@@ -372,19 +386,20 @@ class DatabaseManager:
         session = self.get_session()
         try:
             from sqlalchemy import text
-            result = session.execute(text(
-                "SELECT * FROM user_comments WHERE analysis_id = :analysis_id "
-                "ORDER BY created_at ASC"
-            ), {'analysis_id': analysis_id})
+
+            result = session.execute(
+                text("SELECT * FROM user_comments WHERE analysis_id = :analysis_id ORDER BY created_at ASC"),
+                {"analysis_id": analysis_id},
+            )
             rows = result.fetchall()
             return [
                 {
-                    'id': row[0],
-                    'analysis_id': row[1],
-                    'user_id': row[2],
-                    'comment': row[3],
-                    'timestamp': row[4],
-                    'created_at': str(row[5]) if len(row) > 5 else None
+                    "id": row[0],
+                    "analysis_id": row[1],
+                    "user_id": row[2],
+                    "comment": row[3],
+                    "timestamp": row[4],
+                    "created_at": str(row[5]) if len(row) > 5 else None,
                 }
                 for row in rows
             ]
@@ -394,7 +409,9 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def configure_pool(self, pool_size: int = 5, max_overflow: int = 10, pool_timeout: int = 30, pool_recycle: int = 3600):
+    def configure_pool(
+        self, pool_size: int = 5, max_overflow: int = 10, pool_timeout: int = 30, pool_recycle: int = 3600
+    ):
         """Configure connection pool settings"""
         self._pool_size = pool_size
         self._max_overflow = max_overflow

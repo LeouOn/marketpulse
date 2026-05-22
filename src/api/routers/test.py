@@ -1,13 +1,15 @@
 """Test and debug endpoints"""
 
 from datetime import datetime
-from loguru import logger
+from typing import Any
+
 from fastapi import APIRouter
-from typing import Dict, Any
+from loguru import logger
 
 from .deps import (
-    settings, MarketPulseCollector, collector, ohlc_analyzer,
-    MarketResponse,
+    MarketPulseCollector,
+    collector,
+    ohlc_analyzer,
 )
 
 router = APIRouter(prefix="/api/test", tags=["test"])
@@ -16,17 +18,16 @@ router = APIRouter(prefix="/api/test", tags=["test"])
 @router.get("/status")
 async def test_status():
     """Test endpoint to check global variables"""
-    from .deps import collector, ohlc_analyzer
     return {
         "collector_status": collector is not None,
         "collector_type": str(type(collector)) if collector else None,
         "ohlc_analyzer_status": ohlc_analyzer is not None,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
     }
 
 
 @router.put("/data-source")
-async def test_data_source(request: Dict[str, Any]):
+async def test_data_source(request: dict[str, Any]):
     """Test data source connectivity with specified symbols"""
     try:
         logger.info(f"Testing data source with request: {request}")
@@ -42,7 +43,7 @@ async def test_data_source(request: Dict[str, Any]):
             "total_symbols": len(internals),
             "market_data": {},
             "sample_data": {},
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         valid_symbols = []
@@ -53,7 +54,7 @@ async def test_data_source(request: Dict[str, Any]):
                     "price": data["price"],
                     "change": data.get("change", 0),
                     "change_pct": data.get("change_pct", 0),
-                    "volume": data.get("volume", 0)
+                    "volume": data.get("volume", 0),
                 }
 
         analysis["valid_symbols"] = valid_symbols
@@ -69,12 +70,9 @@ async def test_data_source(request: Dict[str, Any]):
     except Exception as e:
         logger.error(f"Error in data source test: {e}")
         import traceback
+
         traceback.print_exc()
-        return {
-            "success": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
+        return {"success": False, "error": str(e), "timestamp": datetime.now().isoformat()}
 
 
 @router.put("/yahoo-finance")
@@ -102,7 +100,7 @@ async def test_yahoo_finance():
                     "change_pct": data.get("change_pct"),
                     "volume": data.get("volume"),
                     "timestamp": data.get("timestamp"),
-                    "raw_keys": list(data.keys())
+                    "raw_keys": list(data.keys()),
                 }
             else:
                 results[symbol] = {"success": False, "error": f"Symbol not found. Available: {list(internals.keys())}"}
@@ -113,15 +111,12 @@ async def test_yahoo_finance():
             "yahoo_finance_results": results,
             "data_source": internals.get("data_source", "unknown"),
             "all_keys": list(internals.keys()),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
     except Exception as e:
         logger.error(f"Error in Yahoo Finance test: {e}")
         import traceback
+
         traceback.print_exc()
-        return {
-            "success": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
+        return {"success": False, "error": str(e), "timestamp": datetime.now().isoformat()}

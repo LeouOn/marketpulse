@@ -10,16 +10,18 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
+from src.api.routers import llm, market, test, websocket
 from src.api.routers.deps import (
-    MarketPulseCollector, OHLCAnalyzer, collector, ohlc_analyzer,
+    MarketPulseCollector,
+    OHLCAnalyzer,
 )
-from src.api.routers import market, llm, test, websocket
 
 
 @asynccontextmanager
@@ -32,6 +34,7 @@ async def lifespan(app: FastAPI):
 
     if MarketPulseCollector:
         from src.api.routers import deps
+
         deps.collector = MarketPulseCollector()
         logger.info(f"Created collector: {type(deps.collector)}")
         try:
@@ -44,6 +47,7 @@ async def lifespan(app: FastAPI):
 
     if OHLCAnalyzer:
         from src.api.routers import deps
+
         deps.ohlc_analyzer = OHLCAnalyzer()
         logger.success("OHLC Analyzer initialized")
     else:
@@ -55,10 +59,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="MarketPulse API",
-    description="Real-time market internals analysis API",
-    version="0.1.0",
-    lifespan=lifespan
+    title="MarketPulse API", description="Real-time market internals analysis API", version="0.1.0", lifespan=lifespan
 )
 
 app.add_middleware(
@@ -78,13 +79,10 @@ app.include_router(websocket.router)
 @app.get("/")
 async def root():
     """API health check"""
-    return {
-        "message": "MarketPulse API is running",
-        "version": "0.1.0",
-        "timestamp": datetime.now().isoformat()
-    }
+    return {"message": "MarketPulse API is running", "version": "0.1.0", "timestamp": datetime.now().isoformat()}
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

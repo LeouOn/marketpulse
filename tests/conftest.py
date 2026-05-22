@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 
 class MockSettings:
@@ -50,30 +51,26 @@ def mock_settings():
 @pytest.fixture
 def mock_internals_data():
     return {
-        'spy': {
-            'price': 450.25,
-            'change': 1.25,
-            'change_pct': 0.28,
-            'volume': 50000000,
-            'timestamp': '2025-11-02T21:00:00Z'
+        "spy": {
+            "price": 450.25,
+            "change": 1.25,
+            "change_pct": 0.28,
+            "volume": 50000000,
+            "timestamp": "2025-11-02T21:00:00Z",
         },
-        'qqq': {
-            'price': 180.50,
-            'change': 2.15,
-            'change_pct': 1.21,
-            'volume': 30000000,
-            'timestamp': '2025-11-02T21:00:00Z'
+        "qqq": {
+            "price": 180.50,
+            "change": 2.15,
+            "change_pct": 1.21,
+            "volume": 30000000,
+            "timestamp": "2025-11-02T21:00:00Z",
         },
-        'vix': {
-            'price': 18.50,
-            'change': -0.50,
-            'change_pct': -2.63,
-            'volume': 1000000,
-            'timestamp': '2025-11-02T21:00:00Z'
+        "vix": {
+            "price": 18.50,
+            "change": -0.50,
+            "change_pct": -2.63,
+            "volume": 1000000,
+            "timestamp": "2025-11-02T21:00:00Z",
         },
-        'volume_flow': {
-            'total_volume_60min': 85000000,
-            'symbols_tracked': 3,
-            'timestamp': '2025-11-02T21:00:00Z'
-        }
+        "volume_flow": {"total_volume_60min": 85000000, "symbols_tracked": 3, "timestamp": "2025-11-02T21:00:00Z"},
     }

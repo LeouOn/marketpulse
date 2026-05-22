@@ -2,10 +2,11 @@
 Cloud LLM fallback option alongside OpenRouter
 """
 
-from typing import Dict, Any, Optional, List
-from loguru import logger
+from typing import Any
 
 import aiohttp
+from loguru import logger
+
 from ..core.config import get_settings
 
 
@@ -18,17 +19,11 @@ class MiniMaxClient:
         self.api_key = self.settings.llm.minimax.api_key
         self.timeout = self.settings.llm.minimax.timeout
         self.model = self.settings.llm.minimax.model
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self):
-        headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json'
-        }
-        self.session = aiohttp.ClientSession(
-            headers=headers,
-            timeout=aiohttp.ClientTimeout(total=self.timeout)
-        )
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        self.session = aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(total=self.timeout))
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -36,12 +31,8 @@ class MiniMaxClient:
             await self.session.close()
 
     async def generate_completion(
-        self,
-        messages: List[Dict[str, str]],
-        model: str = None,
-        max_tokens: int = 300,
-        temperature: float = 0.3
-    ) -> Optional[Dict[str, Any]]:
+        self, messages: list[dict[str, str]], model: str = None, max_tokens: int = 300, temperature: float = 0.3
+    ) -> dict[str, Any] | None:
         """
         Generate completion using MiniMax API
 
@@ -57,17 +48,17 @@ class MiniMaxClient:
         try:
             url = f"{self.base_url}/chat/completions"
             payload = {
-                'model': model or self.model,
-                'messages': messages,
-                'max_tokens': max_tokens,
-                'temperature': temperature,
-                'stream': False
+                "model": model or self.model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": False,
             }
 
             async with self.session.post(url, json=payload) as response:
                 if response.status == 200:
                     result = await response.json()
-                    logger.debug(f"MiniMax completion successful")
+                    logger.debug("MiniMax completion successful")
                     return result
                 else:
                     error_text = await response.text()
@@ -78,7 +69,7 @@ class MiniMaxClient:
             logger.error(f"MiniMax completion error: {e}")
             return None
 
-    async def analyze_market(self, internals_data: Dict[str, Any], analysis_type: str = 'quick') -> Optional[str]:
+    async def analyze_market(self, internals_data: dict[str, Any], analysis_type: str = "quick") -> str | None:
         """
         Analyze market data using MiniMax
 
@@ -92,7 +83,7 @@ class MiniMaxClient:
         system_prompt = """You are a market analysis expert. Analyze market conditions and provide actionable insights.
 Focus on: market bias, volatility, key levels, and trading implications."""
 
-        if analysis_type == 'quick':
+        if analysis_type == "quick":
             user_prompt = f"""Analyze these market internals briefly:
 {internals_data}
 
@@ -119,22 +110,15 @@ Cover:
 Response limit: 500 words."""
             max_tokens = 600
 
-        messages = [
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': user_prompt}
-        ]
+        messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
 
-        response = await self.generate_completion(
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=0.4
-        )
+        response = await self.generate_completion(messages=messages, max_tokens=max_tokens, temperature=0.4)
 
-        if response and 'choices' in response:
-            return response['choices'][0]['message']['content']
+        if response and "choices" in response:
+            return response["choices"][0]["message"]["content"]
         return None
 
-    async def validate_data(self, data: Dict[str, Any], data_type: str = "market_internals") -> Optional[Dict]:
+    async def validate_data(self, data: dict[str, Any], data_type: str = "market_internals") -> dict | None:
         """Validate data interpretation using MiniMax"""
         system_prompt = """You are a data validation expert. Analyze data for completeness, consistency, and quality issues.
 Respond with JSON containing: is_valid, issues, confidence, recommendations, summary."""
@@ -149,37 +133,26 @@ Check for:
 - Missing critical symbols
 - Timestamp validity"""
 
-        messages = [
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': user_prompt}
-        ]
+        messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
 
-        response = await self.generate_completion(
-            messages=messages,
-            max_tokens=200,
-            temperature=0.1
-        )
+        response = await self.generate_completion(messages=messages, max_tokens=200, temperature=0.1)
 
-        if response and 'choices' in response:
-            content = response['choices'][0]['message']['content']
+        if response and "choices" in response:
+            content = response["choices"][0]["message"]["content"]
             try:
                 import json
+
                 return json.loads(content)
             except:
-                return {
-                    'is_valid': True,
-                    'issues': [],
-                    'confidence': 80,
-                    'summary': 'Validation completed'
-                }
+                return {"is_valid": True, "issues": [], "confidence": 80, "summary": "Validation completed"}
         return None
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get MiniMax client status"""
         return {
-            'available': bool(self.api_key and self.api_key != "your_minimax_api_key"),
-            'endpoint': self.base_url,
-            'model': self.model
+            "available": bool(self.api_key and self.api_key != "your_minimax_api_key"),
+            "endpoint": self.base_url,
+            "model": self.model,
         }
 
 
