@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from loguru import logger
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, Column, Date, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
 from sqlalchemy.sql import func
@@ -28,6 +28,10 @@ class PriceData(Base):
     volume = Column(Integer, default=0)
     trade_count = Column(Integer, default=0)
     vwap = Column(Float)
+    adjusted_close = Column(Float)
+    split_factor = Column(Float, default=1.0)
+    dividend_amount = Column(Float, default=0.0)
+    source = Column(String(20), default='yahoo')
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -111,6 +115,152 @@ class MarketRegime(Base):
 
     def __repr__(self):
         return f"<MarketRegime(symbol='{self.symbol}', type='{self.regime_type}', confidence={self.confidence})>"
+
+
+class Symbol(Base):
+    __tablename__ = "symbols"
+    __table_args__ = (UniqueConstraint("symbol", name="_symbol_uc"), {"schema": "market_data"})
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(20), unique=True, nullable=False, index=True)
+    name = Column(String(200))
+    asset_type = Column(String(20), nullable=False)
+    exchange = Column(String(20))
+    sector = Column(String(50), index=True)
+    industry = Column(String(100))
+    currency = Column(String(3), default='USD')
+    lot_size = Column(Float, default=1.0)
+    tick_size = Column(Float, default=0.01)
+    is_active = Column(Boolean, default=True, index=True)
+    yahoo_symbol = Column(String(20))
+    alpaca_symbol = Column(String(20))
+    data_source = Column(String(20), default='yahoo')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<Symbol(symbol='{self.symbol}', name='{self.name}', asset_type='{self.asset_type}')>"
+
+
+class SymbolStats(Base):
+    __tablename__ = "symbol_stats"
+    __table_args__ = (UniqueConstraint("symbol", "date", name="_symbol_date_uc"), {"schema": "market_data"})
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    date = Column(Date, nullable=False)
+    high_52w = Column(Float)
+    low_52w = Column(Float)
+    pct_from_52w_high = Column(Float)
+    pct_from_52w_low = Column(Float)
+    avg_volume_20d = Column(Integer)
+    avg_volume_50d = Column(Integer)
+    sma_20 = Column(Float)
+    sma_50 = Column(Float)
+    sma_200 = Column(Float)
+    atr_14 = Column(Float)
+    beta = Column(Float)
+    market_cap = Column(BigInteger)
+    pe_ratio = Column(Float)
+    prev_close = Column(Float)
+    day_range_pct = Column(Float)
+    year_high_date = Column(Date)
+    year_low_date = Column(Date)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<SymbolStats(symbol='{self.symbol}', date='{self.date}', market_cap={self.market_cap})>"
+
+
+class ScreenerSnapshot(Base):
+    __tablename__ = "screener_snapshots"
+    __table_args__ = (
+        UniqueConstraint("snapshot_date", "screener_type", "symbol", name="_snapshot_screener_symbol_uc"),
+        {"schema": "market_data"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date = Column(Date, nullable=False)
+    screener_type = Column(String(20), nullable=False)
+    symbol = Column(String(20), nullable=False, index=True)
+    rank = Column(Integer, nullable=False)
+    price = Column(Float)
+    change_pct = Column(Float)
+    volume = Column(BigInteger)
+    market_cap = Column(BigInteger)
+    avg_volume_3m = Column(BigInteger)
+    relative_volume = Column(Float)
+    extra_data = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<ScreenerSnapshot(date='{self.snapshot_date}', type='{self.screener_type}', symbol='{self.symbol}', rank={self.rank})>"
+
+
+class BreadthSnapshot(Base):
+    __tablename__ = "breadth_snapshots"
+    __table_args__ = (UniqueConstraint("date", name="_breadth_date_uc"), {"schema": "market_data"})
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False)
+    nyse_advancing = Column(Integer)
+    nyse_declining = Column(Integer)
+    nyse_unchanged = Column(Integer)
+    nyse_ad_ratio = Column(Float)
+    nasdaq_advancing = Column(Integer)
+    nasdaq_declining = Column(Integer)
+    nasdaq_unchanged = Column(Integer)
+    nasdaq_ad_ratio = Column(Float)
+    new_highs_52w = Column(Integer)
+    new_lows_52w = Column(Integer)
+    tick_avg_30m = Column(Float)
+    vold_nyse = Column(BigInteger)
+    mcclellan_osc = Column(Float)
+    mcclellan_sum = Column(Float)
+    trin = Column(Float)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<BreadthSnapshot(date='{self.date}', nyse_ad_ratio={self.nyse_ad_ratio})>"
+
+
+class DataFetchLog(Base):
+    __tablename__ = "data_fetch_log"
+    __table_args__ = ({"schema": "market_data"},)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String(20), nullable=False)
+    endpoint = Column(String(200), nullable=False)
+    symbols = Column(Text)
+    status = Column(String(10), nullable=False)
+    response_ms = Column(Integer)
+    bars_fetched = Column(Integer, default=0)
+    error_message = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<DataFetchLog(source='{self.source}', endpoint='{self.endpoint}', status='{self.status}')>"
+
+
+class Indicator(Base):
+    __tablename__ = "indicators"
+    __table_args__ = (
+        UniqueConstraint("symbol", "timeframe", "timestamp", "indicator_type", "params", name="_indicator_uc"),
+        {"schema": "analysis"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    timeframe = Column(String(10), nullable=False)
+    timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    indicator_type = Column(String(30), nullable=False)
+    params = Column(JSON, nullable=False)
+    value = Column(Float)
+    values = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<Indicator(symbol='{self.symbol}', type='{self.indicator_type}', timeframe='{self.timeframe}')>"
 
 
 class DatabaseManager:
