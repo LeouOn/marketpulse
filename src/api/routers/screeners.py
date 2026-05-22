@@ -31,7 +31,7 @@ async def get_screener_data(screener_type: str):
         results = client.get_screener_data(screener_type)
 
         if cache and results:
-            await cache.set(f"screener:{screener_type}", results, 60)
+            await cache.set(f"screener:{screener_type}", results, 300)
 
         return success_response({"screener_type": screener_type, "results": results})
 

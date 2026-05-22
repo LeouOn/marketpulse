@@ -25,9 +25,10 @@ function formatLastUpdate(date: Date): string {
 }
 
 export function TopBar({ onMenuToggle, isConnected, lastUpdate }: TopBarProps) {
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
+    setNow(new Date());
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -80,7 +81,7 @@ export function TopBar({ onMenuToggle, isConnected, lastUpdate }: TopBarProps) {
 
         <div className="flex items-center gap-1.5 text-gray-500">
           <Clock size={14} />
-          <span>{formatTime(now)}</span>
+          <span>{now ? formatTime(now) : '--:--:--'}</span>
         </div>
       </div>
     </header>

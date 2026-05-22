@@ -58,8 +58,10 @@ export function UnifiedDashboard() {
   const { data: dashboardData, isLoading: dashLoading, isError: dashIsError, error: dashError, refetch: refreshDashboard, dataUpdatedAt } = useDashboardData() as any;
   const { data: macroData, isLoading: macroLoading } = useMacroData() as any;
   const { data: breadthData } = useBreadthData() as any;
-  const { data: gainers } = useScreener('gainers');
-  const { data: losers } = useScreener('losers');
+  const { data: gainersData } = useScreener('gainers');
+  const { data: losersData } = useScreener('losers');
+  const gainers = Array.isArray(gainersData) ? gainersData : (gainersData as any)?.results;
+  const losers = Array.isArray(losersData) ? losersData : (losersData as any)?.results;
 
   const loading = (dashLoading || macroLoading) && !dashboardData;
   const error = dashIsError ? (dashError as any)?.message || 'Failed to load market data' : null;
@@ -384,7 +386,7 @@ export function UnifiedDashboard() {
   // --- Loading state with skeleton ---
   if (loading) {
     return (
-      <div className="p-4 lg:p-6">
+    <div className="p-4 lg:p-6 h-full">
         <div className="mb-6">
           <div className="h-10 w-48 bg-gray-800 rounded-lg animate-pulse" />
         </div>
