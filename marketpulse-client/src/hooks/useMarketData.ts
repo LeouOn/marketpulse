@@ -14,6 +14,7 @@ export const marketKeys = {
   stats: (symbol: string) => [...marketKeys.all, 'stats', symbol] as const,
   search: (query: string) => [...marketKeys.all, 'search', query] as const,
   historical: (symbol: string, tf: string) => [...marketKeys.all, 'historical', symbol, tf] as const,
+  breadth: () => [...marketKeys.all, 'breadth'] as const,
 };
 
 // Hook for dashboard data
@@ -80,6 +81,29 @@ export function useAIAnalysis() {
   // Manual refresh function
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: marketKeys.ai() });
+  };
+
+  return {
+    ...result,
+    refresh,
+  };
+}
+
+// Hook for market breadth data
+export function useBreadthData(refreshInterval = 60000) {
+  const queryClient = useQueryClient();
+
+  const result = useQuery({
+    queryKey: marketKeys.breadth(),
+    queryFn: () => marketPulseAPI.getMarketBreadth(),
+    refetchInterval: refreshInterval,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 15000,
+  });
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: marketKeys.breadth() });
   };
 
   return {

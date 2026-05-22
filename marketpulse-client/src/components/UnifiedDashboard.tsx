@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 import { LLMChat } from './llm-chat';
 import { Sparkline } from './ui/Sparkline';
 import { SkeletonCard } from './ui/LoadingSpinner';
 import { RefreshCw, Activity, TrendingUp, TrendingDown, Clock, Globe, BarChart3, Bot, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
+import { useDashboardData, useMacroData, useBreadthData } from '@/hooks/useMarketData';
+import { useScreener } from '@/hooks/useScreenerData';
 
 interface MarketData {
   symbol: string;
@@ -14,36 +17,6 @@ interface MarketData {
   change_pct: number;
   volume: number;
   timestamp: string;
-}
-
-interface DashboardData {
-  success: boolean;
-  dataSource?: string;
-  data: {
-    marketBias?: string;
-    volatilityRegime?: string;
-    symbols?: Record<string, MarketData>;
-    volumeFlow?: {
-      total_volume_60min: number;
-      symbols_tracked: number;
-    };
-    market_session?: string;
-    sector_performance?: Record<string, number>;
-    dataSource?: string;
-    dataQuality?: string;
-    qualityIssues?: string[];
-    synthetic?: boolean;
-    freshnessStatus?: string;
-    dataAgeSeconds?: number;
-  };
-}
-
-interface MacroData {
-  [key: string]: any;
-  market_session?: string;
-  economic_sentiment?: string;
-  risk_appetite?: string;
-  sector_performance?: Record<string, number>;
 }
 
 interface MarketBreadth {
@@ -82,52 +55,23 @@ const cardVariants = {
 };
 
 export function UnifiedDashboard() {
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [macroData, setMacroData] = useState<MacroData | null>(null);
-  const [breadthData, setBreadthData] = useState<MarketBreadth | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const { data: dashboardData, isLoading: dashLoading, isError: dashIsError, error: dashError, refetch: refreshDashboard, dataUpdatedAt } = useDashboardData() as any;
+  const { data: macroData, isLoading: macroLoading } = useMacroData() as any;
+  const { data: breadthData } = useBreadthData() as any;
+  const { data: gainers } = useScreener('gainers');
+  const { data: losers } = useScreener('losers');
+
+  const loading = (dashLoading || macroLoading) && !dashboardData;
+  const error = dashIsError ? (dashError as any)?.message || 'Failed to load market data' : null;
+  const lastUpdate = dashboardData ? new Date(dataUpdatedAt) : null;
+  const dataSource = dashboardData?.dataSource || dashboardData?.data?.dataSource || 'unknown';
+
   const [sessionTime, setSessionTime] = useState('');
   const [sessionCountdown, setSessionCountdown] = useState('');
-  const [dataSource, setDataSource] = useState<string>('unknown');
-  const [retryCount, setRetryCount] = useState(0);
 
-  const fetchData = useCallback(async () => {
-    setError(null);
-    try {
-      const [dashboardResponse, macroResponse, breadthResponse] = await Promise.all([
-        fetch('/api/market/dashboard'),
-        fetch('/api/market/macro'),
-        fetch('/api/market/breadth')
-      ]);
-
-      if (!dashboardResponse.ok) throw new Error(`Dashboard API: ${dashboardResponse.status}`);
-
-      const dashboard = await dashboardResponse.json();
-      const macro = await macroResponse.json();
-      const breadth = await breadthResponse.json();
-
-      setDashboardData(dashboard);
-      setMacroData(macro.data || macro);
-      setBreadthData(breadth.data || null);
-      setDataSource(dashboard?.dataSource || dashboard?.data?.dataSource || 'unknown');
-      setLastUpdate(new Date());
-      setRetryCount(0);
-    } catch (err: any) {
-      console.error('Failed to fetch data:', err);
-      setError(err.message || 'Failed to load market data');
-      setRetryCount(prev => prev + 1);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  const refreshAll = () => {
+    refreshDashboard();
+  };
 
   useEffect(() => {
     const updateSessionTimer = () => {
@@ -212,11 +156,11 @@ export function UnifiedDashboard() {
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4 interactive-card"
+        className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors interactive-card"
       >
         <div className="flex items-center gap-2 mb-3">
           {icon}
-          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">{title}</h3>
+          <h3 className="text-sm font-medium text-gray-400">{title}</h3>
           <span className="ml-auto text-xs text-gray-600">{entries.length} symbols</span>
         </div>
         <div className="overflow-x-auto">
@@ -269,11 +213,11 @@ export function UnifiedDashboard() {
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4 interactive-card"
+        className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors interactive-card"
       >
         <div className="flex items-center gap-2 mb-3">
           <BarChart3 className="w-4 h-4 text-purple-400" />
-          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Sector Performance</h3>
+          <h3 className="text-sm font-medium text-gray-400">Sector Performance</h3>
         </div>
         <div className="space-y-1.5">
           {sortedSectors.map(([sector, perf], idx) => {
@@ -325,11 +269,11 @@ export function UnifiedDashboard() {
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4 interactive-card"
+        className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors interactive-card"
       >
         <div className="flex items-center gap-2 mb-3">
           <Activity className="w-4 h-4 text-blue-400" />
-          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Market Internals</h3>
+          <h3 className="text-sm font-medium text-gray-400">Market Internals</h3>
         </div>
         <div className="grid grid-cols-2 gap-2">
           {metrics.map(({ label, value, format, sub, raw, signed }) => {
@@ -357,7 +301,7 @@ export function UnifiedDashboard() {
   };
 
   const renderMarketSession = (cardIndex: number) => {
-    const session = dashboardData?.data?.market_session || macroData?.market_session || 'Unknown';
+    const session = dashboardData?.market_session || macroData?.market_session || 'Unknown';
     const isLive = session === 'US Regular';
 
     return (
@@ -366,11 +310,11 @@ export function UnifiedDashboard() {
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4 interactive-card"
+        className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors interactive-card"
       >
         <div className="flex items-center gap-2 mb-3">
           <Clock className="w-4 h-4 text-green-400" />
-          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Session</h3>
+          <h3 className="text-sm font-medium text-gray-400">Session</h3>
           {isLive && <span className="ml-auto flex items-center gap-1 text-[10px] text-green-400"><span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />LIVE</span>}
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -392,8 +336,8 @@ export function UnifiedDashboard() {
   };
 
   const renderMarketBias = (cardIndex: number) => {
-    const bias = dashboardData?.data?.marketBias || 'Unknown';
-    const volatility = dashboardData?.data?.volatilityRegime || 'Unknown';
+    const bias = dashboardData?.marketBias || 'Unknown';
+    const volatility = dashboardData?.volatilityRegime || 'Unknown';
     const sentiment = macroData?.economic_sentiment || 'Unknown';
     const risk = macroData?.risk_appetite || 'Unknown';
 
@@ -419,11 +363,11 @@ export function UnifiedDashboard() {
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4 interactive-card"
+        className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors interactive-card"
       >
         <div className="flex items-center gap-2 mb-3">
           <TrendingUp className="w-4 h-4 text-yellow-400" />
-          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Sentiment</h3>
+          <h3 className="text-sm font-medium text-gray-400">Sentiment</h3>
         </div>
         <div className="grid grid-cols-2 gap-2">
           {items.map(({ label, value }) => (
@@ -440,7 +384,7 @@ export function UnifiedDashboard() {
   // --- Loading state with skeleton ---
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 p-4 lg:p-6">
+      <div className="p-4 lg:p-6">
         <div className="mb-6">
           <div className="h-10 w-48 bg-gray-800 rounded-lg animate-pulse" />
         </div>
@@ -460,14 +404,13 @@ export function UnifiedDashboard() {
   // --- Error state with retry ---
   if (error && !dashboardData) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+      <div className="flex items-center justify-center p-4">
         <div className="text-center max-w-md">
           <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-white mb-2">Connection Failed</h2>
           <p className="text-gray-400 mb-4">{error}</p>
-          {retryCount > 2 && <p className="text-sm text-gray-500 mb-4">Make sure the backend is running on port 8000</p>}
           <button
-            onClick={fetchData}
+            onClick={refreshAll}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition-colors"
           >
             <RefreshCw className="w-4 h-4 inline mr-2" />
@@ -478,7 +421,7 @@ export function UnifiedDashboard() {
     );
   }
 
-  const majorIndices = dashboardData?.data?.symbols || {};
+  const majorIndices = dashboardData?.symbols || {};
   const macroLabels: Record<string, string> = {
     'DXY': 'US Dollar', 'TNX': '10Y Treasury', 'CL': 'Crude Oil', 'CLF': 'Crude Oil Fut',
     'GC': 'Gold', 'BTC': 'Bitcoin', 'ETH': 'Ethereum', 'SOL': 'Solana', 'XRP': 'Ripple',
@@ -491,11 +434,11 @@ export function UnifiedDashboard() {
     'SPY': 'S&P 500', 'spy': 'S&P 500', 'QQQ': 'NASDAQ', 'qqq': 'NASDAQ',
     'VIX': 'VIX', 'vix': 'VIX', '^VIX': 'VIX'
   };
-  const sectorData = macroData?.sector_performance || dashboardData?.data?.sector_performance || {};
+  const sectorData = macroData?.sector_performance || dashboardData?.sector_performance || {};
   const isMock = dataSource === 'mock';
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 lg:p-6">
+    <div className="p-4 lg:p-6">
       {/* Data source banner */}
       <AnimatePresence>
         {isMock && (
@@ -515,7 +458,7 @@ export function UnifiedDashboard() {
 
       {/* Data quality warning banner */}
       <AnimatePresence>
-        {dashboardData?.data?.dataQuality === 'poor' && (
+        {dashboardData?.dataQuality === 'poor' && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -524,7 +467,7 @@ export function UnifiedDashboard() {
           >
             <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
             <p className="text-red-200 text-xs">
-              <strong>Data Quality Issues</strong> &mdash; {dashboardData.data.qualityIssues?.join('; ') || 'Validation failed'}
+              <strong>Data Quality Issues</strong> &mdash; {dashboardData?.qualityIssues?.join('; ') || 'Validation failed'}
             </p>
           </motion.div>
         )}
@@ -532,7 +475,7 @@ export function UnifiedDashboard() {
 
       {/* Stale data warning */}
       <AnimatePresence>
-        {dashboardData?.data?.freshnessStatus === 'stale' && (
+        {dashboardData?.freshnessStatus === 'stale' && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -541,7 +484,7 @@ export function UnifiedDashboard() {
           >
             <Clock className="w-4 h-4 text-orange-400 flex-shrink-0" />
             <p className="text-orange-200 text-xs">
-              <strong>Stale Data</strong> &mdash; Data is {dashboardData.data.dataAgeSeconds ? `${Math.floor(dashboardData.data.dataAgeSeconds / 60)}m old` : 'old'}. Prices may be outdated.
+              <strong>Stale Data</strong> &mdash; Data is {dashboardData?.dataAgeSeconds ? `${Math.floor(dashboardData.dataAgeSeconds / 60)}m old` : 'old'}. Prices may be outdated.
             </p>
           </motion.div>
         )}
@@ -572,13 +515,13 @@ export function UnifiedDashboard() {
             <p className="text-gray-500 text-xs mt-0.5">Real-time Market Dashboard</p>
           </div>
           <div className="flex items-center gap-3">
-            {dashboardData?.data?.dataQuality && dashboardData.data.dataQuality !== 'unknown' && (
+            {dashboardData?.dataQuality && dashboardData.dataQuality !== 'unknown' && (
               <span className={`px-2 py-1 rounded text-xs font-medium ${
-                dashboardData.data.dataQuality === 'good' ? 'bg-green-900/50 text-green-400 border border-green-700/30' :
-                dashboardData.data.dataQuality === 'partial' ? 'bg-yellow-900/50 text-yellow-400 border border-yellow-700/30' :
+                dashboardData.dataQuality === 'good' ? 'bg-green-900/50 text-green-400 border border-green-700/30' :
+                dashboardData.dataQuality === 'partial' ? 'bg-yellow-900/50 text-yellow-400 border border-yellow-700/30' :
                 'bg-red-900/50 text-red-400 border border-red-700/30'
               }`}>
-                {dashboardData.data.dataQuality.toUpperCase()} QUALITY
+                {dashboardData.dataQuality.toUpperCase()} QUALITY
               </span>
             )}
             {lastUpdate && (
@@ -587,7 +530,7 @@ export function UnifiedDashboard() {
               </span>
             )}
             <button
-              onClick={fetchData}
+              onClick={refreshAll}
               className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors border border-gray-700"
               title="Refresh"
             >
@@ -622,19 +565,46 @@ export function UnifiedDashboard() {
         {/* Col 3 */}
         <div className="space-y-4">
           {Object.keys(sectorData).length > 0 && renderSectorPerformance(sectorData, 1)}
+
+          {/* Top Movers */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors">
+            <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              Top Movers
+            </h3>
+            <div className="space-y-2">
+              {gainers?.slice(0, 3).map((item: any) => (
+                <Link key={item.symbol} href={`/chart/${item.symbol}`}
+                  className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-800 transition-colors">
+                  <span className="font-medium text-sm">{item.symbol}</span>
+                  <span className="text-emerald-400 text-sm">+{item.change_pct?.toFixed(2)}%</span>
+                </Link>
+              ))}
+            </div>
+            <div className="border-t border-gray-800 mt-2 pt-2 space-y-2">
+              {losers?.slice(0, 3).map((item: any) => (
+                <Link key={item.symbol} href={`/chart/${item.symbol}`}
+                  className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-800 transition-colors">
+                  <span className="font-medium text-sm">{item.symbol}</span>
+                  <span className="text-red-400 text-sm">{item.change_pct?.toFixed(2)}%</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+
           <motion.div
             custom={4}
             variants={cardVariants}
             initial="hidden"
             animate="visible"
-            className="bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50 p-4 interactive-card flex flex-col"
+            className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors flex flex-col"
           >
             <div className="flex items-center gap-2 mb-3">
               <Bot className="w-4 h-4 text-green-400" />
-              <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">AI Assistant</h3>
+              <h3 className="text-sm font-medium text-gray-400">AI Assistant</h3>
             </div>
             <div className="flex-1 min-h-[420px]">
-              <LLMChat marketData={dashboardData?.data} />
+              <LLMChat marketData={dashboardData} />
             </div>
           </motion.div>
         </div>
@@ -663,9 +633,9 @@ export function UnifiedDashboard() {
             <div className="flex items-center gap-2">
               <Wifi className={`w-3 h-3 ${isMock ? 'text-yellow-500' : 'text-green-500'}`} />
               <span>{isMock ? 'Mock Data' : 'Live'} &bull; 60s refresh</span>
-              {dashboardData?.data?.freshnessStatus && (
-                <span className={`ml-2 ${dashboardData.data.freshnessStatus === 'fresh' ? 'text-green-600' : 'text-orange-600'}`}>
-                  ({dashboardData.data.freshnessStatus})
+              {dashboardData?.freshnessStatus && (
+                <span className={`ml-2 ${dashboardData.freshnessStatus === 'fresh' ? 'text-green-600' : 'text-orange-600'}`}>
+                  ({dashboardData.freshnessStatus})
                 </span>
               )}
             </div>
