@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from src.api.routers import llm, market, test, websocket
+from src.api.routers import llm, market, test, websocket, screeners, symbols, data_quality
 from src.api.routers.deps import (
     MarketPulseCollector,
     OHLCAnalyzer,
@@ -82,6 +82,9 @@ app.include_router(market.router)
 app.include_router(llm.router)
 app.include_router(test.router)
 app.include_router(websocket.router)
+app.include_router(screeners.router)
+app.include_router(symbols.router)
+app.include_router(data_quality.router)
 
 
 @app.get("/")
