@@ -12,6 +12,7 @@ from .deps import (
     MarketResponse, ChatRequest, ModelSelectionRequest,
     UserComment, RefinedAnalysisRequest, ChartAnalysisRequest,
 )
+from .deps import collector as _collector
 
 router = APIRouter(prefix="/api/llm", tags=["llm"])
 
@@ -26,7 +27,6 @@ async def _get_llm_client() -> LMStudioClient:
     if _shared_client is not None and _shared_client.session is not None and not _shared_client.session.closed:
         return _shared_client
     async with _client_lock:
-        # Double-check after acquiring lock
         if _shared_client is not None and _shared_client.session is not None and not _shared_client.session.closed:
             return _shared_client
         client = LMStudioClient()
@@ -34,6 +34,58 @@ async def _get_llm_client() -> LMStudioClient:
         _shared_client = client
         logger.info(f"Created shared LLM client, model={client.get_active_model()}")
     return _shared_client
+
+
+async def _get_cached_market_context() -> str:
+    """Fetch cached market internals and format as LLM context string."""
+    if not _collector:
+        return ""
+    try:
+        internals = await asyncio.wait_for(
+            _collector.collect_market_internals(),
+            timeout=10.0,
+        )
+        if not internals:
+            return ""
+
+        lines = ["[LIVE MARKET DATA from cache]"]
+
+        symbol_labels = {
+            "spy": "SPY (S&P 500)",
+            "qqq": "QQQ (Nasdaq 100)",
+            "iwm": "IWM (Russell 2000)",
+            "vix": "VIX (Volatility)",
+            "nq=f": "NQ Futures",
+            "btc-usd": "BTC/USD",
+            "eth-usd": "ETH/USD",
+        }
+
+        for key in ["spy", "qqq", "iwm", "vix", "nq=f", "btc-usd", "eth-usd"]:
+            data = internals.get(key)
+            if not data or not isinstance(data, dict):
+                continue
+            label = symbol_labels.get(key, key.upper())
+            price = data.get("price", "N/A")
+            change = data.get("change", "N/A")
+            change_pct = data.get("change_pct", "N/A")
+            volume = data.get("volume", "N/A")
+            sign = "+" if isinstance(change, (int, float)) and change >= 0 else ""
+            lines.append(
+                f"  {label}: ${price} | {sign}{change} ({sign}{change_pct}%) | Vol: {volume}"
+            )
+
+        if "data_source" in internals:
+            lines.append(f"  Data Source: {internals['data_source']}")
+        if "data_quality" in internals:
+            lines.append(f"  Data Quality: {internals['data_quality']}")
+
+        return "\n".join(lines) + "\n"
+    except asyncio.TimeoutError:
+        logger.warning("Timed out fetching cached market data for chat context")
+        return ""
+    except Exception as e:
+        logger.warning(f"Could not fetch cached market data for chat context: {e}")
+        return ""
 
 
 @router.post("/chat", response_model=MarketResponse)
@@ -73,6 +125,10 @@ async def chat_with_llm(request: ChatRequest):
 
         if request.symbol:
             context_info += f"Primary Symbol: {request.symbol}\n"
+
+        cached_market = await _get_cached_market_context()
+        if cached_market:
+            context_info += f"\n{cached_market}\n"
 
         messages = []
         messages.append({'role': 'system', 'content': system_prompt})

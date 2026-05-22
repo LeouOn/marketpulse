@@ -287,19 +287,27 @@ What would you like to know about the current market?`,
   };
 
   const generateMarketContext = () => {
+    const symbolPrices: Record<string, { price: number; change: number; change_pct: number; volume: number }> = {};
+    if (marketData?.symbols) {
+      for (const [sym, data] of Object.entries(marketData.symbols)) {
+        if (data && typeof data === 'object' && 'price' in data) {
+          symbolPrices[sym.toUpperCase()] = {
+            price: (data as any).price,
+            change: (data as any).change,
+            change_pct: (data as any).change_pct,
+            volume: (data as any).volume,
+          };
+        }
+      }
+    }
+
     const context = {
       symbol,
-      current_price: marketData?.current_price || 'Could not get current price - N/A',
-      market_bias: marketData?.market_bias || 'Market bias not available',
-      volatility_regime: marketData?.market_context?.volatility_regime || 'Volatility regime not available',
-      key_levels: {
-        support: marketData?.key_levels?.support?.slice(0, 2) || [],
-        resistance: marketData?.key_levels?.resistance?.slice(0, 2) || []
-      },
-      recent_signals: marketData?.signals?.slice(0, 3) || [],
-      timeframe_consensus: marketData?.timeframe_consensus || {},
+      market_bias: marketData?.marketBias || 'Market bias not available',
+      volatility_regime: marketData?.volatilityRegime || 'Volatility regime not available',
+      volume_flow: marketData?.volumeFlow || null,
+      symbol_prices: symbolPrices,
       market_data_available: !!marketData,
-      message: marketData ? null : "No market data available.",
       detected_symbols: detectedSymbols,
       symbol_context: detectedSymbols.map(sym => {
         const mapping = symbolMappings.find(m => m.symbol === sym);
@@ -318,13 +326,26 @@ What would you like to know about the current market?`,
   const generateEnhancedContext = (query: string) => {
     const symbolsInQuery = scanTextForSymbols(query);
 
-    // Prioritize NQ=F over QQQ for nasdaq queries
     const enhancedSymbols = symbolsInQuery.map(sym => {
       if (sym === 'QQQ' && (query.toLowerCase().includes('nq') || query.toLowerCase().includes('future'))) {
         return 'NQ=F';
       }
       return sym;
     });
+
+    const symbolPrices: Record<string, { price: number; change: number; change_pct: number; volume: number }> = {};
+    if (marketData?.symbols) {
+      for (const [sym, data] of Object.entries(marketData.symbols)) {
+        if (data && typeof data === 'object' && 'price' in data) {
+          symbolPrices[sym.toUpperCase()] = {
+            price: (data as any).price,
+            change: (data as any).change,
+            change_pct: (data as any).change_pct,
+            volume: (data as any).volume,
+          };
+        }
+      }
+    }
 
     return {
       primary_symbol: symbol,
@@ -340,14 +361,10 @@ What would you like to know about the current market?`,
         };
       }),
       market_data_available: !!marketData,
-      market_bias: marketData?.market_bias || 'Market bias not available',
-      volatility_regime: marketData?.market_context?.volatility_regime || 'Volatility regime not available',
-      key_levels: {
-        support: marketData?.key_levels?.support?.slice(0, 2) || [],
-        resistance: marketData?.key_levels?.resistance?.slice(0, 2) || []
-      },
-      recent_signals: marketData?.signals?.slice(0, 3) || [],
-      timeframe_consensus: marketData?.timeframe_consensus || {}
+      market_bias: marketData?.marketBias || 'Market bias not available',
+      volatility_regime: marketData?.volatilityRegime || 'Volatility regime not available',
+      volume_flow: marketData?.volumeFlow || null,
+      symbol_prices: symbolPrices,
     };
   };
 

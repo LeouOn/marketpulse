@@ -1,12 +1,13 @@
 from loguru import logger
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, UniqueConstraint, JSON
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql import func
 from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
 from datetime import datetime
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 class PriceData(Base):
