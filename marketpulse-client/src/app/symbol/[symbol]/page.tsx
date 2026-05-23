@@ -3,9 +3,10 @@
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSymbolDetail, use52WRange, useSymbolStats } from '@/hooks/useSymbolDetail';
+import { useTrendAnalysis } from '@/hooks/useMarketData';
 import { FiftyTwoWeekBar } from '@/components/FiftyTwoWeekBar';
 import { PriceCell } from '@/components/PriceCell';
-import { ArrowLeft, BarChart3, TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import { ArrowLeft, BarChart3, TrendingUp, TrendingDown, Activity, AlertTriangle } from 'lucide-react';
 
 function formatMarketCap(v: number): string {
   if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
@@ -34,11 +35,13 @@ export default function SymbolDetailPage() {
   const params = useParams();
   const symbol = params.symbol as string;
 
-  const { data: detail, isLoading: detailLoading } = useSymbolDetail(symbol);
-  const { data: stats, isLoading: statsLoading } = useSymbolStats(symbol);
-  const { data: range52w, isLoading: rangeLoading } = use52WRange(symbol);
+  const { data: detail, isLoading: detailLoading, isError: detailError, error: detailErrorObj, refetch: refetchDetail } = useSymbolDetail(symbol);
+  const { data: stats, isLoading: statsLoading, isError: statsError, error: statsErrorObj, refetch: refetchStats } = useSymbolStats(symbol);
+  const { data: range52w, isLoading: rangeLoading, isError: rangeError, error: rangeErrorObj, refetch: refetchRange } = use52WRange(symbol);
+  const { data: trendData } = useTrendAnalysis(symbol);
 
-  const isLoading = detailLoading && statsLoading && rangeLoading;
+  const isLoading = detailLoading || statsLoading || rangeLoading;
+  const hasError = detailError || statsError || rangeError;
 
   if (isLoading) {
     return (
@@ -50,6 +53,24 @@ export default function SymbolDetailPage() {
               <div key={i} className="h-20 bg-gray-900 rounded-xl animate-pulse" />
             ))}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <div className="min-h-screen bg-black text-white p-4 md:p-6">
+        <div className="max-w-5xl mx-auto flex flex-col items-center justify-center h-[60vh] text-gray-400">
+          <AlertTriangle className="w-12 h-12 mb-4 text-red-400" />
+          <p className="text-lg mb-2">Failed to load symbol data</p>
+          <p className="text-sm text-gray-500 mb-4">{String(detailErrorObj || statsErrorObj || rangeErrorObj || 'Unknown error')}</p>
+          <button
+            onClick={() => { refetchDetail?.(); refetchStats?.(); refetchRange?.(); }}
+            className="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -143,6 +164,86 @@ export default function SymbolDetailPage() {
             </div>
           </div>
         )}
+
+      {trendData && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <h3 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-blue-400" />
+            Trend Analysis
+          </h3>
+
+          {trendData.timeframe_consensus && (
+            <div className="mb-3">
+              <div className="text-xs text-gray-500 mb-1">Timeframe Consensus</div>
+              <div className="flex items-center gap-3 text-sm">
+                {['bullish', 'bearish', 'neutral'].map((dir) => {
+                  const count = trendData.timeframe_consensus[`${dir}_count`] ?? 0;
+                  return (
+                    <span key={dir} className={dir === 'bullish' ? 'text-emerald-400' : dir === 'bearish' ? 'text-red-400' : 'text-gray-400'}>
+                      {count} {dir}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {trendData.timeframes && (
+            <div className="space-y-2 mb-3">
+              {Object.entries(trendData.timeframes).map(([tf, data]: [string, any]) => (
+                <div key={tf} className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500 w-12">{tf}</span>
+                  <div className="flex-1 mx-2">
+                    <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${data?.direction?.includes('BULL') ? 'bg-emerald-500' : data?.direction?.includes('BEAR') ? 'bg-red-500' : 'bg-gray-600'}`}
+                        style={{ width: `${Math.min((data?.strength ?? 0) * 100, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <span className={`w-16 text-right ${data?.direction?.includes('BULL') ? 'text-emerald-400' : data?.direction?.includes('BEAR') ? 'text-red-400' : 'text-gray-400'}`}>
+                    {data?.direction?.replace('LY_', ' ') ?? '--'} ({((data?.strength ?? 0) * 100).toFixed(0)}%)
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {trendData.key_levels && (
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {trendData.key_levels.support && (
+                <div className="bg-emerald-500/5 rounded p-2">
+                  <div className="text-gray-500">Support</div>
+                  <div className="text-emerald-400 font-medium">{trendData.key_levels.support}</div>
+                </div>
+              )}
+              {trendData.key_levels.resistance && (
+                <div className="bg-red-500/5 rounded p-2">
+                  <div className="text-gray-500">Resistance</div>
+                  <div className="text-red-400 font-medium">{trendData.key_levels.resistance}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {trendData.signals && trendData.signals.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-800">
+              <div className="text-xs text-gray-500 mb-2">Active Signals</div>
+              <div className="space-y-1">
+                {trendData.signals.slice(0, 5).map((s: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className={s.direction === 'BULLISH' ? 'text-emerald-400' : s.direction === 'BEARISH' ? 'text-red-400' : 'text-gray-400'}>
+                      {s.direction === 'BULLISH' ? '▲' : s.direction === 'BEARISH' ? '▼' : '◆'}
+                    </span>
+                    <span className="text-gray-400">{s.type.replace(/_/g, ' ')}</span>
+                    {s.timeframe && <span className="text-gray-600 ml-auto">{s.timeframe}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
         <div className="flex items-center justify-between">
           <p className="text-xs text-gray-600">

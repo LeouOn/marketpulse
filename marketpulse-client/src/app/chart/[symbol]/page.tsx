@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSymbolDetail, useHistoricalOHLC, use52WRange } from '@/hooks/useSymbolDetail';
+import { useOHLCAnalysis } from '@/hooks/useMarketData';
 import { ChartWidget } from '@/components/ChartWidget';
 import { FiftyTwoWeekBar } from '@/components/FiftyTwoWeekBar';
-import { ArrowLeft, BarChart3, Info } from 'lucide-react';
+import { ArrowLeft, BarChart3, Info, AlertTriangle } from 'lucide-react';
 
 const TIMEFRAMES = [
   { label: '5m', period: '5d', tf: '5m' },
@@ -30,11 +31,13 @@ export default function ChartPage() {
   const [activeIdx, setActiveIdx] = useState(4);
 
   const tf = TIMEFRAMES[activeIdx];
-  const { data: ohlcResult, isLoading: ohlcLoading } = useHistoricalOHLC(symbol, tf.tf, tf.period);
-  const { data: detail, isLoading: detailLoading } = useSymbolDetail(symbol);
+  const { data: ohlcResult, isLoading: ohlcLoading, isError: ohlcError, error: ohlcErrorObj, refetch: refetchOHLC } = useHistoricalOHLC(symbol, tf.tf, tf.period);
+  const { data: detail, isLoading: detailLoading, isError: detailError, error: detailErrorObj, refetch: refetchDetail } = useSymbolDetail(symbol);
   const { data: range52w } = use52WRange(symbol);
+  const { data: ohlcAnalysis } = useOHLCAnalysis(symbol);
 
-  const isLoading = ohlcLoading && detailLoading;
+  const isLoading = ohlcLoading || detailLoading;
+  const hasError = ohlcError || detailError;
   const ohlcData = ohlcResult?.data ?? [];
 
   return (
@@ -92,6 +95,18 @@ export default function ChartPage() {
           <div className="lg:col-span-3">
             {isLoading ? (
               <div className="w-full h-[500px] bg-gray-900 rounded-xl animate-pulse" />
+            ) : hasError ? (
+              <div className="flex flex-col items-center justify-center h-[500px] text-gray-400">
+                <AlertTriangle className="w-12 h-12 mb-4 text-red-400" />
+                <p className="text-lg mb-2">Failed to load chart data</p>
+                <p className="text-sm text-gray-500 mb-4">{String(ohlcErrorObj || detailErrorObj || 'Unknown error')}</p>
+                <button
+                  onClick={() => { refetchOHLC?.(); refetchDetail?.(); }}
+                  className="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
             ) : (
               <ChartWidget data={ohlcData} symbol={symbol} height={500} className="rounded-xl overflow-hidden" />
             )}
@@ -161,6 +176,43 @@ export default function ChartPage() {
                     </div>
                   )}
                 </div>
+
+                {ohlcAnalysis && ohlcAnalysis.timeframes && (
+                  <div className="bg-gray-800/50 rounded-lg p-3">
+                    <h4 className="text-xs font-medium text-gray-400 mb-2">Technical Analysis</h4>
+                    {Object.entries(ohlcAnalysis.timeframes).map(([tf, data]: [string, any]) => (
+                      <div key={tf} className="mb-2 last:mb-0">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-gray-500 w-8">{tf.toUpperCase()}</span>
+                          <span className={data?.trend?.direction?.includes('BULL') ? 'text-emerald-400' : data?.trend?.direction?.includes('BEAR') ? 'text-red-400' : 'text-gray-400'}>
+                            {data?.trend?.direction?.replace('LY_', ' ') ?? '--'}
+                          </span>
+                          <span className="text-gray-600">
+                            Str: {((data?.trend?.strength ?? 0) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        {data?.patterns?.length > 0 && (
+                          <div className="ml-10 text-[10px] text-gray-500">
+                            {data.patterns.slice(0, 2).map((p: any) => p.type).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {ohlcAnalysis.signals && ohlcAnalysis.signals.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-700">
+                        <div className="text-[10px] text-gray-500 mb-1">Signals</div>
+                        {ohlcAnalysis.signals.slice(0, 3).map((s: any, i: number) => (
+                          <div key={i} className="flex items-center gap-1 text-[11px]">
+                            <span className={s.direction === 'BULLISH' ? 'text-emerald-400' : s.direction === 'BEARISH' ? 'text-red-400' : 'text-gray-400'}>
+                              {s.direction === 'BULLISH' ? '▲' : s.direction === 'BEARISH' ? '▼' : '◆'}
+                            </span>
+                            <span className="text-gray-400">{s.type.replace(/_/g, ' ')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <Link
                   href={`/symbol/${encodeURIComponent(symbol)}`}
