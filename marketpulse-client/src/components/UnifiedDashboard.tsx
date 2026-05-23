@@ -561,7 +561,6 @@ export function UnifiedDashboard() {
             const c = Object.fromEntries(Object.entries(macroData).filter(([k]) => ['BTC', 'ETH', 'SOL', 'XRP'].includes(k)));
             return Object.keys(c).length > 0 ? renderDataTable('Crypto', <Activity className="w-4 h-4 text-orange-400" />, c as any, macroLabels, 2) : null;
           })()}
-          {renderMarketInternals(3)}
         </div>
 
         {/* Col 3 */}
@@ -611,6 +610,75 @@ export function UnifiedDashboard() {
           </motion.div>
         </div>
       </div>
+
+      {/* Market Breadth */}
+      {breadthData && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Activity className="w-4 h-4 text-blue-400" />
+            <h3 className="text-sm font-medium text-gray-300">Market Breadth</h3>
+            {breadthData.interpretation && (
+              <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${
+                breadthData.interpretation.includes('Bullish') ? 'bg-emerald-500/10 text-emerald-400' :
+                breadthData.interpretation.includes('Bearish') ? 'bg-red-500/10 text-red-400' :
+                'bg-gray-700 text-gray-400'
+              }`}>
+                {breadthData.interpretation}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="text-center">
+              <div className="text-xs text-gray-500 mb-1">NYSE A/D</div>
+              <div className={`text-lg font-bold ${(breadthData.nyse_ad_ratio ?? 0) >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {(breadthData.nyse_ad_ratio ?? 0).toFixed(2)}
+              </div>
+              <div className="text-[10px] text-gray-500">
+                {breadthData.nyse_advancing ?? 0}↑ {breadthData.nyse_declining ?? 0}↓
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs text-gray-500 mb-1">NASDAQ A/D</div>
+              <div className={`text-lg font-bold ${(breadthData.nasdaq_ad_ratio ?? 0) >= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {(breadthData.nasdaq_ad_ratio ?? 0).toFixed(2)}
+              </div>
+              <div className="text-[10px] text-gray-500">
+                {breadthData.nasdaq_advancing ?? 0}↑ {breadthData.nasdaq_declining ?? 0}↓
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs text-gray-500 mb-1">52W High/Low</div>
+              <div className="text-lg font-bold text-gray-300">
+                {breadthData.new_highs ?? 0}/{breadthData.new_lows ?? 0}
+              </div>
+              <div className="text-[10px] text-gray-500">Highs / Lows</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs text-gray-500 mb-1">$TICK</div>
+              <div className={`text-lg font-bold ${(breadthData.tick_30min_avg ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {(breadthData.tick_30min_avg ?? 0) >= 0 ? '+' : ''}{(breadthData.tick_30min_avg ?? 0).toFixed(0)}
+              </div>
+              <div className="text-[10px] text-gray-500">30min avg</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs text-gray-500 mb-1">$VOLD</div>
+              <div className={`text-lg font-bold ${(breadthData.total_vold ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {((breadthData.total_vold ?? 0) / 1e6).toFixed(1)}M
+              </div>
+              <div className="text-[10px] text-gray-500">Up - Down Vol</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs text-gray-500 mb-1">McClellan</div>
+              <div className={`text-lg font-bold ${(breadthData.mcclellan_oscillator ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {(breadthData.mcclellan_oscillator ?? 0) >= 0 ? '+' : ''}{(breadthData.mcclellan_oscillator ?? 0).toFixed(0)}
+              </div>
+              <div className="text-[10px] text-gray-500">
+                Sum: {(breadthData.mcclellan_summation ?? 0).toFixed(0)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* International Markets */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">

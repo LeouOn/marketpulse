@@ -15,6 +15,7 @@ export const marketKeys = {
   search: (query: string) => [...marketKeys.all, 'search', query] as const,
   historical: (symbol: string, tf: string) => [...marketKeys.all, 'historical', symbol, tf] as const,
   breadth: () => [...marketKeys.all, 'breadth'] as const,
+  ohlcAnalysis: (symbol: string) => [...marketKeys.all, 'ohlcAnalysis', symbol] as const,
 };
 
 // Hook for dashboard data
@@ -130,4 +131,24 @@ export function useRealTimeMarketData() {
     isLoading: dashboard.isLoading || macro.isLoading,
     hasError: dashboard.isError || macro.isError,
   };
+}
+
+export function useOHLCAnalysis(symbol: string) {
+  return useQuery({
+    queryKey: [...marketKeys.all, 'ohlc', symbol],
+    queryFn: () => marketPulseAPI.getOHLCAnalysis(symbol),
+    staleTime: 60000,
+    retry: 2,
+    enabled: !!symbol,
+  });
+}
+
+export function useTrendAnalysis(symbol: string) {
+  return useQuery({
+    queryKey: [...marketKeys.all, 'trends', symbol],
+    queryFn: () => marketPulseAPI.getTrendAnalysis(symbol),
+    staleTime: 60000,
+    retry: 2,
+    enabled: !!symbol,
+  });
 }

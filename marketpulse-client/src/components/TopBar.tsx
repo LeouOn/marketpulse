@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Clock, Wifi, WifiOff, Search, Menu } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Clock, Search, Menu } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface TopBarProps {
   onMenuToggle: () => void;
-  isConnected: boolean;
-  lastUpdate: Date | null;
 }
 
 function formatTime(date: Date): string {
@@ -17,21 +18,23 @@ function formatTime(date: Date): string {
   });
 }
 
-function formatLastUpdate(date: Date): string {
-  return date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-export function TopBar({ onMenuToggle, isConnected, lastUpdate }: TopBarProps) {
+export function TopBar({ onMenuToggle }: TopBarProps) {
   const [now, setNow] = useState<Date | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const router = useRouter();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     setNow(new Date());
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const dashboardState = queryClient.getQueryState(['market', 'dashboard']);
+  const isConnected = dashboardState?.status === 'success';
+  const lastUpdate = dashboardState?.dataUpdatedAt
+    ? new Date(dashboardState.dataUpdatedAt)
+    : null;
 
   return (
     <header className="h-14 bg-gray-900 border-b border-gray-800 px-4 flex items-center gap-4 shrink-0">
@@ -43,18 +46,40 @@ export function TopBar({ onMenuToggle, isConnected, lastUpdate }: TopBarProps) {
         <Menu size={20} />
       </button>
 
-      <span className="text-lg font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
+      <Link href="/" className="text-lg font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
         MarketPulse
-      </span>
+      </Link>
 
       <div className="flex-1 flex justify-center">
         <div className="relative hidden md:block">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search symbol..."
-            className="w-[300px] h-9 pl-9 pr-3 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
-          />
+          <button
+            onClick={() => setSearchOpen(!searchOpen)}
+            className="w-[300px] h-9 pl-9 pr-3 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-500 text-left hover:border-gray-600 transition-colors flex items-center cursor-pointer"
+          >
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+            Search symbol...
+          </button>
+          {searchOpen && (
+            <div className="absolute top-11 left-0 w-[300px] z-50">
+              <input
+                autoFocus
+                type="text"
+                placeholder="Type a symbol (e.g. AAPL, SPY, BTC)"
+                className="w-full h-10 px-3 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setSearchOpen(false);
+                  if (e.key === 'Enter') {
+                    const val = (e.target as HTMLInputElement).value.trim().toUpperCase();
+                    if (val) {
+                      router.push(`/chart/${val}`);
+                      setSearchOpen(false);
+                    }
+                  }
+                }}
+                onBlur={() => setTimeout(() => setSearchOpen(false), 200)}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -75,7 +100,7 @@ export function TopBar({ onMenuToggle, isConnected, lastUpdate }: TopBarProps) {
 
         {lastUpdate && (
           <span className="hidden sm:block text-gray-500">
-            Updated {formatLastUpdate(lastUpdate)}
+            Updated {formatTime(lastUpdate)}
           </span>
         )}
 

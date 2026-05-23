@@ -50,6 +50,14 @@ export function Sidebar({ collapsed, onToggle, mobile, onClose }: SidebarProps) 
         </div>
       )}
 
+      {(!collapsed || mobile) && (
+        <div className="px-4 py-3 border-b border-gray-800">
+          <Link href="/" className="text-sm font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
+            MarketPulse
+          </Link>
+        </div>
+      )}
+
       <div className="flex-1 py-4 px-2">
         <ul className="space-y-1">
           {navItems.map((item) => {

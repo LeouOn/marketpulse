@@ -60,8 +60,6 @@ export function LayoutShell({ children }: LayoutShellProps) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar
           onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)}
-          isConnected={true}
-          lastUpdate={null}
         />
         <main className="flex-1 overflow-auto">
           {children}
