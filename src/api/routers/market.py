@@ -99,6 +99,15 @@ async def get_dashboard_data(background_tasks: BackgroundTasks):
         }
 
         try:
+            from src.data.market_breadth import MarketBreadthCollector
+            breadth_collector = MarketBreadthCollector()
+            breadth = breadth_collector.get_market_internals()
+            if breadth:
+                dashboard_data["breadth"] = breadth
+        except Exception:
+            pass
+
+        try:
             from src.core.cache import get_cache
 
             cache = await get_cache()

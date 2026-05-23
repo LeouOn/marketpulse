@@ -544,6 +544,15 @@ class YahooFinanceClient:
                 "exchange": info.get("exchange", ""),
                 "market_cap": info.get("marketCap", 0),
                 "pe_ratio": info.get("trailingPE"),
+                "forward_pe": info.get("forwardPE"),
+                "peg_ratio": info.get("pegRatio"),
+                "dividend_yield": info.get("dividendYield"),
+                "short_pct_float": info.get("shortPercentOfFloat"),
+                "recommendation": info.get("recommendationKey"),
+                "target_mean_price": info.get("targetMeanPrice"),
+                "analyst_count": info.get("numberOfAnalystOpinions"),
+                "earnings_growth": info.get("earningsGrowth"),
+                "institutional_ownership": info.get("heldPercentInstitutions"),
             }
 
         except Exception as e:

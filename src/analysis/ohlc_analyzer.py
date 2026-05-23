@@ -723,6 +723,78 @@ class OHLCAnalyzer:
                     }
                 )
 
+            # Moving average crossover signals
+            for tf_name, tf_data in analysis.get("timeframes", {}).items():
+                indicators = tf_data.get("indicators", {})
+                sma_20 = indicators.get("sma_20")
+                sma_50 = indicators.get("sma_50")
+                ema_12 = indicators.get("ema_12")
+                ema_26 = indicators.get("ema_26")
+
+                if sma_20 is not None and sma_50 is not None:
+                    if sma_20 > sma_50:
+                        signals.append({
+                            "type": "MA_CROSSOVER",
+                            "direction": "BULLISH",
+                            "strength": "STRONG" if (sma_20 - sma_50) / sma_50 > 0.02 else "MODERATE",
+                            "reasoning": f"SMA20 ({sma_20:.2f}) > SMA50 ({sma_50:.2f}) on {tf_name}",
+                            "confidence": 70,
+                            "timeframe": tf_name,
+                        })
+                    elif sma_20 < sma_50:
+                        signals.append({
+                            "type": "MA_CROSSOVER",
+                            "direction": "BEARISH",
+                            "strength": "STRONG" if (sma_50 - sma_20) / sma_50 > 0.02 else "MODERATE",
+                            "reasoning": f"SMA20 ({sma_20:.2f}) < SMA50 ({sma_50:.2f}) on {tf_name}",
+                            "confidence": 70,
+                            "timeframe": tf_name,
+                        })
+
+                if ema_12 is not None and ema_26 is not None:
+                    if ema_12 > ema_26:
+                        signals.append({
+                            "type": "MACD_BULLISH",
+                            "direction": "BULLISH",
+                            "strength": "MODERATE",
+                            "reasoning": f"EMA12 > EMA26 on {tf_name} (MACD positive)",
+                            "confidence": 65,
+                            "timeframe": tf_name,
+                        })
+                    elif ema_12 < ema_26:
+                        signals.append({
+                            "type": "MACD_BEARISH",
+                            "direction": "BEARISH",
+                            "strength": "MODERATE",
+                            "reasoning": f"EMA12 < EMA26 on {tf_name} (MACD negative)",
+                            "confidence": 65,
+                            "timeframe": tf_name,
+                        })
+
+                # Volume anomaly signals
+                vol = tf_data.get("volume_analysis", {})
+                if vol.get("anomaly"):
+                    ratio = vol.get("volume_ratio", 1)
+                    trend_dir = tf_data.get("trend", {}).get("direction", "NEUTRAL")
+                    if ratio > 2.0:
+                        signals.append({
+                            "type": "VOLUME_SPIKE",
+                            "direction": "BULLISH" if "BULL" in trend_dir else "BEARISH",
+                            "strength": "STRONG" if ratio > 3.0 else "MODERATE",
+                            "reasoning": f"Volume {ratio:.1f}x average on {tf_name} ({'bullish conviction' if 'BULL' in trend_dir else 'institutional selling'})",
+                            "confidence": 60,
+                            "timeframe": tf_name,
+                        })
+                    elif ratio < 0.5:
+                        signals.append({
+                            "type": "LOW_VOLUME",
+                            "direction": "NEUTRAL",
+                            "strength": "WEAK",
+                            "reasoning": f"Volume only {ratio:.1f}x average on {tf_name} — low conviction move",
+                            "confidence": 50,
+                            "timeframe": tf_name,
+                        })
+
             # Pattern signals
             for pattern in analysis["patterns"][:3]:  # Top 3 patterns
                 if "REVERSAL" in pattern["signal"]:
