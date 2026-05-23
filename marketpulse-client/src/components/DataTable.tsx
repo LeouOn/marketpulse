@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Fragment } from 'react';
+import { useState } from 'react';
 import { clsx } from 'clsx';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 

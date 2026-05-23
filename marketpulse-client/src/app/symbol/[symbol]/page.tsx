@@ -6,6 +6,7 @@ import { useSymbolDetail, use52WRange, useSymbolStats } from '@/hooks/useSymbolD
 import { useTrendAnalysis } from '@/hooks/useMarketData';
 import { FiftyTwoWeekBar } from '@/components/FiftyTwoWeekBar';
 import { PriceCell } from '@/components/PriceCell';
+import { formatVolume } from '@/lib/format';
 import { ArrowLeft, BarChart3, TrendingUp, TrendingDown, Activity, AlertTriangle } from 'lucide-react';
 
 function formatMarketCap(v: number): string {
@@ -13,13 +14,6 @@ function formatMarketCap(v: number): string {
   if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
   if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
   return `$${v.toLocaleString()}`;
-}
-
-function formatVolume(v: number): string {
-  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
-  return v.toLocaleString();
 }
 
 function StatCard({ label, value }: { label: string; value: string | undefined }) {

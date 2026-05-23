@@ -25,12 +25,13 @@
   --border-color-light: #444444;
 }
 
-html, body {
+html {
   height: 100%;
-  overflow: hidden;
 }
 
 body {
+  height: 100%;
+  overflow: hidden;
   color: rgb(var(--foreground-rgb));
   background: linear-gradient(
       to bottom,

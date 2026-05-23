@@ -57,11 +57,11 @@ export function LayoutShell({ children }: LayoutShellProps) {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         <TopBar
           onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)}
         />
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 min-h-0 overflow-y-auto">
           {children}
         </main>
         <footer className="h-8 bg-gray-900 border-t border-gray-800 px-4 flex items-center justify-between text-xs text-gray-500 shrink-0">

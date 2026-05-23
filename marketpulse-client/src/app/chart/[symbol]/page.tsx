@@ -7,6 +7,7 @@ import { useSymbolDetail, useHistoricalOHLC, use52WRange } from '@/hooks/useSymb
 import { useOHLCAnalysis } from '@/hooks/useMarketData';
 import { ChartWidget } from '@/components/ChartWidget';
 import { FiftyTwoWeekBar } from '@/components/FiftyTwoWeekBar';
+import { formatVolume } from '@/lib/format';
 import { ArrowLeft, BarChart3, Info, AlertTriangle } from 'lucide-react';
 
 const TIMEFRAMES = [
@@ -17,13 +18,6 @@ const TIMEFRAMES = [
   { label: '1D', period: '1y', tf: '1d' },
   { label: '1W', period: '2y', tf: '1wk' },
 ] as const;
-
-function formatVolume(v: number): string {
-  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
-  return v.toLocaleString();
-}
 
 export default function ChartPage() {
   const params = useParams();

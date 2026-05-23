@@ -6,7 +6,6 @@ interface FiftyTwoWeekBarProps {
   currentPrice: number;
   high52w: number;
   low52w: number;
-  width?: number | string;
   showLabels?: boolean;
   className?: string;
 }

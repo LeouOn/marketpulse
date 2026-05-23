@@ -10,14 +10,7 @@ import {
 } from 'lightweight-charts';
 import type { IChartApi, Time } from 'lightweight-charts';
 
-interface OHLCVBar {
-  timestamp: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
+import type { OHLCVBar } from '@/types/market';
 
 interface ChartWidgetProps {
   data: OHLCVBar[];

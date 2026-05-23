@@ -18,34 +18,72 @@ export interface MarketInternals {
   };
 }
 
+export interface MarketSymbolData {
+  price: number;
+  change: number;
+  change_pct: number;
+  volume: number;
+  timestamp: string;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+}
+
 export interface DashboardData {
   timestamp: string;
-  marketBias: 'BULLISH' | 'BEARISH' | 'MIXED' | 'NEUTRAL';
-  volatilityRegime: 'EXTREME' | 'HIGH' | 'NORMAL' | 'LOW' | 'UNKNOWN';
-  symbols: {
-    spy?: MarketSymbol;
-    qqq?: MarketSymbol;
-    vix?: MarketSymbol;
-  };
+  marketBias: string;
+  volatilityRegime: string;
+  symbols: Record<string, MarketSymbolData>;
   volumeFlow: {
-    totalVolume60min: number;
-    symbolsTracked: number;
+    total_volume_60min: number;
+    symbols_tracked: number;
   };
   aiAnalysis?: string;
   dataSource?: string;
+  market_session?: string;
+  sector_performance?: Record<string, number>;
+  dataQuality?: string;
+  qualityIssues?: string[];
+  synthetic?: boolean;
+  freshnessStatus?: string;
+  dataAgeSeconds?: number;
+  screener_summary?: any;
+  breadth?: MarketBreadth;
 }
 
 export interface MacroData {
-  DXY: MarketSymbol;
-  TNX: MarketSymbol;
-  CLF: MarketSymbol;
-  GC: MarketSymbol;
-  BTC: MarketSymbol;
-  ETH: MarketSymbol;
-  market_session: string;
-  economic_sentiment: string;
-  sector_performance: Record<string, number>;
-  risk_appetite: string;
+  [symbol: string]: MarketSymbolData | string | Record<string, number> | undefined;
+  market_session?: string;
+  economic_sentiment?: string;
+  risk_appetite?: string;
+  sector_performance?: Record<string, number>;
+}
+
+export interface MarketBreadth {
+  nyse_advancing: number;
+  nyse_declining: number;
+  nyse_unchanged: number;
+  nyse_ad_ratio: number;
+  nyse_net_ad: number;
+  nasdaq_advancing: number;
+  nasdaq_declining: number;
+  nasdaq_unchanged: number;
+  nasdaq_ad_ratio: number;
+  nasdaq_net_ad: number;
+  interpretation: string;
+  new_highs: number;
+  new_lows: number;
+  hl_ratio: number;
+  net_hl: number;
+  tick_value: number;
+  tick_30min_avg: number;
+  tick_4hr_avg: number;
+  nyse_vold: number;
+  nasdaq_vold: number;
+  total_vold: number;
+  mcclellan_oscillator: number;
+  mcclellan_summation: number;
 }
 
 export interface PriceData {

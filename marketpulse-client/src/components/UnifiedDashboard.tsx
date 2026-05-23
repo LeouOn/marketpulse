@@ -6,44 +6,14 @@ import Link from 'next/link';
 import { LLMChat } from './llm-chat';
 import { Sparkline } from './ui/Sparkline';
 import { SkeletonCard } from './ui/LoadingSpinner';
-import { RefreshCw, Activity, TrendingUp, TrendingDown, Clock, Globe, BarChart3, Bot, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
+import { RefreshCw, Activity, TrendingUp, TrendingDown, Clock, Globe, BarChart3, Bot, AlertTriangle, WifiOff } from 'lucide-react';
 import { useDashboardData, useMacroData, useBreadthData } from '@/hooks/useMarketData';
 import { useScreener } from '@/hooks/useScreenerData';
+import { formatVolume as formatVolumeShared } from '@/lib/format';
 
-interface MarketData {
-  symbol: string;
-  price: number;
-  change: number;
-  change_pct: number;
-  volume: number;
-  timestamp: string;
-}
+import type { MarketSymbolData, MarketBreadth } from '@/types/market';
 
-interface MarketBreadth {
-  nyse_advancing: number;
-  nyse_declining: number;
-  nyse_unchanged: number;
-  nyse_ad_ratio: number;
-  nyse_net_ad: number;
-  nasdaq_advancing: number;
-  nasdaq_declining: number;
-  nasdaq_unchanged: number;
-  nasdaq_ad_ratio: number;
-  nasdaq_net_ad: number;
-  interpretation: string;
-  new_highs: number;
-  new_lows: number;
-  hl_ratio: number;
-  net_hl: number;
-  tick_value: number;
-  tick_30min_avg: number;
-  tick_4hr_avg: number;
-  nyse_vold: number;
-  nasdaq_vold: number;
-  total_vold: number;
-  mcclellan_oscillator: number;
-  mcclellan_summation: number;
-}
+type MarketData = MarketSymbolData;
 
 const cardVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -111,12 +81,7 @@ export function UnifiedDashboard() {
     };
   };
 
-  const formatVolume = (volume: number) => {
-    if (volume >= 1e9) return `${(volume / 1e9).toFixed(1)}B`;
-    if (volume >= 1e6) return `${(volume / 1e6).toFixed(1)}M`;
-    if (volume >= 1e3) return `${(volume / 1e3).toFixed(1)}K`;
-    return volume.toString();
-  };
+  const formatVolume = formatVolumeShared;
 
   /** Deterministic seeded PRNG so server and client produce identical sparklines */
   const seededRandom = (seed: string) => {
@@ -511,10 +476,10 @@ export function UnifiedDashboard() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl lg:text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-              MarketPulse
+            <h1 className="text-xl lg:text-2xl font-bold text-gray-100">
+              Dashboard
             </h1>
-            <p className="text-gray-500 text-xs mt-0.5">Real-time Market Dashboard</p>
+            <p className="text-gray-500 text-xs mt-0.5">Real-time Market Overview</p>
           </div>
           <div className="flex items-center gap-3">
             {dashboardData?.dataQuality && dashboardData.dataQuality !== 'unknown' && (
@@ -697,21 +662,6 @@ export function UnifiedDashboard() {
         return Object.keys(f).length > 0 ? <div className="mb-4">{renderDataTable('Forex', <Globe className="w-4 h-4 text-green-400" />, f as any, macroLabels, 7)}</div> : null;
       })()}
 
-      {/* Footer */}
-        <footer className="mt-6 pt-4 border-t border-gray-800/50">
-          <div className="flex items-center justify-between text-xs text-gray-600">
-            <div className="flex items-center gap-2">
-              <Wifi className={`w-3 h-3 ${isMock ? 'text-yellow-500' : 'text-green-500'}`} />
-              <span>{isMock ? 'Mock Data' : 'Live'} &bull; 60s refresh</span>
-              {dashboardData?.freshnessStatus && (
-                <span className={`ml-2 ${dashboardData.freshnessStatus === 'fresh' ? 'text-green-600' : 'text-orange-600'}`}>
-                  ({dashboardData.freshnessStatus})
-                </span>
-              )}
-            </div>
-            <div>MarketPulse v0.2.0</div>
-          </div>
-        </footer>
     </div>
   );
 }

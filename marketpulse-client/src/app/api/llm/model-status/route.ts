@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = 'http://localhost:8000/api/llm/model-status';
+const BACKEND_BASE = process.env.BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = `${BACKEND_BASE}/api/llm/model-status`;
 
 export const dynamic = 'force-dynamic';
 

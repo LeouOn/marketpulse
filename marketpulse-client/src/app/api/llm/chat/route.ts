@@ -5,7 +5,8 @@ import { NextRequest, NextResponse } from 'next/server';
 // (ECONNRESET / socket hang up). This route uses fetch with an explicit 3-minute
 // timeout so the backend has time to load models and generate responses.
 
-const BACKEND_URL = 'http://localhost:8000/api/llm/chat';
+const BACKEND_BASE = process.env.BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = `${BACKEND_BASE}/api/llm/chat`;
 const TIMEOUT_MS = 180_000; // 3 minutes — matches backend's asyncio.wait_for timeout
 
 export const maxDuration = 300; // Allow up to 5 minutes for this route (Vercel compat)

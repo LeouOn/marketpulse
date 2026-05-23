@@ -75,7 +75,7 @@ export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [detectedSymbols, setDetectedSymbols] = useState<string[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Symbol mapping dictionary for pattern recognition
@@ -192,7 +192,9 @@ export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
   };
 
   useEffect(() => {
@@ -239,7 +241,7 @@ What would you like to know about the current market?`,
         const data = await response.json();
         if (data.success && data.data?.models) {
           setAvailableModels(data.data.models);
-          console.log('Available models:', data.data.models);
+
         }
       }
     } catch (error) {
@@ -431,7 +433,7 @@ What would you like to know about the current market?`,
         }))
       };
 
-      console.log('[LLM Chat] Sending request...', { symbol, msgLen: userMessage.content.length });
+
       const requestStart = Date.now();
 
       const response = await fetch('/api/llm/chat', {
@@ -444,7 +446,7 @@ What would you like to know about the current market?`,
       });
 
       const elapsed = ((Date.now() - requestStart) / 1000).toFixed(1);
-      console.log(`[LLM Chat] Response: ${response.status} (${elapsed}s)`);
+
 
       clearTimeout(timeoutId);
 
@@ -665,7 +667,7 @@ What would you like to know about the current market?`,
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         <AnimatePresence>
           {messages.map((message) => (
             <motion.div
@@ -717,7 +719,6 @@ What would you like to know about the current market?`,
             </motion.div>
           ))}
         </AnimatePresence>
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Suggested Questions */}

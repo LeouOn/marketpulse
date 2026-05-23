@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Flame, BarChart3, Bell, Settings, ChevronLeft, ChevronRight, X, TrendingUp } from 'lucide-react';

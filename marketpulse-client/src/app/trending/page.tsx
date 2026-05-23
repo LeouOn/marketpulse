@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useScreener } from '@/hooks/useScreenerData';
 import { FiftyTwoWeekBar } from '@/components/FiftyTwoWeekBar';
 import { Flame, TrendingUp, TrendingDown, BarChart3, RefreshCw } from 'lucide-react';
+import { formatVolume } from '@/lib/format';
 import type { ScreenerResult } from '@/types/market';
 
 type ScreenerTab = 'gainers' | 'losers' | 'most_active';
@@ -20,13 +21,6 @@ const tabStyles: Record<ScreenerTab, string> = {
   losers: 'bg-red-500/20 text-red-400 border border-red-500/30',
   most_active: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
 };
-
-function formatVolume(vol: number): string {
-  if (vol >= 1e9) return `${(vol / 1e9).toFixed(1)}B`;
-  if (vol >= 1e6) return `${(vol / 1e6).toFixed(1)}M`;
-  if (vol >= 1e3) return `${(vol / 1e3).toFixed(1)}K`;
-  return vol.toLocaleString();
-}
 
 function RankBadge({ rank }: { rank: number }) {
   if (rank === 1) return <span className="font-bold text-yellow-400">#{rank}</span>;
