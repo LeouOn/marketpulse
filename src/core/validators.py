@@ -223,7 +223,6 @@ def validate_market_internals(internals: dict[str, Any], strict: bool = True) ->
         ValidationResult with aggregated issues/warnings
     """
     result = ValidationResult(True)
-    symbol_data_keys = ["price", "change", "change_pct", "volume"]
 
     for symbol, data in internals.items():
         # Skip metadata keys

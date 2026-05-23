@@ -1,6 +1,7 @@
 """WebSocket endpoints"""
 
 import asyncio
+import contextlib
 from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -65,12 +66,10 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        try:
+        with contextlib.suppress(Exception):
             await websocket.send_json(
                 {"type": "error", "message": f"WebSocket error: {str(e)}", "timestamp": datetime.now().isoformat()}
             )
-        except Exception:
-            pass
     finally:
         logger.info("WebSocket connection closed")
 

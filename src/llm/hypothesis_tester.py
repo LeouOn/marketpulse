@@ -2,6 +2,7 @@
 Structured approach to testing trading hypotheses with LLM assistance
 """
 
+import contextlib
 import json
 import re
 from dataclasses import asdict, dataclass
@@ -162,13 +163,8 @@ class HypothesisTester:
                     val = key_val[1].strip()
 
                     # Try to convert to number
-                    try:
-                        if "." in val:
-                            val = float(val)
-                        else:
-                            val = int(val)
-                    except:
-                        pass
+                    with contextlib.suppress(BaseException):
+                        val = float(val) if "." in val else int(val)
 
                     criteria[key] = val
                     current_key = key
@@ -251,14 +247,14 @@ class HypothesisTester:
         context_chunks = self.knowledge_rag.retrieve_context(hypothesis["description"])
 
         # Build data summary
-        data_summary = f"""
+        f"""
         HYPOTHESIS: {hypothesis["description"]}
-        
+
         TESTING CRITERIA: {json.dumps(hypothesis["testing_criteria"], indent=2)}
-        
+
         MARKET DATA:
         {json.dumps(market_data, indent=2)}
-        
+
         SUCCESS METRICS: {", ".join(hypothesis["success_metrics"])}
         """
 

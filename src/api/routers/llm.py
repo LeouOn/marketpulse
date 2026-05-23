@@ -1,6 +1,7 @@
 """LLM chat and analysis endpoints"""
 
 import asyncio
+import contextlib
 import json
 from datetime import datetime
 
@@ -175,10 +176,8 @@ async def chat_with_llm(request: ChatRequest):
             # Reset shared client on error so next request creates a fresh one
             global _shared_client
             if _shared_client:
-                try:
+                with contextlib.suppress(Exception):
                     await _shared_client.__aexit__(None, None, None)
-                except Exception:
-                    pass
                 _shared_client = None
 
         if not response_text:
@@ -231,47 +230,46 @@ async def get_available_models():
             )
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    "http://localhost:1234/v1/models", timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status == 200:
-                        models_data = await response.json()
+            async with aiohttp.ClientSession() as session, session.get(
+                "http://localhost:1234/v1/models", timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status == 200:
+                    models_data = await response.json()
 
-                        models = []
-                        loaded_ids = [m.get("id") for m in models_data.get("data", [])]
-                        config_model = getattr(settings.llm.primary, "model", "")
-                        recommended_id = (
-                            config_model if config_model in loaded_ids else (loaded_ids[0] if loaded_ids else None)
-                        )
+                    models = []
+                    loaded_ids = [m.get("id") for m in models_data.get("data", [])]
+                    config_model = getattr(settings.llm.primary, "model", "")
+                    recommended_id = (
+                        config_model if config_model in loaded_ids else (loaded_ids[0] if loaded_ids else None)
+                    )
 
-                        for model in models_data.get("data", []):
-                            model_id = model.get("id")
-                            model_info = {
-                                "id": model_id,
-                                "object": model.get("object"),
-                                "owned_by": model.get("owned_by"),
-                                "size": _estimate_model_size(model_id or ""),
-                                "recommended": model_id == recommended_id,
-                            }
-                            models.append(model_info)
+                    for model in models_data.get("data", []):
+                        model_id = model.get("id")
+                        model_info = {
+                            "id": model_id,
+                            "object": model.get("object"),
+                            "owned_by": model.get("owned_by"),
+                            "size": _estimate_model_size(model_id or ""),
+                            "recommended": model_id == recommended_id,
+                        }
+                        models.append(model_info)
 
-                        model_cache["models"] = models
-                        model_cache["timestamp"] = current_time
+                    model_cache["models"] = models
+                    model_cache["timestamp"] = current_time
 
-                        return MarketResponse(
-                            success=True,
-                            data={
-                                "models": models,
-                                "cached": False,
-                                "cache_age": 0,
-                                "provider": "lm_studio",
-                                "total_count": len(models),
-                            },
-                            timestamp=datetime.now().isoformat(),
-                        )
-                    else:
-                        raise Exception(f"LM Studio API returned status {response.status}")
+                    return MarketResponse(
+                        success=True,
+                        data={
+                            "models": models,
+                            "cached": False,
+                            "cache_age": 0,
+                            "provider": "lm_studio",
+                            "total_count": len(models),
+                        },
+                        timestamp=datetime.now().isoformat(),
+                    )
+                else:
+                    raise Exception(f"LM Studio API returned status {response.status}")
 
         except Exception as lm_error:
             logger.warning(f"Could not fetch models from LM Studio: {lm_error}")
@@ -459,8 +457,8 @@ async def refine_analysis(request: RefinedAnalysisRequest):
 
         {focus_text}
 
-        Please refine the analysis addressing the user feedback. 
-        Provide an improved analysis that incorporates their perspectives 
+        Please refine the analysis addressing the user feedback.
+        Provide an improved analysis that incorporates their perspectives
         and focuses on the areas they mentioned.
 
         Additional Context:
@@ -561,10 +559,7 @@ async def run_sanity_check():
 async def get_conversation_history(analysis_id: str):
     """Get conversation history for an analysis"""
     try:
-        if db_manager:
-            history = db_manager.get_analysis_conversation(analysis_id)
-        else:
-            history = []
+        history = db_manager.get_analysis_conversation(analysis_id) if db_manager else []
 
         return MarketResponse(
             success=True,

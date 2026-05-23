@@ -191,7 +191,6 @@ class MarketDataCollector:
 
     async def get_ohlc_data(self, symbol: str, timeframe: str = "1Min", use_cache: bool = True) -> list[dict] | None:
         """Get OHLCV data for a symbol"""
-        cache_key = f"ohlc:{symbol}:{timeframe}"
 
         if use_cache and self.cache:
             cached = await self.cache.get_ohlc(symbol, timeframe)

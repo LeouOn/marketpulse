@@ -1,11 +1,10 @@
 """Screener data endpoints"""
 
-from datetime import datetime
 
 from fastapi import APIRouter
 from loguru import logger
 
-from .deps import MarketResponse, success_response, error_response, settings
+from .deps import MarketResponse, error_response, settings, success_response
 
 router = APIRouter(prefix="/api/market/screeners", tags=["screeners"])
 

@@ -3,7 +3,6 @@ from loguru import logger
 from src.core.config import get_settings
 from src.core.database import DatabaseManager, Symbol
 
-
 SYMBOLS = [
     ("SPY", "S&P 500 ETF", "etf", "SPY"),
     ("QQQ", "Nasdaq 100 ETF", "etf", "QQQ"),

@@ -1,13 +1,11 @@
 """Background scheduler for market data collection"""
 
-import asyncio
-from datetime import datetime, date, time as dtime, timedelta
-from typing import Optional
+from datetime import date, datetime, timedelta
+from datetime import time as dtime
 
-from loguru import logger
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.triggers.cron import CronTrigger
+from loguru import logger
 
 
 class MarketScheduler:
@@ -38,7 +36,6 @@ class MarketScheduler:
 
     def _is_market_hours(self) -> bool:
         """Check if US equity market is open (9:30-16:00 ET, Mon-Fri)"""
-        from datetime import timezone
         from zoneinfo import ZoneInfo
 
         now = datetime.now(ZoneInfo("US/Eastern"))
@@ -50,8 +47,8 @@ class MarketScheduler:
 
     def _get_db_session(self):
         try:
-            from src.core.database import DatabaseManager
             from src.core.config import get_settings
+            from src.core.database import DatabaseManager
             settings = get_settings()
             db = DatabaseManager(settings.database_url)
             return db.get_session()
@@ -181,8 +178,9 @@ class MarketScheduler:
 
     async def _compute_symbol_stats(self):
         """Compute and store daily symbol statistics (52W levels, SMAs, etc.)"""
-        from src.core.database import SymbolStats, PriceData
         import numpy as np
+
+        from src.core.database import PriceData, SymbolStats
 
         session = self._get_db_session()
         if not session:

@@ -256,7 +256,7 @@ class YahooFinanceClient:
             forex_symbols = []
             futures_symbols = []
 
-            for indicator, symbol in self.macro_symbols.items():
+            for _indicator, symbol in self.macro_symbols.items():
                 if symbol.endswith("-USD"):
                     crypto_symbols.append(symbol)
                 elif symbol.startswith("^"):

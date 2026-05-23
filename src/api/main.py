@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from src.api.routers import llm, market, test, websocket, screeners, symbols, data_quality
+from src.api.routers import data_quality, llm, market, screeners, symbols, test, websocket
 from src.api.routers.deps import (
     MarketPulseCollector,
     OHLCAnalyzer,

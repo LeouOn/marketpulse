@@ -203,14 +203,14 @@ class MarketBreadthCollector:
             nasdaq_stats = self._get_intraday_stats(self.nasdaq_symbols)
 
             # Calculate up volume and down volume
-            nyse_up_vol = sum(vol for vol, change in zip(nyse_stats["volumes"], nyse_stats["changes"]) if change > 0)
-            nyse_down_vol = sum(vol for vol, change in zip(nyse_stats["volumes"], nyse_stats["changes"]) if change < 0)
+            nyse_up_vol = sum(vol for vol, change in zip(nyse_stats["volumes"], nyse_stats["changes"], strict=False) if change > 0)
+            nyse_down_vol = sum(vol for vol, change in zip(nyse_stats["volumes"], nyse_stats["changes"], strict=False) if change < 0)
 
             nasdaq_up_vol = sum(
-                vol for vol, change in zip(nasdaq_stats["volumes"], nasdaq_stats["changes"]) if change > 0
+                vol for vol, change in zip(nasdaq_stats["volumes"], nasdaq_stats["changes"], strict=False) if change > 0
             )
             nasdaq_down_vol = sum(
-                vol for vol, change in zip(nasdaq_stats["volumes"], nasdaq_stats["changes"]) if change < 0
+                vol for vol, change in zip(nasdaq_stats["volumes"], nasdaq_stats["changes"], strict=False) if change < 0
             )
 
             nyse_vold = nyse_up_vol - nyse_down_vol

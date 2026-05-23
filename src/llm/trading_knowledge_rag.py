@@ -209,7 +209,7 @@ class TradingKnowledgeRAG:
 
     def _extract_relevant_section(self, content: str, query: str, max_chars: int = 500) -> str:
         """Extract most relevant section of document"""
-        content_lower = content.lower()
+        content.lower()
         query_words = query.split()
 
         # Find best matching paragraph
@@ -240,7 +240,7 @@ class TradingKnowledgeRAG:
         term_lower = term.lower()
         related = []
 
-        for glossary_term in self.glossary.keys():
+        for glossary_term in self.glossary:
             if term_lower in glossary_term.lower() or glossary_term.lower() in term_lower:
                 related.append(glossary_term)
 

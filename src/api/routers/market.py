@@ -460,9 +460,8 @@ async def get_trend_analysis(symbol: str):
         }
 
         for tf_name, tf_data in ohlc_analysis.get("timeframes", {}).items():
-            if "current_price" in tf_data:
-                if trend_report["current_price"] is None:
-                    trend_report["current_price"] = tf_data["current_price"]
+            if "current_price" in tf_data and trend_report["current_price"] is None:
+                trend_report["current_price"] = tf_data["current_price"]
 
             if "trend" in tf_data:
                 trend_direction = tf_data["trend"].get("direction", "NEUTRAL")

@@ -37,7 +37,7 @@ class OHLCAnalyzer:
 
             timeframe_results = []
 
-            for tf_name, tf_config in self.timeframes.items():
+            for tf_name, _tf_config in self.timeframes.items():
                 try:
                     # Extract OHLC data for this timeframe
                     ohlc_data = self._extract_ohlc_data(data, tf_name, symbol)
@@ -655,8 +655,8 @@ class OHLCAnalyzer:
             # Calculate consensus strength
             consensus = []
             for group in groups:
-                avg_price = sum(l["price"] for l in group) / len(group)
-                total_strength = sum(l["strength"] for l in group)
+                avg_price = sum(item["price"] for item in group) / len(group)
+                total_strength = sum(item["strength"] for item in group)
 
                 consensus.append(
                     {
@@ -811,7 +811,7 @@ class OHLCAnalyzer:
 
             # Level breakout/breakdown signals
             current_price = None
-            for tf_name, tf_data in analysis["timeframes"].items():
+            for _tf_name, tf_data in analysis["timeframes"].items():
                 if "current_price" in tf_data:
                     current_price = tf_data["current_price"]
                     break

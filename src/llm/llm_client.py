@@ -148,14 +148,14 @@ Focus on: market bias, volatility regime, trading opportunities, and key levels.
         user_prompt = f"""
         Market Internals Data:
         {json.dumps(internals_data, indent=2)}
-        
+
         Provide a brief analysis covering:
         1. Current market bias (Bullish/Bearish/Mixed)
         2. Volatility assessment
         3. Key levels to watch
         4. Trading implications
         5. Risk considerations
-        
+
         Keep response under 200 words.
         """
 
@@ -182,13 +182,13 @@ Provide comprehensive analysis with clear reasoning for trading decisions."""
         data_summary = f"""
         Current Market Internals:
         {json.dumps(internals_data, indent=2)}
-        
+
         {f"Timeframe Analysis: {json.dumps(timeframe_analysis, indent=2)}" if timeframe_analysis else ""}
         """
 
         user_prompt = f"""
         {data_summary}
-        
+
         Provide detailed analysis covering:
         1. Multi-timeframe market structure
         2. Sentiment analysis (fear/greed, positioning)
@@ -198,7 +198,7 @@ Provide comprehensive analysis with clear reasoning for trading decisions."""
         6. Near-term catalysts and events
         7. Overall market regime classification
         8. Actionable trading implications
-        
+
         Include reasoning for each conclusion.
         Response limit: 500 words.
         """
@@ -223,10 +223,10 @@ focusing on risk management, execution quality, and learning opportunities."""
         user_prompt = f"""
         Trade Setup Context:
         {json.dumps(trade_context, indent=2)}
-        
+
         Market Context at Time:
         {json.dumps(market_internals, indent=2)}
-        
+
         Review this trading setup focusing on:
         1. Setup quality and market alignment
         2. Risk/reward assessment
@@ -235,7 +235,7 @@ focusing on risk management, execution quality, and learning opportunities."""
         5. Market condition suitability
         6. What could be improved
         7. Lessons learned for future setups
-        
+
         Be objective and educational.
         Response limit: 300 words.
         """
@@ -270,7 +270,7 @@ focusing on risk management, execution quality, and learning opportunities."""
 3. Logical consistency
 4. Potential data quality issues
 5. Missing critical information
-            
+
 Respond with a JSON object containing:
 - is_valid: boolean
 - issues: list of issues found (if any)
