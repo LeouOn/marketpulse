@@ -22,15 +22,6 @@ export function LayoutShell({ children }: LayoutShellProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
-    if (mobileMenuOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [mobileMenuOpen]);
-
   return (
     <div className="flex h-screen bg-gray-950 text-white">
       <div className="hidden lg:block">

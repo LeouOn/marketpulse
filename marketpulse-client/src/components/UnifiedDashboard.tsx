@@ -220,53 +220,6 @@ export function UnifiedDashboard() {
     );
   };
 
-  const renderMarketInternals = (cardIndex: number) => {
-    const metrics = [
-      { label: 'NYSE A/D Ratio', value: breadthData?.nyse_ad_ratio, format: 'ratio' as const, sub: breadthData ? `${breadthData.nyse_advancing}↑ / ${breadthData.nyse_declining}↓` : '' },
-      { label: 'NASDAQ A/D Ratio', value: breadthData?.nasdaq_ad_ratio, format: 'ratio' as const, sub: breadthData ? `${breadthData.nasdaq_advancing}↑ / ${breadthData.nasdaq_declining}↓` : '' },
-      { label: '52W High/Low', value: breadthData?.hl_ratio, format: 'ratio' as const, sub: breadthData ? `${breadthData.new_highs}H / ${breadthData.new_lows}L` : '', raw: breadthData ? `${breadthData.new_highs} / ${breadthData.new_lows}` : '--' },
-      { label: '$TICK (30m)', value: breadthData?.tick_30min_avg, format: 'count' as const, sub: breadthData ? `Now: ${breadthData.tick_value > 0 ? '+' : ''}${breadthData.tick_value}` : '', signed: true },
-      { label: '$VOLD', value: breadthData?.total_vold, format: 'large' as const, sub: breadthData ? `NYSE: ${(breadthData.nyse_vold / 1e6).toFixed(0)}M` : '', signed: true },
-      { label: 'McClellan Osc', value: breadthData?.mcclellan_oscillator, format: 'count' as const, sub: breadthData ? `Sum: ${breadthData.mcclellan_summation.toFixed(0)}` : '', signed: true },
-    ];
-
-    return (
-      <motion.div
-        custom={cardIndex}
-        variants={cardVariants}
-        initial="hidden"
-        animate="visible"
-        className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors interactive-card"
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <Activity className="w-4 h-4 text-blue-400" />
-          <h3 className="text-sm font-medium text-gray-400">Market Internals</h3>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          {metrics.map(({ label, value, format, sub, raw, signed }) => {
-            const numVal = value as number | undefined;
-            const displayVal = raw
-              || (numVal !== undefined && numVal !== 0
-                ? (format === 'ratio' ? numVal.toFixed(2) : format === 'large' ? `${(numVal / 1e6).toFixed(0)}M` : numVal.toFixed(1))
-                : '--');
-            const prefix = signed && numVal !== undefined && numVal > 0 ? '+' : '';
-            const valColor = numVal === undefined ? 'text-gray-600' : numVal > 0 ? 'text-green-400' : numVal < 0 ? 'text-red-400' : 'text-white';
-
-            return (
-              <div key={label} className="bg-gray-800/40 rounded-lg p-2.5 hover:bg-gray-800/60 transition-colors">
-                <div className="text-[10px] text-gray-500 mb-0.5">{label}</div>
-                <div className={`text-lg font-bold font-mono ${valColor}`}>
-                  {raw ? raw : `${prefix}${displayVal}`}
-                </div>
-                {sub && <div className="text-[10px] text-gray-600">{sub}</div>}
-              </div>
-            );
-          })}
-        </div>
-      </motion.div>
-    );
-  };
-
   const renderMarketSession = (cardIndex: number) => {
     const session = dashboardData?.market_session || macroData?.market_session || 'Unknown';
     const isLive = session === 'US Regular';
@@ -286,7 +239,7 @@ export function UnifiedDashboard() {
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <div className="text-[10px] text-gray-500">Session</div>
+            <div className="text-[10px] text-gray-500">Market</div>
             <div className={`text-sm font-bold ${isLive ? 'text-green-400' : 'text-gray-300'}`}>{session}</div>
           </div>
           <div>
@@ -570,7 +523,7 @@ export function UnifiedDashboard() {
               <h3 className="text-sm font-medium text-gray-400">AI Assistant</h3>
             </div>
             <div className="flex-1 min-h-[420px]">
-              <LLMChat marketData={dashboardData} />
+              <LLMChat marketData={dashboardData} macroData={macroData} />
             </div>
           </motion.div>
         </div>

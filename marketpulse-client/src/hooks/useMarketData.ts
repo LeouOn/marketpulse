@@ -19,7 +19,7 @@ export const marketKeys = {
 };
 
 // Hook for dashboard data
-export function useDashboardData(refreshInterval = 30000) {
+export function useDashboardData(refreshInterval = 60000) {
   const queryClient = useQueryClient();
 
   const result = useQuery({
@@ -28,7 +28,7 @@ export function useDashboardData(refreshInterval = 30000) {
     refetchInterval: refreshInterval,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    staleTime: 10000,
+    staleTime: 30000,
   });
 
   // Manual refresh function
@@ -43,7 +43,7 @@ export function useDashboardData(refreshInterval = 30000) {
 }
 
 // Hook for macro data
-export function useMacroData(refreshInterval = 60000) {
+export function useMacroData(refreshInterval = 120000) {
   const queryClient = useQueryClient();
 
   const result = useQuery({
@@ -52,7 +52,7 @@ export function useMacroData(refreshInterval = 60000) {
     refetchInterval: refreshInterval,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    staleTime: 15000,
+    staleTime: 60000,
   });
 
   // Manual refresh function
@@ -91,7 +91,7 @@ export function useAIAnalysis() {
 }
 
 // Hook for market breadth data
-export function useBreadthData(refreshInterval = 60000) {
+export function useBreadthData(refreshInterval = 120000) {
   const queryClient = useQueryClient();
 
   const result = useQuery({
@@ -100,7 +100,7 @@ export function useBreadthData(refreshInterval = 60000) {
     refetchInterval: refreshInterval,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    staleTime: 15000,
+    staleTime: 60000,
   });
 
   const refresh = () => {

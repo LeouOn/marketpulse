@@ -8,8 +8,8 @@ export function useScreener(type: 'gainers' | 'losers' | 'most_active') {
   return useQuery({
     queryKey: marketKeys.screener(type),
     queryFn: () => marketPulseAPI.getScreenerData(type),
-    refetchInterval: 120000,
-    staleTime: 60000,
+    refetchInterval: 300000,
+    staleTime: 120000,
     retry: 2,
     placeholderData: (previousData) => previousData,
   });

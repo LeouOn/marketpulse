@@ -63,9 +63,10 @@ interface SymbolMapping {
 interface LLMChatProps {
   symbol?: string;
   marketData?: any;
+  macroData?: any;
 }
 
-export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
+export function LLMChat({ symbol = 'SPY', marketData, macroData }: LLMChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -290,8 +291,10 @@ What would you like to know about the current market?`,
 
   const generateMarketContext = () => {
     const symbolPrices: Record<string, { price: number; change: number; change_pct: number; volume: number }> = {};
-    if (marketData?.symbols) {
-      for (const [sym, data] of Object.entries(marketData.symbols)) {
+
+    const addPrices = (source: any) => {
+      if (!source) return;
+      for (const [sym, data] of Object.entries(source)) {
         if (data && typeof data === 'object' && 'price' in data) {
           symbolPrices[sym.toUpperCase()] = {
             price: (data as any).price,
@@ -301,7 +304,10 @@ What would you like to know about the current market?`,
           };
         }
       }
-    }
+    };
+
+    addPrices(marketData?.symbols);
+    addPrices(macroData);
 
     const context = {
       symbol,
@@ -336,8 +342,10 @@ What would you like to know about the current market?`,
     });
 
     const symbolPrices: Record<string, { price: number; change: number; change_pct: number; volume: number }> = {};
-    if (marketData?.symbols) {
-      for (const [sym, data] of Object.entries(marketData.symbols)) {
+
+    const addPrices = (source: any) => {
+      if (!source) return;
+      for (const [sym, data] of Object.entries(source)) {
         if (data && typeof data === 'object' && 'price' in data) {
           symbolPrices[sym.toUpperCase()] = {
             price: (data as any).price,
@@ -347,7 +355,10 @@ What would you like to know about the current market?`,
           };
         }
       }
-    }
+    };
+
+    addPrices(marketData?.symbols);
+    addPrices(macroData);
 
     return {
       primary_symbol: symbol,
