@@ -90,16 +90,15 @@ test-frontend: ## Run frontend tests only
 
 # Code Quality
 lint: ## Run linting checks
-	@echo "Linting Python code..."
-	python -m flake8 src/ --ignore=E501,W503 || echo "flake8 not installed"
-	python -m mypy src/ --ignore-missing-imports || echo "mypy not installed"
+	@echo "Linting Python code with ruff..."
+	ruff check src/ tests/
 	@echo "Linting frontend code..."
 	cd marketpulse-client && npm run lint || echo "Frontend linting not configured"
 
 format: ## Format code
-	@echo "Formatting Python code..."
-	python -m black src/ || echo "black not installed"
-	python -m isort src/ || echo "isort not installed"
+	@echo "Formatting Python code with ruff..."
+	ruff format src/ tests/
+	ruff check src/ tests/ --fix
 	@echo "Formatting frontend code..."
 	cd marketpulse-client && npm run format || echo "Frontend formatting not configured"
 

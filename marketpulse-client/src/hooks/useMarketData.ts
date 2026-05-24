@@ -9,10 +9,17 @@ export const marketKeys = {
   dashboard: () => [...marketKeys.all, 'dashboard'] as const,
   macro: () => [...marketKeys.all, 'macro'] as const,
   ai: () => [...marketKeys.all, 'ai'] as const,
+  screener: (type: string) => [...marketKeys.all, 'screener', type] as const,
+  symbol: (symbol: string) => [...marketKeys.all, 'symbol', symbol] as const,
+  stats: (symbol: string) => [...marketKeys.all, 'stats', symbol] as const,
+  search: (query: string) => [...marketKeys.all, 'search', query] as const,
+  historical: (symbol: string, tf: string) => [...marketKeys.all, 'historical', symbol, tf] as const,
+  breadth: () => [...marketKeys.all, 'breadth'] as const,
+  ohlcAnalysis: (symbol: string) => [...marketKeys.all, 'ohlcAnalysis', symbol] as const,
 };
 
 // Hook for dashboard data
-export function useDashboardData(refreshInterval = 30000) {
+export function useDashboardData(refreshInterval = 60000) {
   const queryClient = useQueryClient();
 
   const result = useQuery({
@@ -21,7 +28,7 @@ export function useDashboardData(refreshInterval = 30000) {
     refetchInterval: refreshInterval,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    staleTime: 10000,
+    staleTime: 30000,
   });
 
   // Manual refresh function
@@ -36,7 +43,7 @@ export function useDashboardData(refreshInterval = 30000) {
 }
 
 // Hook for macro data
-export function useMacroData(refreshInterval = 60000) {
+export function useMacroData(refreshInterval = 120000) {
   const queryClient = useQueryClient();
 
   const result = useQuery({
@@ -45,7 +52,7 @@ export function useMacroData(refreshInterval = 60000) {
     refetchInterval: refreshInterval,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    staleTime: 15000,
+    staleTime: 60000,
   });
 
   // Manual refresh function
@@ -83,6 +90,29 @@ export function useAIAnalysis() {
   };
 }
 
+// Hook for market breadth data
+export function useBreadthData(refreshInterval = 120000) {
+  const queryClient = useQueryClient();
+
+  const result = useQuery({
+    queryKey: marketKeys.breadth(),
+    queryFn: () => marketPulseAPI.getMarketBreadth(),
+    refetchInterval: refreshInterval,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 60000,
+  });
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: marketKeys.breadth() });
+  };
+
+  return {
+    ...result,
+    refresh,
+  };
+}
+
 // Hook for real-time updates
 export function useRealTimeMarketData() {
   const [isConnected, setIsConnected] = useState(false);
@@ -101,4 +131,24 @@ export function useRealTimeMarketData() {
     isLoading: dashboard.isLoading || macro.isLoading,
     hasError: dashboard.isError || macro.isError,
   };
+}
+
+export function useOHLCAnalysis(symbol: string) {
+  return useQuery({
+    queryKey: [...marketKeys.all, 'ohlc', symbol],
+    queryFn: () => marketPulseAPI.getOHLCAnalysis(symbol),
+    staleTime: 60000,
+    retry: 2,
+    enabled: !!symbol,
+  });
+}
+
+export function useTrendAnalysis(symbol: string) {
+  return useQuery({
+    queryKey: [...marketKeys.all, 'trends', symbol],
+    queryFn: () => marketPulseAPI.getTrendAnalysis(symbol),
+    staleTime: 60000,
+    retry: 2,
+    enabled: !!symbol,
+  });
 }
