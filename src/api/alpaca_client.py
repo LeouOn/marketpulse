@@ -1,258 +1,142 @@
-"""Alpaca API Client for MarketPulse
-Handles stock market data collection from Alpaca Markets
+"""Alpaca Market Data API Client
+Replaces Yahoo Finance for stock market data
 """
 
-import asyncio
+from datetime import datetime
+from typing import Any
+
 import aiohttp
-from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Any
-import pandas as pd
 from loguru import logger
 
-from ..core.config import Settings
+from ..core.config import get_settings
 
 
 class AlpacaClient:
-    """Alpaca Markets API client for real-time and historical market data"""
-    
-    def __init__(self, settings: Settings):
-        self.settings = settings
-        self.api_key = settings.api_keys.alpaca.key_id
-        self.secret_key = settings.api_keys.alpaca.secret_key
-        self.base_url = settings.api_keys.alpaca.base_url
-        
-        self.session = None
-        
-        # Important symbols for market internals
-        self.key_symbols = [
-            'SPY',    # S&P 500 ETF (market breadth)
-            'QQQ',    # NASDAQ ETF (tech sector)
-            'IWM',    # Russell 2000 (small caps)
-            'VIX',    # Volatility index
-            'DIA',    # Dow Jones ETF
-            'AAPL',   # Large cap tech
-            'TSLA',   # Growth stock sentiment
-            'NVDA'    # AI/semiconductor leader
-        ]
-        
+    """Alpaca API client for real-time and historical market data"""
+
+    def __init__(self, settings=None):
+        self.settings = settings or get_settings()
+        self.key_id = self.settings.api_keys.alpaca.key_id
+        self.secret_key = self.settings.api_keys.alpaca.secret_key
+        self.base_url = self.settings.api_keys.alpaca.base_url
+        self.session: aiohttp.ClientSession | None = None
+
     async def __aenter__(self):
-        """Async context manager entry"""
-        self.session = aiohttp.ClientSession(
-            headers={
-                'APCA-API-KEY-ID': self.api_key,
-                'APCA-API-SECRET-KEY': self.secret_key
-            }
-        )
+        headers = {"APCA-API-KEY-ID": self.key_id, "APCA-API-SECRET-KEY": self.secret_key}
+        timeout = aiohttp.ClientTimeout(total=30)
+        self.session = aiohttp.ClientSession(headers=headers, timeout=timeout)
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
         if self.session:
             await self.session.close()
-    
-    async def get_bars(self, symbol: str, timeframe: str = '1Min', 
-                      limit: int = 100) -> Optional[pd.DataFrame]:
-        """
-        Get OHLCV data for a symbol
-        
-        Args:
-            symbol: Stock symbol (e.g., 'SPY')
-            timeframe: '1Min', '5Min', '15Min', '1Hour', '1Day'
-            limit: Number of bars to retrieve
-            
-        Returns:
-            DataFrame with OHLCV data
-        """
+
+    async def _get(self, endpoint: str, params: dict = None) -> dict | None:
+        """Make GET request to Alpaca API"""
         try:
-            # Calculate timeframe
-            now = datetime.now()
-            if timeframe == '1Min':
-                start_time = now - timedelta(minutes=limit)
-            elif timeframe == '5Min':
-                start_time = now - timedelta(minutes=limit * 5)
-            elif timeframe == '15Min':
-                start_time = now - timedelta(minutes=limit * 15)
-            elif timeframe == '1Hour':
-                start_time = now - timedelta(hours=limit)
-            elif timeframe == '1Day':
-                start_time = now - timedelta(days=limit)
-            else:
-                start_time = now - timedelta(hours=limit)
-            
-            # Use data.alpaca.markets for market data (not paper-api)
-            data_base_url = "https://data.alpaca.markets"
-            url = f"{data_base_url}/v2/stocks/{symbol}/bars"
-            
-            # Format dates in RFC3339 format (without microseconds)
-            params = {
-                'timeframe': timeframe,
-                'start': start_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                'end': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                'limit': limit,
-                'adjustment': 'raw'
-            }
-            
-            # Use data API key for authentication
-            headers = {
-                'APCA-API-KEY-ID': self.api_key,
-                'APCA-API-SECRET-KEY': self.secret_key
-            }
-            
-            async with self.session.get(url, params=params, headers=headers) as response:
+            url = f"{self.base_url}{endpoint}"
+            async with self.session.get(url, params=params) as response:
                 if response.status == 200:
-                    data = await response.json()
-                    
-                    if 'bars' in data and data['bars']:
-                        bars_df = pd.DataFrame(data['bars'])
-                        bars_df['timestamp'] = pd.to_datetime(bars_df['t'])
-                        bars_df.set_index('timestamp', inplace=True)
-                        
-                        # Rename columns to standard format
-                        bars_df = bars_df.rename(columns={
-                            'o': 'open',
-                            'h': 'high', 
-                            'l': 'low',
-                            'c': 'close',
-                            'v': 'volume'
-                        })
-                        
-                        logger.debug(f"Retrieved {len(bars_df)} bars for {symbol}")
-                        return bars_df
-                    else:
-                        logger.warning(f"No bars data found for {symbol}")
-                        return None
+                    return await response.json()
+                elif response.status == 401:
+                    logger.error("Alpaca API authentication failed")
+                elif response.status == 429:
+                    logger.warning("Alpaca API rate limit hit")
                 else:
-                    logger.error(f"Alpaca API error {response.status}: {await response.text()}")
-                    return None
-                    
+                    logger.warning(f"Alpaca API error {response.status}: {await response.text()}")
+                return None
         except Exception as e:
-            logger.error(f"Error fetching bars for {symbol}: {e}")
+            logger.error(f"Alpaca API request failed: {e}")
             return None
-    
-    async def get_multiple_bars(self, symbols: List[str], 
-                               timeframe: str = '1Min', 
-                               limit: int = 100) -> Dict[str, pd.DataFrame]:
-        """Get bars for multiple symbols concurrently"""
-        tasks = []
-        for symbol in symbols:
-            task = self.get_bars(symbol, timeframe, limit)
-            tasks.append((symbol, task))
-        
-        results = {}
-        for symbol, task in tasks:
-            try:
-                df = await task
-                if df is not None:
-                    results[symbol] = df
-            except Exception as e:
-                logger.error(f"Failed to get data for {symbol}: {e}")
-        
-        return results
-    
-    async def get_market_internals(self) -> Dict[str, Any]:
-        """
-        Calculate basic market internals using key symbols
-        This is the core function for getting regular market condition updates
-        """
-        try:
-            logger.info("🗂️ Collecting market internals from Alpaca...")
-            
-            # Get current market data for key symbols
-            data = await self.get_multiple_bars(self.key_symbols, '1Min', 60)
-            
-            if not data:
-                logger.warning("No market data available")
-                return {}
-            
-            internals = {}
-            
-            # SPY - Overall market sentiment
-            if 'SPY' in data and not data['SPY'].empty:
-                spy_latest = data['SPY'].iloc[-1]
-                spy_prev = data['SPY'].iloc[-2] if len(data['SPY']) > 1 else spy_latest
-               
-                internals['spy'] = {
-                    'price': float(spy_latest['close']),
-                    'change': float(spy_latest['close'] - spy_prev['close']),
-                    'change_pct': float((spy_latest['close'] - spy_prev['close']) / spy_prev['close'] * 100),
-                    'volume': int(spy_latest['volume']),
-                    'timestamp': spy_latest.name.isoformat()
-                }
-            
-            # QQQ - NASDAQ/tech sentiment
-            if 'QQQ' in data and not data['QQQ'].empty:
-                qqq_latest = data['QQQ'].iloc[-1]
-                qqq_prev = data['QQQ'].iloc[-2] if len(data['QQQ']) > 1 else qqq_latest
-                
-                internals['qqq'] = {
-                    'price': float(qqq_latest['close']),
-                    'change': float(qqq_latest['close'] - qqq_prev['close']),
-                    'change_pct': float((qqq_latest['close'] - qqq_prev['close']) / qqq_prev['close'] * 100),
-                    'volume': int(qqq_latest['volume']),
-                    'timestamp': qqq_latest.name.isoformat()
-                }
-            
-            # VIX - Volatility indicator
-            if 'VIX' in data and not data['VIX'].empty:
-                vix_latest = data['VIX'].iloc[-1]
-                vix_prev = data['VIX'].iloc[-2] if len(data['VIX']) > 1 else vix_latest
-                
-                internals['vix'] = {
-                    'price': float(vix_latest['close']),
-                    'change': float(vix_latest['close'] - vix_prev['close']),
-                    'change_pct': float((vix_latest['close'] - vix_prev['close']) / vix_prev['close'] * 100),
-                    'volume': int(vix_latest['volume']),
-                    'timestamp': vix_latest.name.isoformat()
-                }
-            
-            # Volume flow analysis
-            total_volume = sum(data[symbol]['volume'].sum() for symbol in data.keys())
-            internals['volume_flow'] = {
-                'total_volume_60min': int(total_volume),
-                'symbols_tracked': len(data),
-                'timestamp': datetime.now().isoformat()
+
+    async def get_quote(self, symbol: str) -> dict[str, Any] | None:
+        """Get real-time quote for a symbol"""
+        data = await self._get(f"/v2/stocks/{symbol}/quotes/latest")
+        if data and "quote" in data:
+            q = data["quote"]
+            return {
+                "symbol": symbol,
+                "price": float(q.get("ap", q.get("bp", 0))),
+                "bid": float(q.get("ap", 0)),
+                "ask": float(q.get("bp", 0)),
+                "volume": int(q.get("v", 0)),
+                "timestamp": q.get("t", datetime.now().isoformat()),
             }
-            
-            logger.success("✅ Market internals collected successfully")
-            return internals
-            
-        except Exception as e:
-            logger.error(f"Error collecting market internals: {e}")
-            return {}
-    
-    def format_internals_for_display(self, internals: Dict[str, Any]) -> str:
-        """Format market internals for console display"""
-        if not internals:
-            return "No market data available"
-        
-        lines = []
-        lines.append("=" * 60)
-        lines.append(f"MARKET INTERNALS - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        lines.append("=" * 60)
-        
-        # SPY (Market sentiment)
-        if 'spy' in internals:
-            spy = internals['spy']
-            change_symbol = "+" if spy['change'] >= 0 else "-"
-            lines.append(f"SPY: ${spy['price']:.2f} | {change_symbol}{abs(spy['change']):.2f} ({change_symbol}{abs(spy['change_pct']):.2f}%)")
-        
-        # QQQ (Tech sentiment)  
-        if 'qqq' in internals:
-            qqq = internals['qqq']
-            change_symbol = "+" if qqq['change'] >= 0 else "-"
-            lines.append(f"QQQ: ${qqq['price']:.2f} | {change_symbol}{abs(qqq['change']):.2f} ({change_symbol}{abs(qqq['change_pct']):.2f}%)")
-        
-        # VIX (Volatility)
-        if 'vix' in internals:
-            vix = internals['vix']
-            vol_regime = "HIGH" if vix['price'] > 20 else "NORMAL" if vix['price'] > 15 else "LOW"
-            change_symbol = "+" if vix['change'] > 0 else "-"
-            lines.append(f"VIX: {vix['price']:.2f} ({vol_regime}) | {change_symbol}{abs(vix['change']):.2f}")
-        
-        # Volume flow
-        if 'volume_flow' in internals:
-            vf = internals['volume_flow']
-            lines.append(f"Volume: {vf['total_volume_60min']:,} (60min) | Symbols: {vf['symbols_tracked']}")
-        
-        lines.append("=" * 60)
-        return "\n".join(lines)
+        return None
+
+    async def get_quotes(self, symbols: list[str]) -> dict[str, dict]:
+        """Get real-time quotes for multiple symbols"""
+        result = {}
+        for symbol in symbols:
+            quote = await self.get_quote(symbol)
+            if quote:
+                result[symbol] = quote
+        return result
+
+    async def get_bars(
+        self, symbol: str, timeframe: str = "1Min", start: datetime = None, end: datetime = None, limit: int = 100
+    ) -> list[dict] | None:
+        """Get historical OHLCV bars"""
+        params = {"timeframe": timeframe, "limit": limit}
+        if start:
+            params["start"] = start.isoformat()
+        if end:
+            params["end"] = end.isoformat()
+
+        data = await self._get(f"/v2/stocks/{symbol}/bars", params)
+        if data and "bars" in data:
+            return [
+                {
+                    "timestamp": bar["t"],
+                    "open": float(bar["o"]),
+                    "high": float(bar["h"]),
+                    "low": float(bar["l"]),
+                    "close": float(bar["c"]),
+                    "volume": int(bar["v"]),
+                    "trade_count": int(bar["n"]),
+                }
+                for bar in data["bars"]
+            ]
+        return None
+
+    async def get_market_data(self, symbols: list[str]) -> dict[str, Any]:
+        """
+        Get comprehensive market data for symbols (replacement for Yahoo Finance)
+        Returns market internals format compatible with existing code
+        """
+        internals = {}
+        for symbol in symbols:
+            try:
+                quote = await self.get_quote(symbol)
+                if quote:
+                    internals[symbol] = {
+                        "price": quote["price"],
+                        "bid": quote["bid"],
+                        "ask": quote["ask"],
+                        "change": 0,  # Need previous close for change
+                        "change_pct": 0,
+                        "volume": quote["volume"],
+                        "timestamp": quote["timestamp"],
+                    }
+            except Exception as e:
+                logger.debug(f"Failed to get {symbol}: {e}")
+                continue
+
+        return internals
+
+    async def get_snapshot(self, symbol: str) -> dict[str, Any] | None:
+        """Get market snapshot for a symbol"""
+        return await self._get(f"/v2/stocks/{symbol}/snapshot")
+
+    async def is_available(self) -> bool:
+        """Check if Alpaca API is accessible"""
+        try:
+            data = await self._get("/v2/account")
+            return data is not None
+        except:
+            return False
+
+
+async def get_alpaca_client() -> AlpacaClient:
+    """Get Alpaca client instance"""
+    return AlpacaClient()

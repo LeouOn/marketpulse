@@ -5,14 +5,7 @@ const nextConfig = {
       bodySizeLimit: '2mb',
     },
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
-      },
-    ]
-  },
+  // API proxy handled by src/middleware.ts
 }
 
 module.exports = nextConfig

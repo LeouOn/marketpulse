@@ -1,18 +1,19 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import Dict, Any
 import sys
-import asyncio
 from datetime import datetime
 
-sys.path.append('.')
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+sys.path.append(".")
 from src.data.market_collector import MarketPulseCollector
 
 # Create a minimal FastAPI app for testing
 app = FastAPI(title="MarketPulse Test API")
 
+
 class DataSourceRequest(BaseModel):
     symbols: list = ["SPY", "QQQ", "AAPL", "BTC-USD"]
+
 
 @app.put("/test/data-source")
 async def test_data_source(request: DataSourceRequest):
@@ -34,7 +35,7 @@ async def test_data_source(request: DataSourceRequest):
             "total_symbols": len(internals),
             "market_data": {},
             "sample_data": {},
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         # Check for valid price data
@@ -46,7 +47,7 @@ async def test_data_source(request: DataSourceRequest):
                     "price": data["price"],
                     "change": data.get("change", 0),
                     "change_pct": data.get("change_pct", 0),
-                    "volume": data.get("volume", 0)
+                    "volume": data.get("volume", 0),
                 }
 
         analysis["valid_symbols"] = valid_symbols
@@ -62,12 +63,10 @@ async def test_data_source(request: DataSourceRequest):
     except Exception as e:
         print(f"Error in data source test: {e}")
         import traceback
+
         traceback.print_exc()
-        return {
-            "success": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
+        return {"success": False, "error": str(e), "timestamp": datetime.now().isoformat()}
+
 
 @app.put("/test/yahoo-direct")
 async def test_yahoo_direct():
@@ -93,29 +92,24 @@ async def test_yahoo_direct():
                         "change": data[symbol].get("change"),
                         "change_pct": data[symbol].get("change_pct"),
                         "volume": data[symbol].get("volume"),
-                        "raw_keys": list(data[symbol].keys())
+                        "raw_keys": list(data[symbol].keys()),
                     }
                 else:
                     results[symbol] = {"success": False, "error": "Symbol not found in response"}
             except Exception as e:
                 results[symbol] = {"success": False, "error": str(e)}
 
-        return {
-            "success": True,
-            "yahoo_finance_results": results,
-            "timestamp": datetime.now().isoformat()
-        }
+        return {"success": True, "yahoo_finance_results": results, "timestamp": datetime.now().isoformat()}
 
     except Exception as e:
         print(f"Error in Yahoo Finance test: {e}")
         import traceback
+
         traceback.print_exc()
-        return {
-            "success": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
+        return {"success": False, "error": str(e), "timestamp": datetime.now().isoformat()}
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8001, reload=False)

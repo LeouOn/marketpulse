@@ -63,19 +63,20 @@ interface SymbolMapping {
 interface LLMChatProps {
   symbol?: string;
   marketData?: any;
+  macroData?: any;
 }
 
-export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
+export function LLMChat({ symbol = 'SPY', marketData, macroData }: LLMChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('aquif-3.5-max-42b-a3b-i1');
+  const [selectedModel, setSelectedModel] = useState<string>('');
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [detectedSymbols, setDetectedSymbols] = useState<string[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Symbol mapping dictionary for pattern recognition
@@ -192,7 +193,9 @@ export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
   };
 
   useEffect(() => {
@@ -234,12 +237,12 @@ What would you like to know about the current market?`,
 
   const fetchAvailableModels = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/llm/models');
+      const response = await fetch('/api/llm/models');
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data?.models) {
           setAvailableModels(data.data.models);
-          console.log('Available models:', data.data.models);
+
         }
       }
     } catch (error) {
@@ -249,7 +252,7 @@ What would you like to know about the current market?`,
 
   const fetchModelStatus = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/llm/model-status');
+      const response = await fetch('/api/llm/model-status');
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data) {
@@ -266,7 +269,7 @@ What would you like to know about the current market?`,
 
   const selectModel = async (modelId: string) => {
     try {
-      const response = await fetch('http://localhost:8000/api/llm/select-model', {
+      const response = await fetch('/api/llm/select-model', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model_id: modelId, provider: 'lm_studio' })
@@ -287,19 +290,32 @@ What would you like to know about the current market?`,
   };
 
   const generateMarketContext = () => {
+    const symbolPrices: Record<string, { price: number; change: number; change_pct: number; volume: number }> = {};
+
+    const addPrices = (source: any) => {
+      if (!source) return;
+      for (const [sym, data] of Object.entries(source)) {
+        if (data && typeof data === 'object' && 'price' in data) {
+          symbolPrices[sym.toUpperCase()] = {
+            price: (data as any).price,
+            change: (data as any).change,
+            change_pct: (data as any).change_pct,
+            volume: (data as any).volume,
+          };
+        }
+      }
+    };
+
+    addPrices(marketData?.symbols);
+    addPrices(macroData);
+
     const context = {
       symbol,
-      current_price: marketData?.current_price || 'Could not get current price - N/A',
-      market_bias: marketData?.market_bias || 'Market bias not available',
-      volatility_regime: marketData?.market_context?.volatility_regime || 'Volatility regime not available',
-      key_levels: {
-        support: marketData?.key_levels?.support?.slice(0, 2) || [],
-        resistance: marketData?.key_levels?.resistance?.slice(0, 2) || []
-      },
-      recent_signals: marketData?.signals?.slice(0, 3) || [],
-      timeframe_consensus: marketData?.timeframe_consensus || {},
+      market_bias: marketData?.marketBias || 'Market bias not available',
+      volatility_regime: marketData?.volatilityRegime || 'Volatility regime not available',
+      volume_flow: marketData?.volumeFlow || null,
+      symbol_prices: symbolPrices,
       market_data_available: !!marketData,
-      message: marketData ? null : "No market data available.",
       detected_symbols: detectedSymbols,
       symbol_context: detectedSymbols.map(sym => {
         const mapping = symbolMappings.find(m => m.symbol === sym);
@@ -318,13 +334,31 @@ What would you like to know about the current market?`,
   const generateEnhancedContext = (query: string) => {
     const symbolsInQuery = scanTextForSymbols(query);
 
-    // Prioritize NQ=F over QQQ for nasdaq queries
     const enhancedSymbols = symbolsInQuery.map(sym => {
       if (sym === 'QQQ' && (query.toLowerCase().includes('nq') || query.toLowerCase().includes('future'))) {
         return 'NQ=F';
       }
       return sym;
     });
+
+    const symbolPrices: Record<string, { price: number; change: number; change_pct: number; volume: number }> = {};
+
+    const addPrices = (source: any) => {
+      if (!source) return;
+      for (const [sym, data] of Object.entries(source)) {
+        if (data && typeof data === 'object' && 'price' in data) {
+          symbolPrices[sym.toUpperCase()] = {
+            price: (data as any).price,
+            change: (data as any).change,
+            change_pct: (data as any).change_pct,
+            volume: (data as any).volume,
+          };
+        }
+      }
+    };
+
+    addPrices(marketData?.symbols);
+    addPrices(macroData);
 
     return {
       primary_symbol: symbol,
@@ -340,14 +374,10 @@ What would you like to know about the current market?`,
         };
       }),
       market_data_available: !!marketData,
-      market_bias: marketData?.market_bias || 'Market bias not available',
-      volatility_regime: marketData?.market_context?.volatility_regime || 'Volatility regime not available',
-      key_levels: {
-        support: marketData?.key_levels?.support?.slice(0, 2) || [],
-        resistance: marketData?.key_levels?.resistance?.slice(0, 2) || []
-      },
-      recent_signals: marketData?.signals?.slice(0, 3) || [],
-      timeframe_consensus: marketData?.timeframe_consensus || {}
+      market_bias: marketData?.marketBias || 'Market bias not available',
+      volatility_regime: marketData?.volatilityRegime || 'Volatility regime not available',
+      volume_flow: marketData?.volumeFlow || null,
+      symbol_prices: symbolPrices,
     };
   };
 
@@ -404,22 +434,30 @@ What would you like to know about the current market?`,
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
 
-      const response = await fetch('http://localhost:8000/api/llm/chat', {
+      const payload = {
+        message: userMessage.content,
+        context: generateEnhancedContext(userMessage.content),
+        symbol: symbol,
+        conversation_history: messages.slice(-6).map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      };
+
+
+      const requestStart = Date.now();
+
+      const response = await fetch('/api/llm/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: userMessage.content,
-          context: generateEnhancedContext(userMessage.content),
-          symbol: symbol,
-          conversation_history: messages.slice(-6).map(msg => ({
-            role: msg.role,
-            content: msg.content
-          }))
-        }),
+        body: JSON.stringify(payload),
         signal: controller.signal
       });
+
+      const elapsed = ((Date.now() - requestStart) / 1000).toFixed(1);
+
 
       clearTimeout(timeoutId);
 
@@ -452,10 +490,11 @@ What would you like to know about the current market?`,
         setMessages(prev => prev.filter(msg => !msg.isThinking));
 
         const errorText = await response.text();
+        console.error(`[LLM Chat] Error ${response.status}:`, errorText.slice(0, 300));
         const errorMessage: Message = {
           id: (Date.now() + 2).toString(),
           role: 'assistant',
-          content: `I encountered an error: ${errorText}. Please try again or contact support if the issue persists.`,
+          content: `I encountered an error (${response.status}): ${errorText.slice(0, 150)}. Please try again.`,
           timestamp: new Date().toISOString()
         };
         setMessages(prev => [...prev, errorMessage]);
@@ -463,6 +502,8 @@ What would you like to know about the current market?`,
     } catch (error) {
       // Remove thinking message
       setMessages(prev => prev.filter(msg => !msg.isThinking));
+
+      console.error('[LLM Chat] Fetch error:', error);
 
       let errorMessage = "I'm having trouble connecting to my AI services right now. This could be due to network issues or the AI service being temporarily unavailable. Please try again in a moment.";
 
@@ -547,7 +588,7 @@ What would you like to know about the current market?`,
           <div className="flex items-center gap-2 px-2 py-1 bg-gray-800/50 rounded-lg">
             <div className={`w-2 h-2 rounded-full ${modelStatus?.lm_studio_connected ? 'bg-green-400' : 'bg-red-400'}`} />
             <span className="text-xs text-gray-400">
-              {modelStatus?.current_model?.split('-')[0] || 'Loading...'}
+              {modelStatus?.current_model ? modelStatus.current_model.split('/').pop()?.split('-')[0] || modelStatus.current_model : 'Loading...'}
             </span>
           </div>
 
@@ -584,7 +625,7 @@ What would you like to know about the current market?`,
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-white truncate">
-                              {model.id.split('-')[0]}
+                              {model.id.split('/').pop()?.split('-')[0] || model.id}
                             </span>
                             {model.recommended && (
                               <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">
@@ -637,7 +678,7 @@ What would you like to know about the current market?`,
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         <AnimatePresence>
           {messages.map((message) => (
             <motion.div
@@ -689,7 +730,6 @@ What would you like to know about the current market?`,
             </motion.div>
           ))}
         </AnimatePresence>
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Suggested Questions */}
