@@ -1,0 +1,20 @@
+- `[ ]` **Phase 1: Infrastructure Initialization**
+  - `[ ]` Start Postgres and Redis containers (`docker-compose up -d`)
+  - `[ ]` Run database migrations (`alembic upgrade head`)
+  - `[ ]` Run audit script to verify DB/Cache connections (`python audit_system.py`)
+
+- `[ ]` **Phase 2: Harden Data Collectors**
+  - `[ ]` Modify `src/api/alpaca_client.py`
+    - Update `get_market_data()` to query `/v2/stocks/{symbol}/snapshot`
+    - Calculate `change_pct`, `vwap`, and `volume` from the daily bar data.
+  - `[ ]` Modify `src/data/market_collector.py`
+    - Update `collect_market_internals()` mapping logic to securely format the Alpaca snapshot payload into `MarketInternals` schema.
+
+- `[ ]` **Phase 3: Verify LLM Pipeline**
+  - `[ ]` Create `.env` from `.env.example` and set LLM API Keys (e.g. DeepSeek or Gemini)
+  - `[ ]` Test `ModelRouter` with synthetic/mock data to ensure `LLMInsight` rows are successfully committed to Postgres.
+
+- `[ ]` **Phase 4: Frontend Hookup**
+  - `[ ]` Start Backend: `uvicorn src.main:app --reload --port 8000`
+  - `[ ]` Start Frontend: `cd marketpulse-client && npm run dev`
+  - `[ ]` Verify dashboard components properly render live/cached data.
