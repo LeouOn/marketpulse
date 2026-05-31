@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { apiFetch } from '../lib/api';
+import { PipelineProgress } from './PipelineProgress';
+import { AgentTracePanel } from './AgentTracePanel';
 // Custom icon components
 const SendIcon = () => (
   <div className="w-5 h-5 bg-blue-400 rounded-full flex items-center justify-center">
@@ -129,6 +131,65 @@ export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // -- Agentic streaming state --
+  const [pipelinePhase, setPipelinePhase] = useState<string>('');
+  const [agentDoneCount, setAgentDoneCount] = useState(0);
+  const [totalAgents, setTotalAgents] = useState(0);
+  const [agentTraces, setAgentTraces] = useState<{agentName: string; status: string; content: string; toolsUsed: string[]}[]>([]);
+  const [showAgentTrace, setShowAgentTrace] = useState(false);
+  const [streamingSynthesis, setStreamingSynthesis] = useState('');
+  const wsRef = useRef<WebSocket | null>(null);
+
+  const connectAgentStream = useCallback((query: string, syms: string[]) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
+    const ws = new WebSocket(`${protocol}//${host}/ws/stream-analysis`);
+    wsRef.current = ws;
+
+    setPipelinePhase('plan');
+    setAgentTraces([]);
+    setAgentDoneCount(0);
+    setStreamingSynthesis('');
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ query, symbols: syms, include_breadth: true }));
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setPipelinePhase(data.phase);
+
+      if (data.phase === 'agent_done') {
+        setAgentDoneCount(c => c + 1);
+        setAgentTraces(prev => [...prev, {
+          agentName: data.agent_name || 'Unknown',
+          status: 'done',
+          content: data.content || '',
+          toolsUsed: data.tools_used || [],
+        }]);
+      } else if (data.phase === 'agents_running') {
+        const agents = data.data?.agents || [];
+        setTotalAgents(agents.length);
+      } else if (data.phase === 'data_fetching') {
+        setAgentTraces(prev => [...prev, {
+          agentName: 'DataAgent', status: 'running', content: '', toolsUsed: [],
+        }]);
+      } else if (data.phase === 'data_complete') {
+        setAgentTraces(prev => prev.map(a =>
+          a.agentName === 'DataAgent' ? {...a, status: 'done', content: data.content || '', toolsUsed: data.tools_used || []} : a
+        ));
+      } else if (data.phase === 'draft_ready' || data.phase === 'final_ready') {
+        setStreamingSynthesis(data.content || '');
+      }
+    };
+
+    ws.onerror = () => { setPipelinePhase(''); };
+    ws.onclose = () => { wsRef.current = null; };
+  }, []);
+
+  // -- End streaming state --
 
   // Symbol mapping dictionary for pattern recognition
   const symbolMappings: SymbolMapping[] = [
@@ -597,6 +658,34 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
 
   return (
     <div className="flex flex-col h-full bg-transparent">
+      {/* Agentic Pipeline UI */}
+      {pipelinePhase && (
+        <PipelineProgress
+          currentPhase={pipelinePhase}
+          agentDoneCount={agentDoneCount}
+          totalAgents={totalAgents || 8}
+        />
+      )}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Agent Trace Sidebar */}
+        {pipelinePhase && (
+          <div className="w-64 flex-shrink-0">
+            <AgentTracePanel
+              agents={agentTraces}
+              expanded={showAgentTrace}
+              onToggle={() => setShowAgentTrace(!showAgentTrace)}
+            />
+          </div>
+        )}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Streaming Synthesis Preview */}
+          {streamingSynthesis && (
+            <div className="px-4 py-2 bg-blue-900/20 border-b border-blue-800/30 text-blue-300 text-xs max-h-32 overflow-y-auto">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {streamingSynthesis.slice(0, 800)}
+              </ReactMarkdown>
+            </div>
+          )}
       {error && (
         <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-lg text-red-400 text-sm m-4">
           {error}
@@ -872,6 +961,8 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
           {isConnected ? <span className="text-green-500 ml-1">● Connected</span> : <span className="text-red-500 ml-1">● Disconnected</span>}
         </div>
       </div>
+        </div>{/* close flex-1 flex-col */}
+      </div>{/* close flex overflow-hidden */}
     </div>
   );
 }

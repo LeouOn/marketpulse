@@ -22,8 +22,12 @@ from .base import AgentResult, MarketAgent
 from .critique_agent import CritiqueAgent
 from .data_agent import DataAgent
 from .hypothesis_agent import HypothesisAgent
+from .ict_agent import ICTSmartMoneyAgent
 from .macro_agent import MacroAgent
+from .options_agent import OptionsFlowAgent
 from .risk_agent import RiskAgent
+from .risk_quant_agent import RiskQuantAgent
+from .strategy_agent import StrategyProposalAgent
 from .technical_agent import TechnicalAgent
 
 
@@ -43,6 +47,10 @@ class OrchestratorResult:
     macro_result: AgentResult | None = None
     risk_result: AgentResult | None = None
     hypothesis_result: AgentResult | None = None
+    ict_result: AgentResult | None = None
+    options_result: AgentResult | None = None
+    risk_quant_result: AgentResult | None = None
+    strategy_result: AgentResult | None = None
     draft_synthesis: str = ""
     critique: str = ""
     synthesis: str = ""
@@ -57,6 +65,10 @@ class OrchestratorResult:
             "macro": self.macro_result,
             "risk": self.risk_result,
             "hypothesis": self.hypothesis_result,
+            "ict": self.ict_result,
+            "options": self.options_result,
+            "risk_quant": self.risk_quant_result,
+            "strategy": self.strategy_result,
         }
 
 
@@ -81,7 +93,7 @@ class MarketAnalysisOrchestrator:
 
     DRAFT_SYNTHESIS_PROMPT = """You are the synthesis engine for a multi-agent market analysis system.
 
-Below are the outputs of FIVE specialised agents:
+Below are the outputs of EIGHT specialised agents:
 
 {agent_sections}
 
@@ -121,12 +133,25 @@ Aim for 400-500 words. Be specific, honest about uncertainty, and
 trading-actionable."""
 
     # Ordered list of (attr_name, AgentClass, label) for parallel dispatch
-    AGENTS: list[tuple[str, type[MarketAgent], str]] = [
+    # Wave 1: lightweight agents that run first (read-only data)
+    AGENTS_WAVE_1: list[tuple[str, type[MarketAgent], str]] = [
         ("technical_result", TechnicalAgent, "Technical"),
         ("macro_result", MacroAgent, "Macro"),
+    ]
+
+    # Wave 2: agents that benefit from Wave 1 context (regime + technicals)
+    AGENTS_WAVE_2: list[tuple[str, type[MarketAgent], str]] = [
         ("risk_result", RiskAgent, "Risk"),
         ("hypothesis_result", HypothesisAgent, "Hypothesis"),
+        ("ict_result", ICTSmartMoneyAgent, "ICT"),
+        ("options_result", OptionsFlowAgent, "Options"),
+        ("risk_quant_result", RiskQuantAgent, "RiskQuant"),
+        ("strategy_result", StrategyProposalAgent, "Strategy"),
     ]
+
+    @property
+    def all_agents(self) -> list[tuple[str, type[MarketAgent], str]]:
+        return self.AGENTS_WAVE_1 + self.AGENTS_WAVE_2
 
     def __init__(self, settings=None):
         from ...core.config import get_settings
@@ -183,11 +208,12 @@ trading-actionable."""
         result.plan = {
             "symbols": symbols,
             "include_breadth": include_breadth,
-            "agents": ["Data"] + [a[2] for a in self.AGENTS] + ["Critique"],
+            "agents": ["Data"] + [a[2] for a in self.all_agents] + ["Critique"],
             "steps": [
                 "Fetch market internals + OHLCV",
-                "Parallel: Technical, Macro, Risk, Hypothesis agents",
-                "Draft synthesis from all 5 agents",
+                "Wave 1: Technical + Macro (roundtable)",
+                "Wave 2: Risk + Hypothesis + ICT + Options + RiskQuant + Strategy",
+                "Draft synthesis from all agents",
                 "Critique + final synthesis",
             ],
         }
@@ -221,7 +247,7 @@ trading-actionable."""
             data_context = result.data_result.content or ""
             await self._dispatch_agents(result, query, symbols, data_context)
         else:
-            for attr, _, _ in self.AGENTS:
+            for attr, _, _ in self.all_agents:
                 setattr(result, attr, AgentResult(
                     agent_name=attr,
                     content="Skipped -- DataAgent did not return valid data.",
@@ -282,7 +308,7 @@ trading-actionable."""
         # Yield plan
         yield PhaseEvent(phase="plan", data={
             "symbols": symbols,
-            "agents": ["Data"] + [a[2] for a in self.AGENTS] + ["Critique"],
+            "agents": ["Data"] + [a[2] for a in self.all_agents] + ["Critique"],
         })
 
         # Data Agent
@@ -312,12 +338,12 @@ trading-actionable."""
         if data_ok:
             data_context = result.data_result.content or ""
             yield PhaseEvent(phase="agents_running", data={
-                "agents": [a[2] for a in self.AGENTS],
+                "agents": [a[2] for a in self.all_agents],
             })
 
             # Run in parallel, yielding as each completes
             tasks = []
-            for attr, agent_cls, label in self.AGENTS:
+            for attr, agent_cls, label in self.all_agents:
                 task = self._build_agent_task(query, symbols, data_context, attr)
                 tasks.append((attr, label, self._run_agent(agent_cls, attr, task)))
 
@@ -330,7 +356,7 @@ trading-actionable."""
                     tools_used=agent_result.tool_calls_made,
                 )
         else:
-            for attr, _, label in self.AGENTS:
+            for attr, _, label in self.all_agents:
                 setattr(result, attr, AgentResult(
                     agent_name=attr,
                     content="Skipped -- no data available.",
@@ -379,8 +405,10 @@ trading-actionable."""
         self, result: OrchestratorResult,
         query: str, symbols: list[str], data_context: str,
     ) -> None:
-        """Run Technical + Macro + Risk + Hypothesis agents in parallel."""
-        logger.info("Orchestrator: dispatching 4 agents in parallel...")
+        """Run agents in 2-wave roundtable with context injection."""
+        logger.info(
+            f"Orchestrator: Wave 1 — {len(self.AGENTS_WAVE_1)} agents..."
+        )
 
         async def _run(attr: str, agent_cls: type, task: str) -> None:
             try:
@@ -398,12 +426,52 @@ trading-actionable."""
                     success=False, error=str(e),
                 ))
 
-        tasks = []
-        for attr, agent_cls, _ in self.AGENTS:
+        # -- Wave 1 -------------------------------------------------------
+        wave1_tasks = []
+        for attr, agent_cls, _ in self.AGENTS_WAVE_1:
             task = self._build_agent_task(query, symbols, data_context, attr)
-            tasks.append(_run(attr, agent_cls, task))
+            wave1_tasks.append(_run(attr, agent_cls, task))
+        await asyncio.gather(*wave1_tasks)
 
-        await asyncio.gather(*tasks)
+        # -- Build roundtable context from Wave 1 -------------------------
+        rt_context = self._build_roundtable_context(result)
+
+        # -- Wave 2 (with context) ----------------------------------------
+        logger.info(
+            f"Orchestrator: Wave 2 — {len(self.AGENTS_WAVE_2)} agents "
+            f"(with roundtable context)"
+        )
+        wave2_tasks = []
+        for attr, agent_cls, _ in self.AGENTS_WAVE_2:
+            task = self._build_agent_task(
+                query, symbols, data_context, attr, roundtable_context=rt_context,
+            )
+            wave2_tasks.append(_run(attr, agent_cls, task))
+        await asyncio.gather(*wave2_tasks)
+
+    def _build_roundtable_context(self, result: OrchestratorResult) -> str:
+        """Build context string from Wave 1 agent outputs for Wave 2 agents."""
+        parts: list[str] = []
+
+        tech = result.technical_result
+        if tech and tech.content:
+            parts.append(f"TECHNICAL CONTEXT:\n{tech.content[:800]}\n")
+
+        macro = result.macro_result
+        if macro and macro.content:
+            parts.append(f"MACRO/REGIME CONTEXT:\n{macro.content[:800]}\n")
+
+        if not parts:
+            return ""
+
+        header = (
+            "=== ROUNDTABLE CONTEXT (from Wave 1 agents) ===\n"
+            "Use this context to inform your analysis. "
+            "The Technical Agent has identified key levels and trends. "
+            "The Macro Agent has assessed the market regime. "
+            "Incorporate these findings into your own analysis.\n\n"
+        )
+        return header + "\n".join(parts)
 
     async def _run_agent(
         self, agent_cls: type, attr: str, task: str,
@@ -449,53 +517,97 @@ trading-actionable."""
 
     def _build_agent_task(
         self, query: str, symbols: list[str], data_context: str, agent_attr: str,
+        roundtable_context: str = "",
     ) -> str:
         """Build a task prompt for a specific agent type."""
         sym_list = ", ".join(symbols)
+        rt_prefix = f"{roundtable_context}\n\n" if roundtable_context else ""
 
         if "technical" in agent_attr:
             return (
+                f"{rt_prefix}"
                 f"Run technical analysis for: {query}\n\n"
                 f"SYMBOLS: {sym_list}\n\n"
                 f"DATA AGENT OUTPUT:\n{data_context}\n\n"
                 f"INSTRUCTIONS:\n"
-                f"1. Use analyze_symbol_technicals for each symbol "
-                f"(pass OHLCV JSON from Data Agent).\n"
+                f"1. Use analyze_symbol_technicals for each symbol.\n"
                 f"2. Use find_support_resistance for precise S/R levels.\n"
                 f"3. Provide: trend assessment, key levels, patterns, risk zones."
             )
         elif "macro" in agent_attr:
             return (
+                f"{rt_prefix}"
                 f"Assess the macro regime for: {query}\n\n"
                 f"SYMBOLS: {sym_list}\n\n"
                 f"DATA AGENT OUTPUT:\n{data_context}\n\n"
                 f"INSTRUCTIONS:\n"
-                f"1. Use get_market_internals to assess the macro picture.\n"
-                f"2. Use get_breadth to check participation and breadth.\n"
-                f"3. Report: risk posture, breadth confirmation, intermarket "
-                f"signals, VIX regime, divergences."
+                f"1. Use get_market_internals and get_breadth.\n"
+                f"2. Report: risk posture, breadth, intermarket signals, VIX regime."
             )
         elif "risk" in agent_attr:
             return (
+                f"{rt_prefix}"
                 f"Assess risk for: {query}\n\n"
                 f"SYMBOLS: {sym_list}\n\n"
                 f"DATA AGENT OUTPUT:\n{data_context}\n\n"
                 f"INSTRUCTIONS:\n"
-                f"1. Use get_ohlcv and get_symbol_52w_stats to assess volatility.\n"
-                f"2. Report: key risk levels, stop placement guidance, "
-                f"correlation risk, tail risk, position sizing context."
+                f"1. Use get_ohlcv and get_symbol_52w_stats.\n"
+                f"2. Report: key risk levels, stop placement, correlation risk, tail risk."
             )
         elif "hypothesis" in agent_attr:
             return (
-                f"Test active hypotheses against current data for: {query}\n\n"
+                f"{rt_prefix}"
+                f"Test active hypotheses for: {query}\n\n"
                 f"SYMBOLS: {sym_list}\n\n"
                 f"DATA AGENT OUTPUT:\n{data_context}\n\n"
                 f"INSTRUCTIONS:\n"
                 f"1. Call list_active_hypotheses to see what's tracked.\n"
-                f"2. For each, call get_hypothesis_detail and test against data.\n"
-                f"3. Report for each: FIRING/DORMANT/INSUFFICIENT_DATA with confidence."
+                f"2. For each, call get_hypothesis_detail and test.\n"
+                f"3. Report: FIRING/DORMANT/INSUFFICIENT_DATA with confidence."
             )
-        return f"Analyze: {query}\n\nData:\n{data_context}"
+        elif "ict" in agent_attr:
+            return (
+                f"{rt_prefix}"
+                f"Analyze ICT/SMC signals for: {query}\n\n"
+                f"SYMBOLS: {sym_list}\n\n"
+                f"DATA AGENT OUTPUT:\n{data_context}\n\n"
+                f"INSTRUCTIONS:\n"
+                f"1. Call generate_ict_signals, analyze_order_flow, detect_divergences.\n"
+                f"2. Synthesize: do signals agree? Report entry/stop/targets with confidence."
+            )
+        elif "options" in agent_attr:
+            return (
+                f"{rt_prefix}"
+                f"Screen options flow for: {query}\n\n"
+                f"SYMBOLS: {sym_list}\n\n"
+                f"DATA AGENT OUTPUT:\n{data_context}\n\n"
+                f"INSTRUCTIONS:\n"
+                f"1. Call screen_options_flow and compute_indicators.\n"
+                f"2. Report unusual activity and alignment with technicals."
+            )
+        elif "risk_quant" in agent_attr:
+            return (
+                f"{rt_prefix}"
+                f"Quantify risk for: {query}\n\n"
+                f"SYMBOLS: {sym_list}\n\n"
+                f"DATA AGENT OUTPUT:\n{data_context}\n\n"
+                f"INSTRUCTIONS:\n"
+                f"1. Call classify_regime and calculate_risk_metrics.\n"
+                f"2. Report: regime, position sizing, risk level."
+            )
+        elif "strategy" in agent_attr:
+            return (
+                f"{rt_prefix}"
+                f"Propose and backtest a strategy for: {query}\n\n"
+                f"SYMBOLS: {sym_list}\n\n"
+                f"DATA AGENT OUTPUT:\n{data_context}\n\n"
+                f"INSTRUCTIONS:\n"
+                f"1. Review ICT signals and divergences from context.\n"
+                f"2. Propose a concrete strategy with entry/exit/stop rules.\n"
+                f"3. Call run_backtest to validate the strategy.\n"
+                f"4. Report: VIABLE / NEEDS_REFINEMENT / NOT_VIABLE with metrics."
+            )
+        return f"{rt_prefix}Analyze: {query}\n\nData:\n{data_context}"
 
     # -- synthesis --------------------------------------------------------
 
@@ -508,6 +620,10 @@ trading-actionable."""
             "macro": "MACRO AGENT",
             "risk": "RISK AGENT",
             "hypothesis": "HYPOTHESIS AGENT",
+            "ict": "ICT SMART MONEY AGENT",
+            "options": "OPTIONS FLOW AGENT",
+            "risk_quant": "RISK QUANT AGENT",
+            "strategy": "STRATEGY AGENT",
         }
         for key, label in labels.items():
             agent_result = result.all_agent_results.get(key)
@@ -576,7 +692,7 @@ trading-actionable."""
 async def _demo():
     """Quick smoke test -- requires DEEPSEEK_API_KEY set."""
     print("=" * 60)
-    print("MarketAnalysisOrchestrator - 5-Agent Smoke Test")
+    print("MarketAnalysisOrchestrator - 9-Agent Smoke Test")
     print("=" * 60)
 
     orchestrator = MarketAnalysisOrchestrator()
@@ -600,6 +716,9 @@ async def _demo():
         ("macro_result", "MACRO AGENT"),
         ("risk_result", "RISK AGENT"),
         ("hypothesis_result", "HYPOTHESIS AGENT"),
+        ("ict_result", "ICT AGENT"),
+        ("options_result", "OPTIONS AGENT"),
+        ("risk_quant_result", "RISK QUANT AGENT"),
     ]:
         ar = getattr(result, key, None)
         if ar:
