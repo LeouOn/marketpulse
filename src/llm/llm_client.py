@@ -494,76 +494,64 @@ class OpenRouterClient:
 
 
 class LLMManager:
-    """Orchestrates LLM operations with fallback support"""
+    """Orchestrates LLM operations with ModelRouter-based fallback support.
+
+    Uses ``ModelRouter`` to dispatch to the best available provider:
+    DeepSeek → LM Studio → OpenRouter.
+    """
 
     def __init__(self):
         self.settings = get_settings()
-        self.lm_studio = None
-        self.openrouter = None
-        self.minimax = None
+        self._router = None
 
-    async def analyze_market(self, internals_data: dict[str, Any], analysis_type: str = "quick") -> str | None:
-        """
-        Analyze market using appropriate LLM based on analysis type
+    async def analyze_market(
+        self, internals_data: dict[str, Any], analysis_type: str = "quick"
+    ) -> str | None:
+        """Analyze market using ModelRouter for provider selection.
 
         Args:
             internals_data: Market internals data
             analysis_type: 'quick', 'deep', or 'review'
         """
+        from .model_router import ModelRouter
 
         try:
-            # Try LM Studio first (local, faster)
-            if analysis_type == "quick":
-                async with LMStudioClient(self.settings) as client:
-                    result = await client.analyze_market_internals(internals_data)
-                    if result:
-                        return f"🤖 LM Studio (Fast Analysis):\n{result}"
+            async with ModelRouter(self.settings) as router:
+                # Map analysis_type to capability
+                capability = {
+                    "quick": "fast",
+                    "deep": "reasoning",
+                    "review": "standard",
+                }.get(analysis_type, "standard")
 
-            elif analysis_type == "deep":
-                async with LMStudioClient(self.settings) as client:
-                    result = await client.deep_market_analysis(internals_data)
-                    if result:
-                        return f"🤖 LM Studio (Deep Analysis):\n{result}"
+                client, model_id = await router.route(capability)
+                provider_name = self._provider_label(client)
 
-            elif analysis_type == "review":
-                async with LMStudioClient(self.settings) as client:
-                    result = await client.review_trade_setup(internals_data, internals_data)
-                    if result:
-                        return f"🤖 LM Studio (Trade Review):\n{result}"
-
-            # Fallback to cloud LLMs if LM Studio fails
-            logger.warning("LM Studio unavailable, trying cloud fallbacks...")
-
-            # Try MiniMax first (if configured)
-            minimax_client = None
-            try:
-                from .minimax_client import MiniMaxClient
-
-                minimax_client = MiniMaxClient(self.settings)
-                result = await minimax_client.analyze_market(internals_data, analysis_type)
-                if result:
-                    return f"🔵 MiniMax (Cloud Analysis):\n{result}"
-            except Exception as e:
-                logger.debug(f"MiniMax analysis failed: {e}")
-
-            # Try OpenRouter as final fallback
-            async with OpenRouterClient(self.settings) as client:
                 if analysis_type == "quick":
-                    prompt = f"Analyze these market internals briefly: {json.dumps(internals_data)}"
+                    if hasattr(client, "analyze_market"):
+                        result = await client.analyze_market(
+                            internals_data, model=model_id, max_tokens=300
+                        )
+                    else:
+                        result = await self._fallback_analyze(
+                            client, model_id, internals_data, "quick"
+                        )
+                elif analysis_type == "deep":
+                    if hasattr(client, "deep_analysis"):
+                        result = await client.deep_analysis(
+                            internals_data, model=model_id, max_tokens=800
+                        )
+                    else:
+                        result = await self._fallback_analyze(
+                            client, model_id, internals_data, "deep"
+                        )
                 else:
-                    prompt = f"Provide detailed analysis of: {json.dumps(internals_data)}"
+                    result = await self._fallback_analyze(
+                        client, model_id, internals_data, analysis_type
+                    )
 
-                messages = [{"role": "user", "content": prompt}]
-
-                result = await client.generate_completion(
-                    model="openai/gpt-4o-mini",
-                    messages=messages,
-                    max_tokens=300 if analysis_type == "deep" else 150,
-                    temperature=0.3,
-                )
-
-                if result and "choices" in result:
-                    return f"☁️ OpenRouter (Cloud Analysis):\n{result['choices'][0]['message']['content']}"
+                if result:
+                    return f"🤖 {provider_name}:\n{result}"
 
             logger.error("All LLM services failed")
             return None
@@ -572,28 +560,79 @@ class LLMManager:
             logger.error(f"LLM analysis error: {e}")
             return None
 
+    async def _fallback_analyze(
+        self,
+        client: Any,
+        model_id: str,
+        internals_data: dict[str, Any],
+        analysis_type: str,
+    ) -> str | None:
+        """Generic text-completion fallback when client lacks convenience methods."""
+        import json as _json
+
+        if analysis_type == "deep":
+            prompt = f"Provide detailed market analysis of:\n{_json.dumps(internals_data, indent=2)}"
+            max_tokens = 800
+        else:
+            prompt = f"Analyze these market internals briefly:\n{_json.dumps(internals_data, indent=2)}"
+            max_tokens = 300
+
+        response = await client.generate_completion(
+            messages=[{"role": "user", "content": prompt}],
+            model=model_id or None,
+            max_tokens=max_tokens,
+            temperature=0.3,
+        )
+
+        if response and "choices" in response:
+            return response["choices"][0]["message"].get("content")
+        return None
+
+    @staticmethod
+    def _provider_label(client: Any) -> str:
+        """Human-readable provider label for analysis output."""
+        name = type(client).__name__
+        if "DeepSeek" in name:
+            return "DeepSeek"
+        if "LMStudio" in name:
+            return "LM Studio (Local)"
+        if "OpenRouter" in name:
+            return "OpenRouter (Cloud)"
+        return name
+
     def get_status(self) -> dict[str, Any]:
-        """Get status of all LLM services"""
-        status = {
+        """Get status of all LLM services."""
+        return {
+            "deepseek": {
+                "available": bool(
+                    self.settings.llm.deepseek.api_key
+                    and self.settings.llm.deepseek.api_key != "your_deepseek_api_key"
+                ),
+                "endpoint": self.settings.llm.deepseek.base_url,
+                "model_pro": self.settings.llm.deepseek.model_pro,
+                "model_flash": self.settings.llm.deepseek.model_flash,
+            },
             "lm_studio": {
-                "available": True,  # Would check actual connection
+                "available": True,
                 "endpoint": self.settings.llm.primary.base_url,
-                "models": {
-                    "fast": "qwen3-30b-a3b (59 tok/s)",
-                    "analyst": "glm-4.5-air (19 tok/s)",
-                    "reviewer": "glm-4.6-air (12 tok/s)",
-                },
             },
             "openrouter": {
-                "available": bool(self.settings.llm.fallback.api_key),
+                "available": bool(
+                    self.settings.llm.fallback.api_key
+                    and self.settings.llm.fallback.api_key != "your_openrouter_api_key"
+                ),
                 "endpoint": self.settings.llm.fallback.base_url,
             },
             "minimax": {
                 "available": bool(
-                    self.settings.llm.minimax.api_key and self.settings.llm.minimax.api_key != "your_minimax_api_key"
+                    self.settings.llm.minimax.api_key
+                    and self.settings.llm.minimax.api_key != "your_minimax_api_key"
                 ),
                 "endpoint": self.settings.llm.minimax.base_url,
                 "model": self.settings.llm.minimax.model,
             },
+            "routing": {
+                "primary": self.settings.llm.model_routing.primary_provider,
+                "fallback": self.settings.llm.model_routing.fallback_providers,
+            },
         }
-        return status

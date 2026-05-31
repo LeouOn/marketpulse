@@ -91,9 +91,27 @@ class LLMSettings(BaseSettings):
         timeout: int = 60
         model: str = "MiniMax-Text-01"
 
+    class DeepSeekConfig(BaseSettings):
+        base_url: str = "https://api.deepseek.com/v1"
+        api_key: str = "your_deepseek_api_key"
+        timeout: int = 120
+        model_pro: str = "deepseek-v4-pro"
+        model_flash: str = "deepseek-v4-flash"
+
+    class ModelRoutingConfig(BaseSettings):
+        """Capability-based model routing preferences"""
+        reasoning: str = "deepseek-v4-pro"       # Multi-step analysis, hypothesis testing
+        fast: str = "deepseek-v4-flash"           # Quick checks, data validation
+        standard: str = "deepseek-v4-pro"         # Default chat / analysis
+        structured_output: str = "deepseek-v4-pro" # Function calling, JSON schema
+        primary_provider: str = "deepseek"         # deepseek | lm_studio | openrouter
+        fallback_providers: str = "lm_studio,openrouter"
+
     primary: PrimaryConfig = Field(default_factory=PrimaryConfig)
     fallback: FallbackConfig = Field(default_factory=FallbackConfig)
     minimax: MiniMaxConfig = Field(default_factory=MiniMaxConfig)
+    deepseek: DeepSeekConfig = Field(default_factory=DeepSeekConfig)
+    model_routing: ModelRoutingConfig = Field(default_factory=ModelRoutingConfig)
 
 
 class MarketSettings(BaseSettings):
@@ -199,7 +217,7 @@ class Settings(BaseSettings):
 
         if yaml_path.exists():
             try:
-                with open(yaml_path) as f:
+                with open(yaml_path, encoding="utf-8") as f:
                     yaml_data = yaml.safe_load(f)
 
                 # Get environment variables for interpolation
@@ -257,6 +275,16 @@ class Settings(BaseSettings):
                         for key, value in llm_data["minimax"].items():
                             if hasattr(self.llm.minimax, key):
                                 setattr(self.llm.minimax, key, value)
+
+                    if "deepseek" in llm_data:
+                        for key, value in llm_data["deepseek"].items():
+                            if hasattr(self.llm.deepseek, key):
+                                setattr(self.llm.deepseek, key, value)
+
+                    if "model_routing" in llm_data:
+                        for key, value in llm_data["model_routing"].items():
+                            if hasattr(self.llm.model_routing, key):
+                                setattr(self.llm.model_routing, key, value)
 
                 # Update Markets section
                 if "markets" in yaml_data:

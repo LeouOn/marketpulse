@@ -105,3 +105,86 @@ async def websocket_test_endpoint(websocket: WebSocket):
         logger.error(f"Test WebSocket error: {e}")
     finally:
         logger.info("Test WebSocket connection closed")
+
+
+@router.websocket("/ws/stream-analysis")
+async def stream_analysis_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for streaming agentic market analysis.
+
+    Client sends::
+
+        {"query": "Is SPY healthy?", "symbols": ["SPY"], "include_breadth": true}
+
+    Server streams phase events::
+
+        {"phase": "plan", "data": {...}}
+        {"phase": "data_fetching", "agent_name": "data_agent"}
+        {"phase": "data_complete", "content": "...", "tools_used": [...]}
+        {"phase": "agents_running", "data": {"agents": [...]}}
+        {"phase": "agent_done", "agent_name": "Macro", "content": "...", "tools_used": [...]}
+        ... (one per agent)
+        {"phase": "draft_ready", "content": "..."}
+        {"phase": "critiquing", "agent_name": "critique_agent"}
+        {"phase": "final_ready", "content": "...", "data": {...}}
+    """
+    await websocket.accept()
+    logger.info("Stream-analysis WebSocket connected")
+
+    try:
+        # Wait for the analysis request
+        data = await websocket.receive_json()
+        query = data.get("query", "")
+        symbols = data.get("symbols", ["SPY"])
+        include_breadth = data.get("include_breadth", True)
+
+        if not query:
+            await websocket.send_json({
+                "phase": "error",
+                "content": "Missing 'query' field in request.",
+            })
+            return
+
+        logger.info(
+            f"Stream-analysis: query='{query[:60]}...' symbols={symbols}"
+        )
+
+        # Send acknowledgement
+        await websocket.send_json({
+            "phase": "accepted",
+            "data": {"query": query, "symbols": symbols},
+        })
+
+        # Run the streaming pipeline
+        from src.llm.agents.orchestrator import MarketAnalysisOrchestrator
+
+        orchestrator = MarketAnalysisOrchestrator()
+        async with orchestrator:
+            async for event in orchestrator.analyze_streaming(
+                query=query, symbols=symbols, include_breadth=include_breadth,
+            ):
+                # Send event as JSON to the WebSocket client
+                await websocket.send_json({
+                    "phase": event.phase,
+                    "agent_name": event.agent_name,
+                    "content": event.content,
+                    "tools_used": event.tools_used,
+                    "data": event.data,
+                })
+
+        # Send completion signal
+        await websocket.send_json({
+            "phase": "complete",
+            "content": "Analysis pipeline finished.",
+        })
+
+    except WebSocketDisconnect:
+        logger.info("Stream-analysis WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"Stream-analysis WebSocket error: {e}")
+        with contextlib.suppress(Exception):
+            await websocket.send_json({
+                "phase": "error",
+                "content": f"Pipeline error: {str(e)}",
+            })
+    finally:
+        logger.info("Stream-analysis WebSocket closed")

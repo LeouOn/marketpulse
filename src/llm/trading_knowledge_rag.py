@@ -108,9 +108,22 @@ class TradingKnowledgeRAG:
 
         return hypothesis_docs
 
+    @property
+    def _embedding(self):
+        """Lazy-load the embedding RAG on first use."""
+        if not hasattr(self, "_embedding_rag"):
+            try:
+                from .embedding_rag import EmbeddingRAG
+                self._embedding_rag = EmbeddingRAG(self.knowledge_dir)
+                logger.info("TradingKnowledgeRAG: EmbeddingRAG enabled")
+            except Exception as e:
+                logger.warning(f"EmbeddingRAG unavailable, using keyword fallback: {e}")
+                self._embedding_rag = None
+        return self._embedding_rag
+
     def retrieve_context(self, query: str, max_results: int = 5) -> list[dict[str, Any]]:
         """
-        Retrieve relevant knowledge based on query keywords
+        Retrieve relevant knowledge — semantic (embedding) first, keyword fallback.
 
         Args:
             query: User query or hypothesis to analyze
@@ -119,6 +132,20 @@ class TradingKnowledgeRAG:
         Returns:
             List of relevant knowledge chunks with metadata
         """
+        # Try semantic embedding search first
+        emb = self._embedding
+        if emb is not None:
+            try:
+                results = emb.retrieve_context(query, top_k=max_results)
+                if results:
+                    logger.debug(
+                        f"TradingKnowledgeRAG: embedding returned {len(results)} chunks"
+                    )
+                    return results
+            except Exception as e:
+                logger.warning(f"EmbeddingRAG failed, falling back to keyword: {e}")
+
+        # Fall back to keyword matching
         query_lower = query.lower()
         relevant_docs = []
         term_matches = []
