@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { apiFetch } from '../lib/api';
 // Custom icon components
 const SendIcon = () => (
   <div className="w-5 h-5 bg-blue-400 rounded-full flex items-center justify-center">
@@ -63,21 +66,69 @@ interface SymbolMapping {
 interface LLMChatProps {
   symbol?: string;
   marketData?: any;
-  macroData?: any;
 }
 
-export function LLMChat({ symbol = 'SPY', marketData, macroData }: LLMChatProps) {
+// Sector to keyword/topic mapping for enriched AI context
+const SECTOR_CONTEXT_MAP: Record<string, { keywords: string[]; description: string }> = {
+  'Real Estate': {
+    keywords: ['housing', 'mortgages', 'interest rates', 'real estate market', 'home prices', 'REIT', 'property'],
+    description: 'Real estate sector including residential and commercial property markets'
+  },
+  'Technology': {
+    keywords: ['tech stocks', 'semiconductors', 'software', 'cloud computing', 'AI', 'innovation', 'FAANG'],
+    description: 'Technology sector including hardware, software, and semiconductors'
+  },
+  'Financials': {
+    keywords: ['banks', 'interest rates', 'lending', 'financial services', 'insurance', 'credit'],
+    description: 'Financial sector including banks, insurance, and investment firms'
+  },
+  'Healthcare': {
+    keywords: ['pharmaceuticals', 'biotech', 'medical devices', 'hospitals', 'healthcare services'],
+    description: 'Healthcare sector including pharma, biotech, and medical services'
+  },
+  'Consumer Discretionary': {
+    keywords: ['retail', 'e-commerce', 'consumer spending', 'luxury goods', 'automobiles', 'restaurants'],
+    description: 'Consumer discretionary including retail and non-essential goods'
+  },
+  'Consumer Staples': {
+    keywords: ['food', 'beverages', 'household products', 'essentials', 'groceries'],
+    description: 'Consumer staples including food, beverages, and household items'
+  },
+  'Energy': {
+    keywords: ['oil', 'gas', 'crude', 'renewable energy', 'utilities', 'petroleum', 'OPEC'],
+    description: 'Energy sector including oil, gas, and renewables'
+  },
+  'Materials': {
+    keywords: ['commodities', 'metals', 'mining', 'chemicals', 'construction materials'],
+    description: 'Materials sector including mining, metals, and chemicals'
+  },
+  'Industrials': {
+    keywords: ['manufacturing', 'aerospace', 'defense', 'machinery', 'transportation', 'logistics'],
+    description: 'Industrial sector including manufacturing and transportation'
+  },
+  'Communication Services': {
+    keywords: ['telecom', 'media', 'entertainment', 'social media', 'streaming', 'advertising'],
+    description: 'Communication services including telecom and media companies'
+  },
+  'Utilities': {
+    keywords: ['electricity', 'water', 'gas utilities', 'power generation', 'infrastructure'],
+    description: 'Utilities sector including electric, water, and gas providers'
+  }
+};
+
+export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>('aquif-3.5-max-42b-a3b-i1');
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [detectedSymbols, setDetectedSymbols] = useState<string[]>([]);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Symbol mapping dictionary for pattern recognition
   const symbolMappings: SymbolMapping[] = [
@@ -193,9 +244,7 @@ export function LLMChat({ symbol = 'SPY', marketData, macroData }: LLMChatProps)
   };
 
   const scrollToBottom = () => {
-    if (chatScrollRef.current) {
-      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
@@ -215,7 +264,13 @@ export function LLMChat({ symbol = 'SPY', marketData, macroData }: LLMChatProps)
       role: 'assistant',
       content: `Hello! I'm your AI trading assistant. I can help you analyze market conditions, discuss trading strategies, and provide insights about ${symbol} and other assets.
 
-What would you like to know about the current market?`,
+I have access to:
+• Real-time market data (indices, crypto, commodities)
+• Sector performance and analysis
+• Market breadth indicators (TICK, A/D ratio, McClellan)
+• Technical levels and patterns
+
+Try asking about specific sectors (e.g., "How's Real Estate performing?") or assets (e.g., "What's the trend for BTC?")`,
       timestamp: new Date().toISOString()
     }]);
   }, [symbol]);
@@ -237,85 +292,65 @@ What would you like to know about the current market?`,
 
   const fetchAvailableModels = async () => {
     try {
-      const response = await fetch('/api/llm/models');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data?.models) {
-          setAvailableModels(data.data.models);
-
-        }
+      setError(null);
+      const data = await apiFetch<any>('/api/llm/models');
+      if (data.success && data.data?.models) {
+        setAvailableModels(data.data.models);
       }
     } catch (error) {
       console.error('Failed to fetch models:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch models');
     }
   };
 
   const fetchModelStatus = async () => {
     try {
-      const response = await fetch('/api/llm/model-status');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data) {
-          setModelStatus(data.data);
-          setSelectedModel(data.data.current_model);
-          setIsConnected(data.data.lm_studio_connected);
-        }
+      const data = await apiFetch<{ success: boolean; data: ModelStatus }>('/api/llm/model-status');
+      if (data.success && data.data) {
+        setModelStatus(data.data);
+        setSelectedModel(data.data.current_model);
+        setIsConnected(data.data.lm_studio_connected);
       }
-    } catch (error) {
-      console.error('Failed to fetch model status:', error);
+    } catch (err) {
+      console.error('Failed to fetch model status:', err);
       setIsConnected(false);
+      setError(err instanceof Error ? err.message : 'Failed to fetch model status');
     }
   };
 
   const selectModel = async (modelId: string) => {
     try {
-      const response = await fetch('/api/llm/select-model', {
+      setError(null);
+      const data = await apiFetch<{ success: boolean }>('/api/llm/select-model', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model_id: modelId, provider: 'lm_studio' })
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setSelectedModel(modelId);
-          setShowModelSelector(false);
-          // Refresh model status
-          fetchModelStatus();
-        }
+      if (data.success) {
+        setSelectedModel(modelId);
+        setShowModelSelector(false);
+        fetchModelStatus();
       }
-    } catch (error) {
-      console.error('Failed to select model:', error);
+    } catch (err) {
+      console.error('Failed to select model:', err);
+      setError(err instanceof Error ? err.message : 'Failed to select model');
     }
   };
 
   const generateMarketContext = () => {
-    const symbolPrices: Record<string, { price: number; change: number; change_pct: number; volume: number }> = {};
-
-    const addPrices = (source: any) => {
-      if (!source) return;
-      for (const [sym, data] of Object.entries(source)) {
-        if (data && typeof data === 'object' && 'price' in data) {
-          symbolPrices[sym.toUpperCase()] = {
-            price: (data as any).price,
-            change: (data as any).change,
-            change_pct: (data as any).change_pct,
-            volume: (data as any).volume,
-          };
-        }
-      }
-    };
-
-    addPrices(marketData?.symbols);
-    addPrices(macroData);
-
     const context = {
       symbol,
-      market_bias: marketData?.marketBias || 'Market bias not available',
-      volatility_regime: marketData?.volatilityRegime || 'Volatility regime not available',
-      volume_flow: marketData?.volumeFlow || null,
-      symbol_prices: symbolPrices,
+      current_price: marketData?.current_price || 'Could not get current price - N/A',
+      market_bias: marketData?.market_bias || 'Market bias not available',
+      volatility_regime: marketData?.market_context?.volatility_regime || 'Volatility regime not available',
+      key_levels: {
+        support: marketData?.key_levels?.support?.slice(0, 2) || [],
+        resistance: marketData?.key_levels?.resistance?.slice(0, 2) || []
+      },
+      recent_signals: marketData?.signals?.slice(0, 3) || [],
+      timeframe_consensus: marketData?.timeframe_consensus || {},
       market_data_available: !!marketData,
+      message: marketData ? null : "No market data available.",
       detected_symbols: detectedSymbols,
       symbol_context: detectedSymbols.map(sym => {
         const mapping = symbolMappings.find(m => m.symbol === sym);
@@ -334,6 +369,7 @@ What would you like to know about the current market?`,
   const generateEnhancedContext = (query: string) => {
     const symbolsInQuery = scanTextForSymbols(query);
 
+    // Prioritize NQ=F over QQQ for nasdaq queries
     const enhancedSymbols = symbolsInQuery.map(sym => {
       if (sym === 'QQQ' && (query.toLowerCase().includes('nq') || query.toLowerCase().includes('future'))) {
         return 'NQ=F';
@@ -341,28 +377,41 @@ What would you like to know about the current market?`,
       return sym;
     });
 
-    const symbolPrices: Record<string, { price: number; change: number; change_pct: number; volume: number }> = {};
+    // Detect sector mentions in the query
+    const detectedSectors: string[] = [];
+    const sectorContext: any[] = [];
 
-    const addPrices = (source: any) => {
-      if (!source) return;
-      for (const [sym, data] of Object.entries(source)) {
-        if (data && typeof data === 'object' && 'price' in data) {
-          symbolPrices[sym.toUpperCase()] = {
-            price: (data as any).price,
-            change: (data as any).change,
-            change_pct: (data as any).change_pct,
-            volume: (data as any).volume,
-          };
-        }
+    Object.entries(SECTOR_CONTEXT_MAP).forEach(([sectorName, sectorInfo]) => {
+      // Check if sector name is mentioned
+      if (query.toLowerCase().includes(sectorName.toLowerCase())) {
+        detectedSectors.push(sectorName);
+        sectorContext.push({
+          sector: sectorName,
+          keywords: sectorInfo.keywords,
+          description: sectorInfo.description,
+          performance: marketData?.sector_performance?.[sectorName] || null
+        });
       }
-    };
+      // Check if any sector keywords are mentioned
+      sectorInfo.keywords.forEach(keyword => {
+        if (query.toLowerCase().includes(keyword.toLowerCase()) && !detectedSectors.includes(sectorName)) {
+          detectedSectors.push(sectorName);
+          sectorContext.push({
+            sector: sectorName,
+            keywords: sectorInfo.keywords,
+            description: sectorInfo.description,
+            performance: marketData?.sector_performance?.[sectorName] || null
+          });
+        }
+      });
+    });
 
-    addPrices(marketData?.symbols);
-    addPrices(macroData);
-
+    // Build comprehensive context
     return {
       primary_symbol: symbol,
       detected_symbols: enhancedSymbols,
+      detected_sectors: detectedSectors,
+      sector_context: sectorContext,
       query_type: determineQueryType(query),
       symbol_context: enhancedSymbols.map(sym => {
         const mapping = symbolMappings.find(m => m.symbol === sym);
@@ -374,10 +423,24 @@ What would you like to know about the current market?`,
         };
       }),
       market_data_available: !!marketData,
-      market_bias: marketData?.marketBias || 'Market bias not available',
-      volatility_regime: marketData?.volatilityRegime || 'Volatility regime not available',
-      volume_flow: marketData?.volumeFlow || null,
-      symbol_prices: symbolPrices,
+      market_bias: marketData?.marketBias || marketData?.market_bias || 'Market bias not available',
+      volatility_regime: marketData?.volatilityRegime || marketData?.market_context?.volatility_regime || 'Volatility regime not available',
+      sector_performance: marketData?.sector_performance || {},
+      market_breadth: marketData?.breadth_data ? {
+        nyse_ad_ratio: marketData.breadth_data.nyse_ad_ratio,
+        nasdaq_ad_ratio: marketData.breadth_data.nasdaq_ad_ratio,
+        tick_value: marketData.breadth_data.tick_value,
+        mcclellan_oscillator: marketData.breadth_data.mcclellan_oscillator,
+        interpretation: marketData.breadth_data.interpretation
+      } : null,
+      current_prices: marketData?.symbols || {},
+      macro_data: marketData?.macro_data || {},
+      key_levels: {
+        support: marketData?.key_levels?.support?.slice(0, 2) || [],
+        resistance: marketData?.key_levels?.resistance?.slice(0, 2) || []
+      },
+      recent_signals: marketData?.signals?.slice(0, 3) || [],
+      timeframe_consensus: marketData?.timeframe_consensus || {}
     };
   };
 
@@ -434,76 +497,43 @@ What would you like to know about the current market?`,
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
 
-      const payload = {
-        message: userMessage.content,
-        context: generateEnhancedContext(userMessage.content),
-        symbol: symbol,
-        conversation_history: messages.slice(-6).map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }))
-      };
-
-
-      const requestStart = Date.now();
-
-      const response = await fetch('/api/llm/chat', {
+      const data = await apiFetch<{ data?: { response?: string }; response?: string }>('/api/llm/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          message: userMessage.content,
+          context: generateEnhancedContext(userMessage.content),
+          symbol: symbol,
+          conversation_history: messages.slice(-6).map(msg => ({
+            role: msg.role,
+            content: msg.content
+          }))
+        }),
         signal: controller.signal
       });
 
-      const elapsed = ((Date.now() - requestStart) / 1000).toFixed(1);
-
-
       clearTimeout(timeoutId);
 
-      if (response.ok) {
-        const data = await response.json();
+      setMessages(prev => prev.filter(msg => !msg.isThinking));
 
-        // Remove thinking message
-        setMessages(prev => prev.filter(msg => !msg.isThinking));
-
-        // Extract response content - handle different response structures
-        let responseContent = '';
-        if (data.data?.response) {
-          responseContent = data.data.response; // API wrapper: {success: true, data: {response: "..."}}
-        } else if (data.response) {
-          responseContent = data.response; // Direct response: {response: "..."}
-        } else {
-          responseContent = 'Sorry, I received an empty response.';
-        }
-
-        // Add AI response
-        const aiMessage: Message = {
-          id: (Date.now() + 2).toString(),
-          role: 'assistant',
-          content: responseContent,
-          timestamp: new Date().toISOString()
-        };
-        setMessages(prev => [...prev, aiMessage]);
+      let responseContent = '';
+      if (data.data?.response) {
+        responseContent = data.data.response;
+      } else if (data.response) {
+        responseContent = data.response;
       } else {
-        // Remove thinking message
-        setMessages(prev => prev.filter(msg => !msg.isThinking));
-
-        const errorText = await response.text();
-        console.error(`[LLM Chat] Error ${response.status}:`, errorText.slice(0, 300));
-        const errorMessage: Message = {
-          id: (Date.now() + 2).toString(),
-          role: 'assistant',
-          content: `I encountered an error (${response.status}): ${errorText.slice(0, 150)}. Please try again.`,
-          timestamp: new Date().toISOString()
-        };
-        setMessages(prev => [...prev, errorMessage]);
+        responseContent = 'Sorry, I received an empty response.';
       }
+
+      const aiMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        role: 'assistant',
+        content: responseContent,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
       // Remove thinking message
       setMessages(prev => prev.filter(msg => !msg.isThinking));
-
-      console.error('[LLM Chat] Fetch error:', error);
 
       let errorMessage = "I'm having trouble connecting to my AI services right now. This could be due to network issues or the AI service being temporarily unavailable. Please try again in a moment.";
 
@@ -527,14 +557,15 @@ What would you like to know about the current market?`,
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
+    // Allow Shift+Enter for new lines
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setInput(value);
 
@@ -565,7 +596,13 @@ What would you like to know about the current market?`,
   ];
 
   return (
-    <div className="flex flex-col h-full bg-gray-900/50 backdrop-blur rounded-xl border border-gray-800/50">
+    <div className="flex flex-col h-full bg-transparent">
+      {error && (
+        <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-lg text-red-400 text-sm m-4">
+          {error}
+          <button onClick={() => { setError(null); fetchModelStatus(); }} className="ml-2 underline">Retry</button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-800/50">
         <div className="flex items-center gap-3">
@@ -588,7 +625,7 @@ What would you like to know about the current market?`,
           <div className="flex items-center gap-2 px-2 py-1 bg-gray-800/50 rounded-lg">
             <div className={`w-2 h-2 rounded-full ${modelStatus?.lm_studio_connected ? 'bg-green-400' : 'bg-red-400'}`} />
             <span className="text-xs text-gray-400">
-              {modelStatus?.current_model ? modelStatus.current_model.split('/').pop()?.split('-')[0] || modelStatus.current_model : 'Loading...'}
+              {modelStatus?.current_model?.split('-')[0] || 'Loading...'}
             </span>
           </div>
 
@@ -625,7 +662,7 @@ What would you like to know about the current market?`,
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-white truncate">
-                              {model.id.split('/').pop()?.split('-')[0] || model.id}
+                              {model.id.split('-')[0]}
                             </span>
                             {model.recommended && (
                               <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">
@@ -678,7 +715,7 @@ What would you like to know about the current market?`,
       </div>
 
       {/* Messages */}
-      <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ maxHeight: 'calc(100% - 250px)' }}>
         <AnimatePresence>
           {messages.map((message) => (
             <motion.div
@@ -689,13 +726,13 @@ What would you like to know about the current market?`,
               transition={{ duration: 0.3 }}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`flex gap-3 max-w-[80%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-3 max-w-[95%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                   message.role === 'user'
-                    ? 'bg-blue-500'
+                    ? 'bg-blue-600'
                     : message.isThinking
                       ? 'bg-yellow-500 animate-pulse'
-                      : 'bg-purple-500'
+                      : 'bg-purple-600'
                 }`}>
                   {message.isThinking ? (
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -707,12 +744,12 @@ What would you like to know about the current market?`,
                     )
                   )}
                 </div>
-                <div className={`rounded-lg px-4 py-3 ${
+                <div className={`rounded-lg px-4 py-3 shadow-lg ${
                   message.role === 'user'
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-blue-600 text-white border border-blue-500'
                     : message.isThinking
-                      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                      : 'bg-gray-800 text-gray-100 border border-gray-700'
+                      ? 'bg-yellow-900/30 text-yellow-200 border border-yellow-600/50'
+                      : 'bg-gray-800 text-gray-100 border border-gray-600'
                 }`}>
                   {message.isThinking ? (
                     <div className="flex items-center gap-2">
@@ -720,9 +757,42 @@ What would you like to know about the current market?`,
                       <span>Thinking...</span>
                     </div>
                   ) : (
-                    <div className="whitespace-pre-wrap">{message.content}</div>
+                    <div className={`prose prose-invert max-w-none ${message.role === 'user' ? 'prose-p:text-white prose-strong:text-white prose-headings:text-white' : ''}`}>
+                      {message.role === 'assistant' ? (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2 text-white" {...props} />,
+                            h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2 text-white" {...props} />,
+                            h3: ({node, ...props}) => <h3 className="text-base font-bold mb-1 text-white" {...props} />,
+                            p: ({node, ...props}) => <p className="mb-2 text-gray-100" {...props} />,
+                            ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 text-gray-100" {...props} />,
+                            ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 text-gray-100" {...props} />,
+                            li: ({node, ...props}) => <li className="mb-1 text-gray-100" {...props} />,
+                            strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
+                            em: ({node, ...props}) => <em className="italic text-gray-200" {...props} />,
+                            code: ({node, className, children, ...props}) => {
+                              const inline = !className;
+                              return inline ? (
+                                <code className="bg-gray-900 px-1 py-0.5 rounded text-blue-300 text-sm" {...props}>{children}</code>
+                              ) : (
+                                <code className="block bg-gray-900 p-2 rounded text-green-300 text-sm overflow-x-auto" {...props}>{children}</code>
+                              );
+                            },
+                            table: ({node, ...props}) => <table className="border-collapse border border-gray-600 my-2 text-sm" {...props} />,
+                            th: ({node, ...props}) => <th className="border border-gray-600 px-2 py-1 bg-gray-700 font-semibold text-white" {...props} />,
+                            td: ({node, ...props}) => <td className="border border-gray-600 px-2 py-1 text-gray-100" {...props} />,
+                            blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-blue-500 pl-3 italic text-gray-300 my-2" {...props} />,
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      ) : (
+                        <div className="whitespace-pre-wrap text-white">{message.content}</div>
+                      )}
+                    </div>
                   )}
-                  <div className="text-xs opacity-70 mt-1">
+                  <div className="text-xs opacity-60 mt-2 text-gray-400">
                     {new Date(message.timestamp).toLocaleTimeString()}
                   </div>
                 </div>
@@ -730,6 +800,7 @@ What would you like to know about the current market?`,
             </motion.div>
           ))}
         </AnimatePresence>
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Suggested Questions */}
@@ -773,20 +844,20 @@ What would you like to know about the current market?`,
         )}
 
         <div className="flex gap-2">
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
             value={input}
             onChange={handleInputChange}
-            onKeyPress={handleKeyPress}
-            placeholder={`Ask about ${symbol} or market analysis... Try: "BTC price", "NQ futures", "Apple stock"`}
-            className="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+            onKeyDown={handleKeyPress}
+            placeholder={`Ask about ${symbol} or market analysis...\n\nTry: "How's Real Estate performing?", "Compare BTC to gold", "NQ futures analysis"\n\nPress Enter to send, Shift+Enter for new line`}
+            className="flex-1 px-4 py-3 bg-gray-800 border-2 border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all resize-none min-h-[100px] font-sans"
             disabled={isLoading}
+            rows={3}
           />
           <button
             onClick={sendMessage}
             disabled={!input.trim() || isLoading}
-            className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2"
+            className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2 self-end h-fit"
           >
             {isLoading ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -797,8 +868,8 @@ What would you like to know about the current market?`,
           </button>
         </div>
         <div className="mt-2 text-xs text-gray-500">
-          Powered by AI • Market data integrated • {isConnected ? 'Connected' : 'Disconnected'} •
-          Try asking about BTC, ETH, NQ=F, AAPL, Gold, Oil, etc.
+          <span className="font-semibold text-gray-400">💡 Tip:</span> Press <kbd className="px-1 py-0.5 bg-gray-700 rounded text-gray-300 text-xs">Enter</kbd> to send, <kbd className="px-1 py-0.5 bg-gray-700 rounded text-gray-300 text-xs">Shift+Enter</kbd> for new line •
+          {isConnected ? <span className="text-green-500 ml-1">● Connected</span> : <span className="text-red-500 ml-1">● Disconnected</span>}
         </div>
       </div>
     </div>

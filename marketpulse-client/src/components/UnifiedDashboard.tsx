@@ -523,7 +523,7 @@ export function UnifiedDashboard() {
               <h3 className="text-sm font-medium text-gray-400">AI Assistant</h3>
             </div>
             <div className="flex-1 min-h-[420px]">
-              <LLMChat marketData={dashboardData} macroData={macroData} />
+              <LLMChat marketData={dashboardData} />
             </div>
           </motion.div>
         </div>
