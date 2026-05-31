@@ -19,11 +19,13 @@ from typing import Any, AsyncGenerator
 from loguru import logger
 
 from .base import AgentResult, MarketAgent
+from .alert_agent import AlertAgent
 from .critique_agent import CritiqueAgent
 from .data_agent import DataAgent
 from .hypothesis_agent import HypothesisAgent
 from .ict_agent import ICTSmartMoneyAgent
 from .macro_agent import MacroAgent
+from .multi_tf_agent import MultiTFAgent
 from .options_agent import OptionsFlowAgent
 from .risk_agent import RiskAgent
 from .risk_quant_agent import RiskQuantAgent
@@ -51,6 +53,8 @@ class OrchestratorResult:
     options_result: AgentResult | None = None
     risk_quant_result: AgentResult | None = None
     strategy_result: AgentResult | None = None
+    multi_tf_result: AgentResult | None = None
+    alert_result: AgentResult | None = None
     draft_synthesis: str = ""
     critique: str = ""
     synthesis: str = ""
@@ -69,6 +73,8 @@ class OrchestratorResult:
             "options": self.options_result,
             "risk_quant": self.risk_quant_result,
             "strategy": self.strategy_result,
+            "multi_tf": self.multi_tf_result,
+            "alert": self.alert_result,
         }
 
 
@@ -137,6 +143,7 @@ trading-actionable."""
     AGENTS_WAVE_1: list[tuple[str, type[MarketAgent], str]] = [
         ("technical_result", TechnicalAgent, "Technical"),
         ("macro_result", MacroAgent, "Macro"),
+        ("multi_tf_result", MultiTFAgent, "MultiTF"),
     ]
 
     # Wave 2: agents that benefit from Wave 1 context (regime + technicals)
@@ -147,6 +154,7 @@ trading-actionable."""
         ("options_result", OptionsFlowAgent, "Options"),
         ("risk_quant_result", RiskQuantAgent, "RiskQuant"),
         ("strategy_result", StrategyProposalAgent, "Strategy"),
+        ("alert_result", AlertAgent, "Alert"),
     ]
 
     @property
@@ -607,6 +615,30 @@ trading-actionable."""
                 f"3. Call run_backtest to validate the strategy.\n"
                 f"4. Report: VIABLE / NEEDS_REFINEMENT / NOT_VIABLE with metrics."
             )
+        elif "multi_tf" in agent_attr:
+            return (
+                f"{rt_prefix}"
+                f"Multi-timeframe analysis for: {query}\n\n"
+                f"SYMBOLS: {sym_list}\n\n"
+                f"DATA AGENT OUTPUT:\n{data_context}\n\n"
+                f"INSTRUCTIONS:\n"
+                f"1. Call get_ohlcv for 4H, 1D, and 1W timeframes.\n"
+                f"2. Call analyze_symbol_technicals on each timeframe's data.\n"
+                f"3. Build a confluence matrix: where do timeframes agree/diverge?\n"
+                f"4. Report: STRONG (3/3), PARTIAL (2/3), or DIVERGENCE with specific levels."
+            )
+        elif "alert" in agent_attr:
+            return (
+                f"{rt_prefix}"
+                f"Set alerts based on analysis for: {query}\n\n"
+                f"SYMBOLS: {sym_list}\n\n"
+                f"DATA AGENT OUTPUT:\n{data_context}\n\n"
+                f"INSTRUCTIONS:\n"
+                f"1. Review key levels from other agents in the roundtable context.\n"
+                f"2. Call create_alert for 2-3 high-priority conditions.\n"
+                f"3. Call check_alerts to see which are currently firing.\n"
+                f"4. Report: alerts created, priority levels, trigger conditions."
+            )
         return f"{rt_prefix}Analyze: {query}\n\nData:\n{data_context}"
 
     # -- synthesis --------------------------------------------------------
@@ -624,6 +656,8 @@ trading-actionable."""
             "options": "OPTIONS FLOW AGENT",
             "risk_quant": "RISK QUANT AGENT",
             "strategy": "STRATEGY AGENT",
+            "multi_tf": "MULTI-TF AGENT",
+            "alert": "ALERT AGENT",
         }
         for key, label in labels.items():
             agent_result = result.all_agent_results.get(key)
