@@ -338,7 +338,7 @@ class DatabaseManager:
                 self.database_url.replace("sqlite://", "sqlite+aiosqlite://"), poolclass=NullPool
             )
         else:
-            async_url = self.database_url.replace("postgresql://", "postgresql+asyncpg://")
+            async_url = self.database_url  # URL already has postgresql+psycopg
             async_engine = create_async_engine(
                 async_url,
                 pool_size=self._pool_size,

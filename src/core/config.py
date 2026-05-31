@@ -386,7 +386,7 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Database connection URL"""
-        return f"postgresql://{self.database_user}:{self.database_password}@{self.database_host}:{self.database_port}/{self.database_name}"
+        return f"postgresql+psycopg://{self.database_user}:{self.database_password}@{self.database_host}:{self.database_port}/{self.database_name}"
 
     def get_api_key(self, service: str, key_type: str = "api_key") -> str:
         """Get API key for a specific service"""
