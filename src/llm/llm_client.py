@@ -592,6 +592,8 @@ class LLMManager:
     def _provider_label(client: Any) -> str:
         """Human-readable provider label for analysis output."""
         name = type(client).__name__
+        if "MiniMax" in name:
+            return "MiniMax (M3)"
         if "DeepSeek" in name:
             return "DeepSeek"
         if "LMStudio" in name:

@@ -31,8 +31,7 @@ Provider fallback chain is defined in ``model_routing`` config section.
 
 from __future__ import annotations
 
-import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from loguru import logger
@@ -40,7 +39,7 @@ from loguru import logger
 from ..core.config import get_settings
 from .deepseek_client import DeepSeekClient
 from .llm_client import LMStudioClient, OpenRouterClient
-
+from .minimax_client import MiniMaxClient
 
 # ---------------------------------------------------------------------------
 # Provider registry entry
@@ -101,6 +100,8 @@ class ModelRouter:
 
     def _provider_for_model(self, model_id: str, default: str) -> str:
         """Heuristic: which provider owns this model id?"""
+        if "minimax" in model_id.lower() or "m3" in model_id.lower():
+            return "minimax"
         if "deepseek" in model_id.lower():
             return "deepseek"
         if "gpt" in model_id.lower() or "openai" in model_id.lower():
@@ -114,21 +115,27 @@ class ModelRouter:
         if self._entered:
             return self
 
-        # Initialise providers lazily
+        # Initialise providers lazily. MiniMax is the DEFAULT primary provider
+        # (international coding plan endpoint, model MiniMax-M3).
+        self._providers["minimax"] = ProviderEntry(
+            name="minimax",
+            client=MiniMaxClient(self.settings),
+            priority=0,  # highest
+        )
         self._providers["deepseek"] = ProviderEntry(
             name="deepseek",
             client=DeepSeekClient(self.settings),
-            priority=0,  # highest
+            priority=1,
         )
         self._providers["lm_studio"] = ProviderEntry(
             name="lm_studio",
             client=LMStudioClient(self.settings),
-            priority=1,
+            priority=2,
         )
         self._providers["openrouter"] = ProviderEntry(
             name="openrouter",
             client=OpenRouterClient(self.settings),
-            priority=2,
+            priority=3,
         )
 
         # Enter clients that have async context managers
@@ -226,7 +233,7 @@ class ModelRouter:
         cap_entry = self._capability_map.get(capability)
         if cap_entry is None:
             # Unknown capability -- use best available
-            cap_entry = ("deepseek", self._deepseek_cfg.model_pro)
+            cap_entry = ("minimax", self.settings.llm.minimax.model)
 
         preferred_provider, model_id = cap_entry
 
@@ -273,6 +280,8 @@ class ModelRouter:
 
     def _fallback_model_for(self, provider: str, capability: str) -> str:
         """Pick a sensible model on a fallback provider."""
+        if provider == "minimax":
+            return self.settings.llm.minimax.model
         if provider == "deepseek":
             if capability == "fast":
                 return self._deepseek_cfg.model_flash
@@ -330,6 +339,16 @@ class ModelRouter:
         """Return a combined model list for the UI."""
         models: list[dict[str, Any]] = []
 
+        # MiniMax (default primary)
+        mm = self.settings.llm.minimax
+        models.append({
+            "id": mm.model,
+            "provider": "minimax",
+            "capability": "reasoning",
+            "description": f"{mm.model} via minimax.io (international coding plan)",
+            "recommended": True,
+        })
+
         # DeepSeek models
         ds = self._deepseek_cfg
         models.append({
@@ -337,7 +356,7 @@ class ModelRouter:
             "provider": "deepseek",
             "capability": "reasoning",
             "description": "DeepSeek V4 Pro -- full reasoning, function calling",
-            "recommended": True,
+            "recommended": False,
         })
         models.append({
             "id": ds.model_flash,

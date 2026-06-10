@@ -62,7 +62,7 @@ class ApiKeys(BaseSettings):
 
     class MiniMaxConfig(BaseSettings):
         api_key: str = "your_minimax_api_key"
-        base_url: str = "https://api.minimax.chat/v1"
+        base_url: str = "https://minimax.io"
 
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     rithmic: RithmicConfig = Field(default_factory=RithmicConfig)
@@ -86,10 +86,10 @@ class LLMSettings(BaseSettings):
         timeout: int = 60
 
     class MiniMaxConfig(BaseSettings):
-        base_url: str = "https://api.minimax.chat/v1"
+        base_url: str = "https://minimax.io"
         api_key: str = "your_minimax_api_key"
         timeout: int = 60
-        model: str = "MiniMax-Text-01"
+        model: str = "MiniMax-M3"
 
     class DeepSeekConfig(BaseSettings):
         base_url: str = "https://api.deepseek.com/v1"
@@ -99,13 +99,18 @@ class LLMSettings(BaseSettings):
         model_flash: str = "deepseek-v4-flash"
 
     class ModelRoutingConfig(BaseSettings):
-        """Capability-based model routing preferences"""
-        reasoning: str = "deepseek-v4-pro"       # Multi-step analysis, hypothesis testing
-        fast: str = "deepseek-v4-flash"           # Quick checks, data validation
-        standard: str = "deepseek-v4-pro"         # Default chat / analysis
-        structured_output: str = "deepseek-v4-pro" # Function calling, JSON schema
-        primary_provider: str = "deepseek"         # deepseek | lm_studio | openrouter
-        fallback_providers: str = "lm_studio,openrouter"
+        """Capability-based model routing preferences.
+
+        Default primary provider is now ``minimax`` (international coding plan
+        endpoint). Set ``LLM_PROVIDER`` to ``deepseek``, ``lm_studio``, or
+        ``openrouter`` to override at runtime.
+        """
+        reasoning: str = "MiniMax-M3"               # Multi-step analysis, hypothesis testing
+        fast: str = "MiniMax-M3"                     # Quick checks, data validation
+        standard: str = "MiniMax-M3"                 # Default chat / analysis
+        structured_output: str = "MiniMax-M3"        # Function calling, JSON schema
+        primary_provider: str = "minimax"            # minimax | deepseek | lm_studio | openrouter
+        fallback_providers: str = "deepseek,lm_studio,openrouter"
 
     primary: PrimaryConfig = Field(default_factory=PrimaryConfig)
     fallback: FallbackConfig = Field(default_factory=FallbackConfig)
