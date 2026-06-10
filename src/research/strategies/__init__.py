@@ -40,8 +40,10 @@ class Strategy(ABC):
     def __post_init__(self) -> None:
         if not self.name:
             raise ValueError(f"{type(self).__name__} must set class-level 'name'")
-        if not self.params:
-            self.params = dict(self.default_params)
+        # Always start from default_params, then overlay any user-supplied params.
+        merged = dict(self.default_params)
+        merged.update(self.params)
+        self.params = merged
 
     @abstractmethod
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
