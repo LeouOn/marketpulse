@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Flame, BarChart3, Bell, Settings, ChevronLeft, ChevronRight, X, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Flame, BarChart3, Bell, Settings, ChevronLeft, ChevronRight, X, TrendingUp, FlaskConical } from 'lucide-react';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -16,6 +16,7 @@ const navItems = [
   { href: '/trending', icon: Flame, label: 'Trending' },
   { href: '/chart/SPY', icon: BarChart3, label: 'Charts', matchPrefix: '/chart' },
   { href: '/symbol/SPY', icon: TrendingUp, label: 'Symbol', matchPrefix: '/symbol' },
+  { href: '/research', icon: FlaskConical, label: 'Research', matchPrefix: '/research' },
   { href: '/alerts', icon: Bell, label: 'Alerts', disabled: true },
   { href: '/settings', icon: Settings, label: 'Settings', disabled: true },
 ];
