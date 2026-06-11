@@ -490,6 +490,7 @@ class Martingale(ScalingModel):
 # ---------------------------------------------------------------------------
 
 from src.research.scaling.MayerMultipleGated import MayerMultipleGated  # noqa: E402
+from src.research.scaling.OnChainGated import OnChainGated  # noqa: E402
 from src.research.scaling.RSIModulated import RSIModulated  # noqa: E402
 from src.research.scaling.SentimentModulated import SentimentModulated  # noqa: E402
 
@@ -503,6 +504,7 @@ _REGISTRY: dict[str, type[ScalingModel]] = {
     "AntiMartingale": AntiMartingale,
     "Martingale": Martingale,
     "MayerMultipleGated": MayerMultipleGated,
+    "OnChainGated": OnChainGated,
     "RSIModulated": RSIModulated,
     "SentimentModulated": SentimentModulated,
 }
