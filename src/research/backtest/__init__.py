@@ -205,7 +205,7 @@ def run_backtest(
     Args:
         df: OHLCV DataFrame (ts, open, high, low, close, volume).
         strategy: a Strategy instance (must implement generate_signals).
-        scaling: a ScalingModel. If None, a ``FixedDollar`` of $0 is used
+        scaling: a ScalingModel. If None, target-fraction-only sizing is used
             (so only the strategy's own DCA behavior is active).
         starting_equity: float.
         fee_bps: round-trip fee in basis points (10 bps = 0.10%).
@@ -216,7 +216,10 @@ def run_backtest(
     if "close" not in df.columns or "ts" not in df.columns:
         raise ValueError("df must contain 'ts' and 'close' columns")
     if scaling is None:
-        scaling = FixedDollar(params={"amount_usd": 0.0})
+        _no_scaling = True
+        scaling = None
+    else:
+        _no_scaling = False
 
     fee_rate = fee_bps / 10_000.0
     slip_rate = slippage_bps / 10_000.0
@@ -341,7 +344,7 @@ def run_backtest(
         recent_rets = pd.Series(recent_returns[-252:])  # last year
         if len(recent_rets) < 5:
             recent_rets = pd.Series(recent_returns)  # all we have
-        if isinstance(scaling, FixedDollar) and float(scaling.params.get("amount_usd", 0)) == 0:
+        if _no_scaling:
             # user didn't specify a scaling size -> scale by target fraction only
             buy_usd = max(diff_usd, 0.0)
             sell_usd = max(-diff_usd, 0.0)
