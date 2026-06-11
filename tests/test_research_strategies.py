@@ -10,14 +10,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from typing import ClassVar
+
 from src.research.strategies import (
     BuyAndHold,
     DCAFixedAmount,
     DCAValueAveraging,
+    InvalidParamsError,
+    LadderLimit,
     MeanReversionBollinger,
     MeanReversionRSI,
     MomentumTrend,
     NoTrade,
+    Strategy,
     describe_strategy,
     get_strategy,
     list_strategies,
@@ -211,6 +216,7 @@ def test_list_strategies_returns_all_known():
         "MomentumTrend",
         "MeanReversionBollinger",
         "MeanReversionRSI",
+        "LadderLimit",
     }
 
 
@@ -250,9 +256,85 @@ def test_all_strategy_signals_are_in_unit_interval():
         MomentumTrend(),
         MeanReversionBollinger(),
         MeanReversionRSI(),
+        LadderLimit(),
     ]:
         sig = strat.generate_signals(df).dropna()
         if sig.empty:
             continue
         assert sig.min() >= 0.0, f"{strat} has negative signal"
         assert sig.max() <= 1.0, f"{strat} has signal > 1"
+
+
+# ---------------------------------------------------------------------------
+# Parameter validation
+# ---------------------------------------------------------------------------
+
+
+def test_strategy_validate_params_called_at_construction():
+    """validate_params is called during __post_init__ and can raise."""
+
+    class BadStrategy(Strategy):
+        name: ClassVar[str] = "BadStrategy"
+        description: ClassVar[str] = "test"
+        default_params: ClassVar[dict] = {"x": 1}
+
+        def validate_params(self, params):
+            if params["x"] < 0:
+                raise InvalidParamsError(f"x must be >= 0, got {params['x']}")
+
+        def generate_signals(self, df):
+            return pd.Series(0.0, index=df.index)
+
+    BadStrategy(params={"x": 5})  # should not raise
+    with pytest.raises(InvalidParamsError, match="x must be >= 0"):
+        BadStrategy(params={"x": -1})
+
+
+def test_strategy_default_validation_is_noop():
+    """Strategies without validate_params override accept any params."""
+    BuyAndHold()
+    NoTrade()
+
+
+def test_validate_dca_fixed_amount_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="every_n_bars must be > 0"):
+        DCAFixedAmount(params={"every_n_bars": 0, "amount_usd": 100})
+    with pytest.raises(InvalidParamsError, match="amount_usd must be > 0"):
+        DCAFixedAmount(params={"every_n_bars": 7, "amount_usd": -50})
+
+
+def test_validate_dca_value_averaging_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="every_n_bars must be > 0"):
+        DCAValueAveraging(params={"every_n_bars": 0})
+    with pytest.raises(InvalidParamsError, match="target_final_usd must be > 0"):
+        DCAValueAveraging(params={"target_final_usd": -100})
+
+
+def test_validate_momentum_trend_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="sma_period must be >= 2"):
+        MomentumTrend(params={"sma_period": 1})
+
+
+def test_validate_mean_reversion_bollinger_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="period must be >= 2"):
+        MeanReversionBollinger(params={"period": 1, "num_std": 2.0})
+    with pytest.raises(InvalidParamsError, match="num_std must be > 0"):
+        MeanReversionBollinger(params={"period": 20, "num_std": 0})
+
+
+def test_validate_mean_reversion_rsi_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="period must be >= 2"):
+        MeanReversionRSI(params={"period": 1})
+    with pytest.raises(InvalidParamsError, match="entry_threshold .* must be < exit_threshold"):
+        MeanReversionRSI(params={"entry_threshold": 70, "exit_threshold": 30})
+    with pytest.raises(InvalidParamsError, match="entry_threshold must be in"):
+        MeanReversionRSI(params={"entry_threshold": -1, "exit_threshold": 50})
+
+
+def test_validate_ladder_limit_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="tranche_pcts must be non-empty"):
+        LadderLimit(params={"tranche_pcts": []})
+    with pytest.raises(InvalidParamsError, match="all tranche_pcts must be negative"):
+        LadderLimit(params={"tranche_pcts": [0.05, -0.10]})
+    with pytest.raises(InvalidParamsError, match="cooldown_calendar_days must be > 0"):
+        LadderLimit(params={"cooldown_calendar_days": 0})

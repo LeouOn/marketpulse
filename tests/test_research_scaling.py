@@ -11,6 +11,7 @@ from src.research.scaling import (
     DrawdownScaled,
     FixedDollar,
     FixedFractional,
+    InvalidParamsError,
     KellyCriterion,
     Martingale,
     RiskParity,
@@ -184,6 +185,9 @@ def test_list_scaling_returns_all_known():
         "DrawdownScaled",
         "AntiMartingale",
         "Martingale",
+        "MayerMultipleGated",
+        "RSIModulated",
+        "SentimentModulated",
     }
 
 
@@ -221,3 +225,85 @@ def test_all_scaling_models_return_nonneg_sizes():
             buy, sell = s.size(eq, pv, 30_000.0, r, st)
             assert buy >= 0, f"{cls.__name__} returned negative buy: {buy}"
             assert sell >= 0, f"{cls.__name__} returned negative sell: {sell}"
+
+
+# ---------------------------------------------------------------------------
+# Parameter validation
+# ---------------------------------------------------------------------------
+
+
+def test_validate_fixed_fractional_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="fraction must be in"):
+        FixedFractional(params={"fraction": 5.0})
+    with pytest.raises(InvalidParamsError, match="fraction must be in"):
+        FixedFractional(params={"fraction": 0.0})
+
+
+def test_validate_fixed_dollar_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="amount_usd must be >= 0"):
+        FixedDollar(params={"amount_usd": -100})
+
+
+def test_validate_kelly_criterion_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="fraction must be in"):
+        KellyCriterion(params={"fraction": 0.0})
+    with pytest.raises(InvalidParamsError, match="lookback must be > 0"):
+        KellyCriterion(params={"lookback": 0})
+
+
+def test_validate_volatility_targeted_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="target_annual_vol must be > 0"):
+        VolatilityTargeted(params={"target_annual_vol": 0})
+    with pytest.raises(InvalidParamsError, match="max_fraction must be in"):
+        VolatilityTargeted(params={"max_fraction": 0})
+
+
+def test_validate_risk_parity_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="max_fraction must be in"):
+        RiskParity(params={"max_fraction": 0})
+    with pytest.raises(InvalidParamsError, match="lookback must be > 0"):
+        RiskParity(params={"lookback": -1})
+
+
+def test_validate_drawdown_scaled_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="base_fraction must be > 0"):
+        DrawdownScaled(params={"base_fraction": -0.1})
+    with pytest.raises(InvalidParamsError, match="exponent must be > 0"):
+        DrawdownScaled(params={"exponent": 0})
+
+
+def test_validate_anti_martingale_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="base_amount must be > 0"):
+        AntiMartingale(params={"base_amount": 0})
+    with pytest.raises(InvalidParamsError, match="growth_factor must be > 0"):
+        AntiMartingale(params={"growth_factor": -1})
+    with pytest.raises(InvalidParamsError, match="max_streak must be > 0"):
+        AntiMartingale(params={"max_streak": 0})
+
+
+def test_validate_martingale_rejects_bad_params():
+    with pytest.raises(InvalidParamsError, match="growth_factor must be > 0"):
+        Martingale(params={"growth_factor": 0})
+
+
+def test_validate_rsi_modulated_rejects_bad_params():
+    from src.research.scaling import RSIModulated
+
+    with pytest.raises(InvalidParamsError, match="lookback must be > 0"):
+        RSIModulated(params={"lookback": 0})
+    with pytest.raises(InvalidParamsError, match="base_buy_multiplier must be > 0"):
+        RSIModulated(params={"base_buy_multiplier": -1})
+
+
+def test_validate_mayer_multiple_gated_rejects_bad_params():
+    from src.research.scaling import MayerMultipleGated
+
+    with pytest.raises(InvalidParamsError, match="base_buy_multiplier must be > 0"):
+        MayerMultipleGated(params={"base_buy_multiplier": 0})
+
+
+def test_validate_sentiment_modulated_rejects_bad_params():
+    from src.research.scaling import SentimentModulated
+
+    with pytest.raises(InvalidParamsError, match="base_buy_multiplier must be > 0"):
+        SentimentModulated(params={"base_buy_multiplier": -1})
