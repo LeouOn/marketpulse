@@ -342,6 +342,8 @@ class MeanReversionRSI(Strategy):
 # ---------------------------------------------------------------------------
 
 from src.research.strategies.LadderLimit import LadderLimit  # noqa: E402
+from src.research.strategies.RecurringFundingDCA import RecurringFundingDCA  # noqa: E402
+from src.research.strategies.HalvingCycleAccumulation import HalvingCycleAccumulation  # noqa: E402
 
 _REGISTRY: dict[str, type[Strategy]] = {
     "BuyAndHold": BuyAndHold,
@@ -352,6 +354,7 @@ _REGISTRY: dict[str, type[Strategy]] = {
     "MeanReversionBollinger": MeanReversionBollinger,
     "MeanReversionRSI": MeanReversionRSI,
     "LadderLimit": LadderLimit,
+    "HalvingCycleAccumulation": HalvingCycleAccumulation,
 }
 
 
