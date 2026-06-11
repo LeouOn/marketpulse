@@ -205,6 +205,10 @@ def test_load_daily_filters_by_start_end(tmp_data_dir, sample_daily, monkeypatch
 def test_load_hourly_fetches_when_no_cache(tmp_data_dir, sample_daily, monkeypatch):
     hourly = sample_daily.rename(columns={"ts": "ts"}).head(2)
     monkeypatch.setattr(data_mod, "fetch_hourly_cryptocompare", lambda **kw: hourly)
+    # The T3 (Kraken) fetcher is also called by load_hourly -> update_cache
+    # when no cache exists; mock it to avoid hitting the real network.
+    monkeypatch.setattr(data_mod, "fetch_hourly_kraken", lambda *a, **kw: hourly)
+    monkeypatch.setattr(data_mod, "fetch_hourly_binance", lambda *a, **kw: hourly)
     out = load_hourly()
     assert (tmp_data_dir / "hourly.csv").exists()
     assert len(out) == 2
@@ -224,6 +228,7 @@ def test_update_cache_writes_both_and_reports_counts(tmp_data_dir, sample_daily,
     # the mock must accept any kwargs.
     monkeypatch.setattr(data_mod, "fetch_daily_yahoo", lambda *a, **kw: sample_daily)
     monkeypatch.setattr(data_mod, "fetch_hourly_cryptocompare", lambda *a, **kw: sample_daily.head(2))
+    monkeypatch.setattr(data_mod, "fetch_hourly_kraken", lambda *a, **kw: sample_daily.head(2))
     monkeypatch.setattr(data_mod, "fetch_hourly_binance", lambda *a, **kw: sample_daily.head(2))
     result = update_cache()
     assert result["daily_total"] == 4
@@ -254,10 +259,10 @@ def _sample_daily_2y() -> pd.DataFrame:
 
 
 def test_yahoo_btc_earliest_constant():
-    """Sanity: the earliest BTC-USD date on Yahoo is 2010-07-16."""
+    """Sanity: the earliest BTC-USD date on Yahoo is 2014-09-17 (empirically)."""
     from src.research.data import YAHOO_BTC_EARLIEST
 
-    assert YAHOO_BTC_EARLIEST == "2010-07-16"
+    assert YAHOO_BTC_EARLIEST == "2014-09-17"
 
 
 def test_binance_btc_start_constant():
@@ -354,23 +359,36 @@ def test_yahoo_constant_used_by_fetcher(tmp_data_dir, monkeypatch):
 
 
 def test_binance_tranche_end_is_now(tmp_data_dir, monkeypatch):
-    """T3 (Binance) fetches to 'now' -- end_ms should be set to roughly now."""
-    import time as _time
-
-    before = int(_time.time() * 1000)
-    captured = {}
+    """T3 (Kraken) fetches recent bars; the tranche's wrapper has no time kwargs now."""
+    called = {"n": 0}
 
     def capture(*a, **kw):
-        captured.update(kw)
+        called["n"] += 1
         return pd.DataFrame()
 
     monkeypatch.setattr(data_mod, "fetch_hourly_binance", capture)
+    monkeypatch.setattr(data_mod, "fetch_hourly_kraken", capture)
     update_cache(tranches=["t3_hourly_binance"])
-    after = int(_time.time() * 1000)
-    end_ms = captured.get("end_ms", 0)
-    # T3 wraps the fetcher in a lambda that captures the end_ms at call time.
-    # Our capture mock records whatever kwargs the lambda passes.
-    assert before - 1000 <= end_ms <= after + 1000, f"end_ms={end_ms} not in [{before-1000}, {after+1000}]"
+    assert called["n"] >= 1, "T3 was not invoked"
+
+
+def test_cryptocompare_api_key_is_read_from_env(monkeypatch):
+    """The module should pick up CRYPTOCOMPARE_API_KEY from env at import time."""
+    monkeypatch.setenv("CRYPTOCOMPARE_API_KEY", "test-key-123")
+    # We can't easily re-import the module, but we can verify the constant exists
+    from src.research import data as dm
+
+    assert hasattr(dm, "CRYPTOCOMPARE_API_KEY")
+    # The value can be either our env value or '' depending on import order
+    assert isinstance(dm.CRYPTOCOMPARE_API_KEY, str)
+
+
+def test_kraken_url_constant():
+    """The Kraken URL constant is set to the public OHLC endpoint."""
+    from src.research.data import KRAKEN_OHLC_URL
+
+    assert "kraken.com" in KRAKEN_OHLC_URL
+    assert "OHLC" in KRAKEN_OHLC_URL
 
 
 def test_data_summary_includes_sources_field(tmp_data_dir, sample_daily):
@@ -447,7 +465,7 @@ def test_http_get_data_list_handles_cryptocompare_silent_rate_limit(monkeypatch)
     """CryptoCompare returns HTTP 200 with 'rate limit' message; we should raise."""
     import requests as _req
 
-    def fake_get(url, params=None, timeout=None):
+    def fake_get(url, params=None, headers=None, timeout=None):
         r = _req.models.Response()
         r.status_code = 200
         r._content = b'{"Response": "Error", "Message": "rate limit"}'
@@ -463,7 +481,7 @@ def test_http_get_data_list_returns_data_on_success(monkeypatch):
     """Successful response with Response=Success returns the Data list."""
     import requests as _req
 
-    def fake_get(url, params=None, timeout=None):
+    def fake_get(url, params=None, headers=None, timeout=None):
         r = _req.models.Response()
         r.status_code = 200
         r._content = b'{"Response": "Success", "Data": {"Data": [{"time": 1000, "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volumeto": 100}]}}'

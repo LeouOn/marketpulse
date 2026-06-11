@@ -50,15 +50,27 @@ SRC_CRYPTOCOMPARE = "cryptocompare"
 SRC_BINANCE = "binance"
 SRC_RECONCILED = "reconciled"
 
-# Earliest BTC-USD date on Yahoo Finance (per `firstTradeDate`).
-YAHOO_BTC_EARLIEST = "2010-07-16"
+# Earliest BTC-USD date on Yahoo Finance (empirically: 2014-09-17).
+# The earlier "2010-07-16" figure from yahoofinancials was wrong for
+# BTC-USD specifically; yfinance returns 0 rows before 2014-09-17.
+YAHOO_BTC_EARLIEST = "2014-09-17"
 # Binance BTCUSDT trading started ~2017-08-17.
 BINANCE_BTC_START = pd.Timestamp("2017-08-17", tz="UTC").tz_convert(None)
 
-# CryptoCompare free hourly endpoint.
+# CryptoCompare free hourly endpoint (requires free API key for >100 calls/day).
 CRYPTOCOMPARE_URL = "https://min-api.cryptocompare.com/data/v2/histohour"
-# Binance public klines endpoint.
-BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
+# Kraken public OHLC endpoint (used for T3 hourly). Kraken is preferred
+# over Binance because api.binance.com is geo-blocked in many regions
+# and api.binance.us only has BTCUSDT from 2020 onward. Kraken returns
+# 1000 hourly bars per call, paginated via the ``since`` parameter.
+KRAKEN_OHLC_URL = "https://api.kraken.com/0/public/OHLC"
+
+# Optional CryptoCompare API key. When unset, T2 (CryptoCompare) will fail
+# with a 401; T1 (Yahoo) and T3 (Kraken) still work. Set via env var:
+#   export CRYPTOCOMPARE_API_KEY=your_key_here
+import os as _os  # noqa: E402
+
+CRYPTOCOMPARE_API_KEY: str = _os.getenv("CRYPTOCOMPARE_API_KEY", "")
 
 # Network defaults.
 REQ_TIMEOUT = 30
@@ -116,7 +128,12 @@ def _http_get_json(url: str, params: dict | None = None, timeout: int = REQ_TIME
     retry=retry_if_exception_type((requests.HTTPError, requests.Timeout, requests.ConnectionError)),
     reraise=True,
 )
-def _http_get_data_list(url: str, params: dict | None = None, timeout: int = REQ_TIMEOUT) -> list | None:
+def _http_get_data_list(
+    url: str,
+    params: dict | None = None,
+    headers: dict | None = None,
+    timeout: int = REQ_TIMEOUT,
+) -> list | None:
     """GET a URL; on success return the data list, on non-Success return None.
 
     Handles both shapes:
@@ -126,7 +143,7 @@ def _http_get_data_list(url: str, params: dict | None = None, timeout: int = REQ
     CryptoCompare's "silent 200 with non-Success body" failure mode is
     turned into a rate-limit HTTPError so tenacity retries.
     """
-    r = requests.get(url, params=params, timeout=timeout)
+    r = requests.get(url, params=params, headers=headers, timeout=timeout)
     r.raise_for_status()
     payload = r.json()
     if not isinstance(payload, dict):
@@ -250,10 +267,14 @@ def fetch_hourly_cryptocompare(
     logger.info(
         f"[T2] Fetching hourly BTC-USD from CryptoCompare (>= {datetime.fromtimestamp(start_ts, tz=timezone.utc).date()})"
     )
+    headers = {}
+    if CRYPTOCOMPARE_API_KEY:
+        headers["authorization"] = f"Bearer {CRYPTOCOMPARE_API_KEY}"
     while cursor > start_ts and pages < 50:  # 50 * 2000 = 100k hours ~ 11 years
         data = _http_get_data_list(
             CRYPTOCOMPARE_URL,
             params={"fsym": symbol, "tsym": tsym, "limit": 2000, "toTs": cursor},
+            headers=headers or None,
         )
         if not data:
             break
@@ -277,68 +298,85 @@ def fetch_hourly_cryptocompare(
         cursor = int(data[0]["time"])
         pages += 1
 
+    if not rows:
+        logger.info(f"[T2] CryptoCompare returned 0 hourly bars (no data or auth required)")
+        return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "source"])
     df = pd.DataFrame(rows).drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
     logger.info(f"[T2] CryptoCompare returned {len(df)} hourly bars across {pages} pages")
     return df
 
 
-def fetch_hourly_binance(
-    start_ms: int | None = None,
-    end_ms: int | None = None,
-    symbol: str = "BTCUSDT",
+def fetch_hourly_kraken(
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+    pair: str = "XBTUSD",
 ) -> pd.DataFrame:
-    """Fetch hourly BTCUSDT from Binance public klines API (paginated 1000/call).
+    """Fetch hourly XBT-USD from Kraken's public OHLC API.
 
-    Used for **Tranche 3**: hourly history from 2017-08-17 to present.
-    Exchange-verified; volume is in quote asset (USDT) for consistency
-    with CryptoCompare.
+    Used for **Tranche 3**: hourly history. Kraken is preferred over
+    Binance because (a) Binance.com is geo-blocked in many regions
+    and (b) Binance.us only has BTCUSDT from 2020+.
+
+    **Caveat**: Kraken's free OHLC endpoint returns at most the most
+    recent 720 hourly bars (~30 days) per call. Going further back
+    requires a paid tier or another source. We respect that limit:
+    if the start_ts requested is older than what's available, we just
+    return whatever Kraken gives us (the most recent 720 hours).
+
+    Returns volume in USD (XBT volume * close as a proxy).
     """
-    if end_ms is None:
-        end_ms = int(time.time() * 1000)
-    if start_ms is None:
-        start_ms = int(BINANCE_BTC_START.tz_localize("UTC").timestamp() * 1000)
+    if end_ts is None:
+        end_ts = int(time.time())
+    if start_ts is None:
+        start_ts = int(BINANCE_BTC_START.tz_localize("UTC").timestamp())
+
+    logger.info(
+        f"[T3] Fetching hourly XBT-USD from Kraken (requesting >= {datetime.fromtimestamp(start_ts, tz=timezone.utc).date()})"
+    )
+    try:
+        payload = _http_get_json(
+            KRAKEN_OHLC_URL, params={"pair": pair, "interval": 60, "since": start_ts}
+        )
+    except Exception as e:
+        logger.warning(f"[T3] Kraken fetch failed: {e}")
+        return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "source"])
+
+    if not payload or payload.get("error"):
+        if payload and payload.get("error"):
+            logger.warning(f"[T3] Kraken error: {payload['error']}")
+        return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "source"])
+
+    result = payload.get("result", {})
+    bars = result.get("XXBTZUSD") or result.get(pair) or []
+    if not bars:
+        return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "source"])
 
     rows: list[dict] = []
-    cursor = start_ms
-    pages = 0
-    logger.info(
-        f"[T3] Fetching hourly BTCUSDT from Binance (>= {datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc).date()})"
-    )
-    while cursor < end_ms and pages < 200:  # 200 * 1000 = 200k hours ~ 23 years
-        params = {
-            "symbol": symbol,
-            "interval": "1h",
-            "startTime": cursor,
-            "endTime": end_ms,
-            "limit": 1000,
-        }
-        try:
-            data = _http_get_json(BINANCE_KLINES_URL, params=params)
-        except Exception as e:
-            logger.warning(f"[T3] Binance page {pages} failed: {e}")
-            break
-        if not data:
-            break
-
-        for d in data:
-            rows.append(
-                {
-                    "ts": pd.Timestamp(d[0], unit="ms", tz="UTC").tz_convert(None),
-                    "open": float(d[1]),
-                    "high": float(d[2]),
-                    "low": float(d[3]),
-                    "close": float(d[4]),
-                    "volume": float(d[7]),  # quote volume (USDT) for consistency
-                    "source": SRC_BINANCE,
-                }
-            )
-
-        cursor = int(data[-1][0]) + 1
-        pages += 1
+    for d in bars:
+        # d = [time, open, high, low, close, vwap, volume, count]
+        rows.append(
+            {
+                "ts": pd.Timestamp(int(d[0]), unit="s", tz="UTC").tz_convert(None),
+                "open": float(d[1]),
+                "high": float(d[2]),
+                "low": float(d[3]),
+                "close": float(d[4]),
+                "volume": float(d[6]) * float(d[4]),  # XBT volume * close ~= USD volume
+                "source": SRC_BINANCE,  # legacy name; means "exchange-sourced"
+            }
+        )
 
     df = pd.DataFrame(rows).drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
-    logger.info(f"[T3] Binance returned {len(df)} hourly bars across {pages} pages")
+    logger.info(
+        f"[T3] Kraken returned {len(df)} hourly bars "
+        f"({df['ts'].min().date()} -> {df['ts'].max().date()})"
+    )
     return df
+
+
+# Legacy alias for back-compat with tests; the name "binance" is kept
+# in the source column for provenance continuity.
+fetch_hourly_binance = fetch_hourly_kraken
 
 
 # ---------------------------------------------------------------------------
@@ -459,14 +497,10 @@ def update_cache(
         hourly_existing = _read_cache(HOURLY_CSV)
 
     if "t3_hourly_binance" in tranches:
-        end_ms_t3 = int(time.time() * 1000)
-        start_ms_t3 = int(BINANCE_BTC_START.tz_localize("UTC").timestamp() * 1000)
         result = _run_tranche(
             "T3",
             SRC_BINANCE,
-            lambda start_ms=start_ms_t3, end_ms=end_ms_t3: fetch_hourly_binance(
-                start_ms=start_ms, end_ms=end_ms
-            ),
+            lambda: fetch_hourly_kraken(),
             hourly_existing,
             HOURLY_CSV,
         )
