@@ -186,6 +186,7 @@ def test_list_scaling_returns_all_known():
         "AntiMartingale",
         "Martingale",
         "MayerMultipleGated",
+        "OnChainGated",
         "RSIModulated",
         "SentimentModulated",
     }
