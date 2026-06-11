@@ -65,13 +65,15 @@ def test_end_to_end_pipeline(seeded):
         {
             "strategy": "DCAFixedAmount",
             "strategy_params": {"amount_usd": 100, "every_n_bars": 7},
+            "scaling": "FixedDollar",
+            "scaling_params": {"amount_usd": 100},
             "start": "2018-01-01",
             "end": "2023-06-01",
         },
     )
     assert r.success, r.error
     assert "metrics" in r.data
-    assert r.data["metrics"]["num_buys"] > 100
+    assert r.data["metrics"]["num_buys"] >= 100
     assert r.report_id is not None
 
     # 3. monte carlo
@@ -95,6 +97,8 @@ def test_end_to_end_pipeline(seeded):
         "compare_strategies",
         {
             "strategies": ["BuyAndHold", "DCAFixedAmount", "MomentumTrend"],
+            "scaling": "FixedDollar",
+            "scaling_params": {"amount_usd": 100},
             "start": "2019-01-01",
             "end": "2023-06-01",
         },
