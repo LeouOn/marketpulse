@@ -61,7 +61,7 @@ export default function RiskManagerTab() {
   const fetchPositionSize = async () => {
     try {
       setError(null);
-      const data = await apiFetch<any>('/api/backtest/position-size', {
+      const data = await apiFetch<any>('/backtest/position-size', {
         method: 'POST',
         body: JSON.stringify({
           recent_trades: recentTrades,

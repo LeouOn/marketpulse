@@ -354,7 +354,7 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
   const fetchAvailableModels = async () => {
     try {
       setError(null);
-      const data = await apiFetch<any>('/api/llm/models');
+      const data = await apiFetch<any>('/llm/models');
       if (data.success && data.data?.models) {
         setAvailableModels(data.data.models);
       }
@@ -366,7 +366,7 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
 
   const fetchModelStatus = async () => {
     try {
-      const data = await apiFetch<{ success: boolean; data: ModelStatus }>('/api/llm/model-status');
+      const data = await apiFetch<{ success: boolean; data: ModelStatus }>('/llm/model-status');
       if (data.success && data.data) {
         setModelStatus(data.data);
         setSelectedModel(data.data.current_model);
@@ -382,7 +382,7 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
   const selectModel = async (modelId: string) => {
     try {
       setError(null);
-      const data = await apiFetch<{ success: boolean }>('/api/llm/select-model', {
+      const data = await apiFetch<{ success: boolean }>('/llm/select-model', {
         method: 'POST',
         body: JSON.stringify({ model_id: modelId, provider: 'lm_studio' })
       });
@@ -558,7 +558,7 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
 
-      const data = await apiFetch<{ data?: { response?: string }; response?: string }>('/api/llm/chat', {
+      const data = await apiFetch<{ data?: { response?: string }; response?: string }>('/llm/chat', {
         method: 'POST',
         body: JSON.stringify({
           message: userMessage.content,

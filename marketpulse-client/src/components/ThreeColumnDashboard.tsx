@@ -109,9 +109,9 @@ export function ThreeColumnDashboard() {
     try {
       setError(null);
       const [dashboardResult, macroResult, breadthResult] = await Promise.allSettled([
-        apiFetch<any>('/api/market/dashboard'),
-        apiFetch<any>('/api/market/macro'),
-        apiFetch<any>('/api/market/breadth')
+  apiFetch<any>('/market/dashboard'),
+  apiFetch<any>('/market/macro'),
+  apiFetch<any>('/market/breadth')
       ]);
 
       if (dashboardResult.status === 'fulfilled') {
