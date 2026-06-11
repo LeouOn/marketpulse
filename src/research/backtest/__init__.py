@@ -156,7 +156,8 @@ def profit_factor(trades: list[Trade]) -> float:
         else:
             losses += abs(cf)
     if losses == 0:
-        return float("inf") if wins > 0 else 0.0
+        # Cap at 999.0 instead of float("inf") for JSON serialization safety
+        return 999.0 if wins > 0 else 0.0
     return float(wins / losses)
 
 
@@ -247,6 +248,30 @@ def run_backtest(
     rets = pd.Series(closes).pct_change().fillna(0.0)
     recent_returns: list[float] = []  # rolling window for scaling model
 
+    # ── Pre-compute indicators needed by scaling models ──────────────────
+    # RSI(14) – identical to the calculation in MeanReversionRSI.generate_signals
+    _close_series = df["close"].astype(float)
+    _delta = _close_series.diff()
+    _gain = _delta.clip(lower=0.0)
+    _loss = (-_delta).clip(lower=0.0)
+    _avg_gain = _gain.ewm(alpha=1.0 / 14, adjust=False, min_periods=14).mean()
+    _avg_loss = _loss.ewm(alpha=1.0 / 14, adjust=False, min_periods=14).mean()
+    _rs = _avg_gain / _avg_loss.replace(0.0, np.nan)
+    _rsi_14 = (100.0 - (100.0 / (1.0 + _rs))).to_numpy()
+    # Mayer Multiple = close / SMA(200)
+    _sma200 = _close_series.rolling(200).mean().to_numpy()
+
+    # ── Load Fear & Greed Index for SentimentModulated scaling ──────────
+    _fgi_lookup: dict[str, float] = {}
+    try:
+        from src.research.data.fear_greed import fetch_fear_greed
+        _fgi_df = fetch_fear_greed()
+        if not _fgi_df.empty and "ts" in _fgi_df.columns and "fgi_value" in _fgi_df.columns:
+            for _, row in _fgi_df.iterrows():
+                _fgi_lookup[str(row["ts"].date())] = float(row["fgi_value"])
+    except Exception:
+        pass  # FGI unavailable — SentimentModulated falls back to 1.0
+
     for i in range(len(df)):
         ts = df["ts"].iloc[i]
         price = float(closes[i])
@@ -274,6 +299,16 @@ def run_backtest(
             win_streak = 0
         state["win_streak"] = win_streak
         state["loss_streak"] = loss_streak
+
+        # Feed pre-computed indicators to scaling models that need them
+        state["rsi_14"] = float(_rsi_14[i]) if not np.isnan(_rsi_14[i]) else 50.0
+        state["mayer_multiple"] = (
+            float(closes[i] / _sma200[i])
+            if (not np.isnan(_sma200[i]) and _sma200[i] > 0)
+            else 1.0
+        )
+        state["ts"] = ts
+        state["fgi_value"] = _fgi_lookup.get(str(ts.date()))
 
         # Decide what the strategy wants
         sig = target_frac.iloc[i]
@@ -308,15 +343,18 @@ def run_backtest(
             buy_usd = max(diff_usd, 0.0)
             sell_usd = max(-diff_usd, 0.0)
         else:
-            # Scaling model returns a *buy* hint. We use that as the buy size,
-            # and derive sell from the diff. This lets Kelly/Vol-targeted
-            # override the strategy's target fraction.
-            buy_hint, _ = scaling.size(equity, current_position_value, price, recent_rets, state)
-            if isinstance(strategy, BuyAndHold) or diff_usd > 0:
-                buy_usd = max(diff_usd, buy_hint)  # take the larger of the two
-            else:
+            # Scaling model returns a *buy* hint. If it's positive, the scaling
+            # model provides explicit sizing (e.g. FixedDollar $500, RSI-modulated).
+            # We use that directly as the buy amount, otherwise fall back to the
+            # strategy's target-fraction diff.
+            buy_hint, sell_hint = scaling.size(equity, current_position_value, price, recent_rets, state)
+            if buy_hint > 1e-9:
                 buy_usd = buy_hint
-            sell_usd = max(-diff_usd, 0.0)
+            elif isinstance(strategy, BuyAndHold) or diff_usd > 0:
+                buy_usd = max(diff_usd, 0.0)
+            else:
+                buy_usd = 0.0
+            sell_usd = max(-diff_usd, 0.0) if sell_hint <= 0 else sell_hint
 
         # Cap buys at available cash AFTER accounting for the fee (so we don't go
         # negative on cash). Max spendable = cash / (1 + fee_rate).
