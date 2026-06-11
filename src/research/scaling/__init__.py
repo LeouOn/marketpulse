@@ -28,6 +28,15 @@ import pandas as pd
 
 
 # ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class InvalidParamsError(ValueError):
+    """Raised when scaling model parameters fail validation."""
+
+
+# ---------------------------------------------------------------------------
 # Base
 # ---------------------------------------------------------------------------
 
@@ -47,6 +56,14 @@ class ScalingModel(ABC):
         merged = dict(self.default_params)
         merged.update(self.params)
         self.params = merged
+        self.validate_params(self.params)
+
+    def validate_params(self, params: dict[str, Any]) -> None:
+        """Check *params* for invalid values and raise ``InvalidParamsError``.
+
+        The default implementation is a no-op so that existing subclasses
+        continue to work without overriding this method.
+        """
 
     @abstractmethod
     def size(
@@ -79,6 +96,13 @@ class FixedFractional(ScalingModel):
     )
     default_params: ClassVar[dict[str, Any]] = {"fraction": 0.01}
 
+    def validate_params(self, params: dict[str, Any]) -> None:
+        f = params.get("fraction", 0.01)
+        if not (0 < f < 1):
+            raise InvalidParamsError(
+                f"fraction must be in (0, 1), got {f}"
+            )
+
     def size(
         self,
         equity: float,
@@ -100,6 +124,12 @@ class FixedDollar(ScalingModel):
         "Buy a fixed USD amount each bar (e.g. $100/week). The classic DCA."
     )
     default_params: ClassVar[dict[str, Any]] = {"amount_usd": 100.0}
+
+    def validate_params(self, params: dict[str, Any]) -> None:
+        if params.get("amount_usd", 100.0) < 0:
+            raise InvalidParamsError(
+                f"amount_usd must be >= 0, got {params['amount_usd']}"
+            )
 
     def size(
         self,
@@ -137,6 +167,17 @@ class KellyCriterion(ScalingModel):
         "lookback": 252,
         "fallback_fraction": 0.01,  # if we can't compute Kelly, use 1%
     }
+
+    def validate_params(self, params: dict[str, Any]) -> None:
+        f = params.get("fraction", 0.5)
+        if not (0 < f < 1):
+            raise InvalidParamsError(
+                f"fraction must be in (0, 1), got {f}"
+            )
+        if params.get("lookback", 252) <= 0:
+            raise InvalidParamsError(
+                f"lookback must be > 0, got {params['lookback']}"
+            )
 
     def size(
         self,
@@ -192,6 +233,17 @@ class VolatilityTargeted(ScalingModel):
         "min_fraction": 0.0,
     }
 
+    def validate_params(self, params: dict[str, Any]) -> None:
+        if params.get("target_annual_vol", 0.20) <= 0:
+            raise InvalidParamsError(
+                f"target_annual_vol must be > 0, got {params['target_annual_vol']}"
+            )
+        mf = params.get("max_fraction", 1.0)
+        if not (0 < mf <= 1):
+            raise InvalidParamsError(
+                f"max_fraction must be in (0, 1], got {mf}"
+            )
+
     def size(
         self,
         equity: float,
@@ -238,6 +290,17 @@ class RiskParity(ScalingModel):
     )
     default_params: ClassVar[dict[str, Any]] = {"lookback": 60, "max_fraction": 1.0}
 
+    def validate_params(self, params: dict[str, Any]) -> None:
+        mf = params.get("max_fraction", 1.0)
+        if not (0 < mf <= 1):
+            raise InvalidParamsError(
+                f"max_fraction must be in (0, 1], got {mf}"
+            )
+        if params.get("lookback", 60) <= 0:
+            raise InvalidParamsError(
+                f"lookback must be > 0, got {params['lookback']}"
+            )
+
     def size(
         self,
         equity: float,
@@ -280,6 +343,16 @@ class DrawdownScaled(ScalingModel):
         "lookback_peak": 252,
         "exponent": 1.0,
     }
+
+    def validate_params(self, params: dict[str, Any]) -> None:
+        if params.get("base_fraction", 0.05) <= 0:
+            raise InvalidParamsError(
+                f"base_fraction must be > 0, got {params['base_fraction']}"
+            )
+        if params.get("exponent", 1.0) <= 0:
+            raise InvalidParamsError(
+                f"exponent must be > 0, got {params['exponent']}"
+            )
 
     def size(
         self,
@@ -335,6 +408,20 @@ class AntiMartingale(ScalingModel):
         "max_streak": 5,
     }
 
+    def validate_params(self, params: dict[str, Any]) -> None:
+        if params.get("base_amount", 100.0) <= 0:
+            raise InvalidParamsError(
+                f"base_amount must be > 0, got {params['base_amount']}"
+            )
+        if params.get("growth_factor", 2.0) <= 0:
+            raise InvalidParamsError(
+                f"growth_factor must be > 0, got {params['growth_factor']}"
+            )
+        if params.get("max_streak", 5) <= 0:
+            raise InvalidParamsError(
+                f"max_streak must be > 0, got {params['max_streak']}"
+            )
+
     def size(
         self,
         equity: float,
@@ -367,6 +454,20 @@ class Martingale(ScalingModel):
         "max_streak": 5,
     }
 
+    def validate_params(self, params: dict[str, Any]) -> None:
+        if params.get("base_amount", 100.0) <= 0:
+            raise InvalidParamsError(
+                f"base_amount must be > 0, got {params['base_amount']}"
+            )
+        if params.get("growth_factor", 2.0) <= 0:
+            raise InvalidParamsError(
+                f"growth_factor must be > 0, got {params['growth_factor']}"
+            )
+        if params.get("max_streak", 5) <= 0:
+            raise InvalidParamsError(
+                f"max_streak must be > 0, got {params['max_streak']}"
+            )
+
     def size(
         self,
         equity: float,
@@ -388,6 +489,10 @@ class Martingale(ScalingModel):
 # Registry
 # ---------------------------------------------------------------------------
 
+from src.research.scaling.MayerMultipleGated import MayerMultipleGated  # noqa: E402
+from src.research.scaling.RSIModulated import RSIModulated  # noqa: E402
+from src.research.scaling.SentimentModulated import SentimentModulated  # noqa: E402
+
 _REGISTRY: dict[str, type[ScalingModel]] = {
     "FixedFractional": FixedFractional,
     "FixedDollar": FixedDollar,
@@ -397,6 +502,9 @@ _REGISTRY: dict[str, type[ScalingModel]] = {
     "DrawdownScaled": DrawdownScaled,
     "AntiMartingale": AntiMartingale,
     "Martingale": Martingale,
+    "MayerMultipleGated": MayerMultipleGated,
+    "RSIModulated": RSIModulated,
+    "SentimentModulated": SentimentModulated,
 }
 
 
