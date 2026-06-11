@@ -36,6 +36,15 @@ from tenacity import (
 )
 
 # ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class DataPipelineError(RuntimeError):
+    """Raised when a data fetch fails and no usable cache exists."""
+
+
+# ---------------------------------------------------------------------------
 # Paths and constants
 # ---------------------------------------------------------------------------
 
@@ -540,12 +549,27 @@ def _result_to_dict(r: TrancheResult) -> dict:
 def load_daily(
     start: str | None = None, end: str | None = None, force_refresh: bool = False
 ) -> pd.DataFrame:
-    """Return the daily BTC-USD DataFrame, fetching from Yahoo if cache is stale."""
+    """Return the daily BTC-USD DataFrame, fetching from Yahoo if cache is stale.
+
+    Raises:
+        DataPipelineError: If the fetch fails and no usable cache exists.
+    """
     if force_refresh or not DAILY_CSV.exists():
-        new = fetch_daily_yahoo()
-        existing = pd.DataFrame() if force_refresh else _read_cache(DAILY_CSV)
-        merged = _merge(new, existing)
-        _write_cache(merged, DAILY_CSV)
+        try:
+            new = fetch_daily_yahoo()
+        except Exception as exc:
+            # Fetch failed — check if we have a usable cache to fall back on
+            existing = _read_cache(DAILY_CSV)
+            if existing.empty:
+                raise DataPipelineError(
+                    f"Daily BTC-USD fetch failed and no cache exists: {exc}"
+                ) from exc
+            logger.warning(f"Daily fetch failed; falling back to stale cache ({len(existing)} rows): {exc}")
+            merged = existing
+        else:
+            existing = pd.DataFrame() if force_refresh else _read_cache(DAILY_CSV)
+            merged = _merge(new, existing)
+            _write_cache(merged, DAILY_CSV)
     else:
         merged = _read_cache(DAILY_CSV)
         if merged.empty or (
@@ -571,10 +595,23 @@ def load_daily(
 def load_hourly(
     start: str | None = None, end: str | None = None, force_refresh: bool = False
 ) -> pd.DataFrame:
-    """Return the hourly BTC-USD DataFrame, fetching as needed."""
+    """Return the hourly BTC-USD DataFrame, fetching as needed.
+
+    Raises:
+        DataPipelineError: If the fetch fails and no usable cache exists.
+    """
     if force_refresh or not HOURLY_CSV.exists():
-        summary = update_cache(daily=False, hourly=True)
-        logger.info(f"Initial hourly fetch summary: {summary}")
+        try:
+            summary = update_cache(daily=False, hourly=True)
+            logger.info(f"Initial hourly fetch summary: {summary}")
+        except Exception as exc:
+            # Fetch failed — check if we have a usable cache to fall back on
+            existing = _read_cache(HOURLY_CSV)
+            if existing.empty:
+                raise DataPipelineError(
+                    f"Hourly BTC-USD fetch failed and no cache exists: {exc}"
+                ) from exc
+            logger.warning(f"Hourly fetch failed; falling back to stale cache ({len(existing)} rows): {exc}")
     else:
         merged = _read_cache(HOURLY_CSV)
         if merged.empty or (
