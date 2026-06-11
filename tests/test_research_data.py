@@ -493,3 +493,38 @@ def test_http_get_data_list_returns_data_on_success(monkeypatch):
     assert data is not None
     assert len(data) == 1
     assert data[0]["time"] == 1000
+
+
+# ---------------------------------------------------------------------------
+# F25: corrupt CSV recovery
+# ---------------------------------------------------------------------------
+
+
+def test_corrupt_csv_returns_empty(tmp_data_dir):
+    """A corrupt CSV should be handled gracefully, returning an empty DataFrame."""
+    # Write a truly corrupt CSV — binary garbage that pd.read_csv cannot parse.
+    # Using an invalid byte sequence in the middle of what looks like a CSV header.
+    corrupt_path = tmp_data_dir / "daily.csv"
+    corrupt_path.write_bytes(b"ts,open,high,low,close,volume,source\n\x00\x01\x02\xff\xfe\xfd")
+
+    df = data_mod._read_cache(corrupt_path)
+    assert df.empty
+    assert list(df.columns) == ["ts", "open", "high", "low", "close", "volume", "source"]
+
+
+# ---------------------------------------------------------------------------
+# F12: DataPipelineError when fetch fails and no cache
+# ---------------------------------------------------------------------------
+
+
+def test_load_daily_distinguishes_failures(tmp_data_dir, monkeypatch):
+    """When fetch fails and no cache exists, load_daily should raise DataPipelineError."""
+    from src.research.data import DataPipelineError
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("simulated network failure")
+
+    monkeypatch.setattr(data_mod, "fetch_daily_yahoo", _boom)
+    # No daily.csv exists (tmp_data_dir is empty)
+    with pytest.raises(DataPipelineError, match="Daily BTC-USD fetch failed"):
+        load_daily()

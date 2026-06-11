@@ -229,13 +229,16 @@ def test_no_trade_keeps_cash_unchanged():
 
 def test_dca_fixed_amount_buys_periodically():
     df = _flat(n=70, price=100.0)
-    # $100 every 7 bars for 70 bars = 10 buys of $100 each = $1000 spent
     strategy = DCAFixedAmount(params={"amount_usd": 100.0, "every_n_bars": 7})
-    result = run_backtest(df, strategy, starting_equity=10_000.0, fee_bps=0, slippage_bps=0)
-    # 70/7 = 10 buy days
+    # With FixedDollar($100), scaling caps each buy at $100 regardless of equity
+    scaling = FixedDollar(params={"amount_usd": 100.0})
+    result = run_backtest(
+        df, strategy, scaling=scaling,
+        starting_equity=10_000.0, fee_bps=0, slippage_bps=0,
+    )
+    # 70/7 = 10 buy days × $100 = $1,000 total deployed
     assert result.metrics["num_buys"] == 10
-    # Total spent = 10 * 100 = $1000 (cash reduced by ~1000)
-    # Total equity should be 10_000 - 1000 (spent) + 1000 (held as BTC) = 10_000
+    # On flat price, equity stays at $10,000 ($9,000 cash + $1,000 BTC)
     assert result.ending_equity == pytest.approx(10_000.0, abs=1.0)
 
 
@@ -246,11 +249,12 @@ def test_dca_growing_price_underperforms_buy_and_hold():
     dca = run_backtest(
         df,
         DCAFixedAmount(params={"amount_usd": 50.0, "every_n_bars": 7}),
+        scaling=FixedDollar(params={"amount_usd": 50.0}),
         starting_equity=10_000.0,
         fee_bps=0,
         slippage_bps=0,
     )
-    # Both should be positive; BH should be higher because it captures full run-up
+    # BH goes all-in at $100, DCA dribbles in at higher prices → BH wins
     assert bh.ending_equity > dca.ending_equity
     assert bh.metrics["total_return_pct"] > dca.metrics["total_return_pct"]
 
@@ -330,3 +334,62 @@ def test_run_backtest_from_names_unknown_strategy_raises():
     df = _growing(n=10)
     with pytest.raises(KeyError):
         run_backtest_from_names(df, strategy_name="NotARealStrategy")
+
+
+# ---------------------------------------------------------------------------
+# F1: profit_factor capped at 999.0
+# ---------------------------------------------------------------------------
+
+
+def test_profit_factor_no_losses_no_inf():
+    """When there are only wins and no losses, profit_factor should be 999.0, not inf."""
+    from src.research.backtest import Trade
+
+    # Construct trades that produce all-positive cash flows (no losses).
+    # A sell with avg_cost=0 (no prior buy) produces realized = notional.
+    trades = [
+        Trade(
+            ts=pd.Timestamp("2024-01-02"),
+            side="sell",
+            btc_amount=0.5,
+            price=200.0,
+            notional_usd=100.0,
+            fee_usd=0.0,
+            slippage_usd=0.0,
+            cash_after=10100.0,
+            btc_after=0.0,
+            equity_after=10100.0,
+        ),
+    ]
+    pf = profit_factor(trades)
+    assert pf == 999.0
+    # Must be JSON-serializable (finite)
+    assert math.isfinite(pf)
+
+
+# ---------------------------------------------------------------------------
+# F19: zero-price bar preserves BTC equity
+# ---------------------------------------------------------------------------
+
+
+def test_zero_price_bar_preserves_btc_equity():
+    """A zero-price bar should not wipe BTC equity to cash-only."""
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=4, freq="D"),
+            "open": [50000.0, 50000.0, 0.0, 50000.0],
+            "high": [50000.0, 50000.0, 0.0, 50000.0],
+            "low": [50000.0, 50000.0, 0.0, 50000.0],
+            "close": [50000.0, 0.0, 0.0, 50000.0],
+            "volume": [1.0, 1.0, 0.0, 1.0],
+        }
+    )
+    # BuyAndHold buys on bar 0 at $50k, holding 0.2 BTC.
+    # Bar 1 has close=0 (degenerate), equity should use last valid price ($50k).
+    result = run_backtest(
+        df, BuyAndHold(), starting_equity=10_000.0, fee_bps=0, slippage_bps=0,
+    )
+    # Equity on bar 1 (zero-price) should reflect BTC at last valid price, not 0.
+    assert result.equity_curve.iloc[1] > 0
+    # It should be close to the starting equity (since price didn't change from bar 0).
+    assert result.equity_curve.iloc[1] == pytest.approx(10_000.0, abs=100.0)
