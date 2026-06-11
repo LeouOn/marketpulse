@@ -56,10 +56,18 @@ class Trade:
 
 
 @dataclass
+class Deposit:
+    ts: pd.Timestamp
+    amount_usd: float
+    source: str = ""
+
+
+@dataclass
 class BacktestResult:
     equity_curve: pd.Series
     drawdown_curve: pd.Series
     trades: list[Trade] = field(default_factory=list)
+    deposits: list[Deposit] = field(default_factory=list)
     metrics: dict[str, float] = field(default_factory=dict)
     strategy_name: str = ""
     scaling_name: str = ""
@@ -199,6 +207,7 @@ def run_backtest(
     starting_equity: float = 10_000.0,
     fee_bps: float = 10.0,
     slippage_bps: float = 5.0,
+    inflows: list[dict] | None = None,
 ) -> BacktestResult:
     """Run an event-driven backtest.
 
@@ -210,6 +219,10 @@ def run_backtest(
         starting_equity: float.
         fee_bps: round-trip fee in basis points (10 bps = 0.10%).
         slippage_bps: slippage in basis points on each fill.
+        inflows: optional list of recurring deposit schedules. Each dict has
+            ``amount_usd`` (float) and one of ``every_n_bars`` (int) or
+            ``day_of_month`` (int). An optional ``source`` label is stored
+            on the Deposit record. Deposits add to cash with no fee/slippage.
     """
     if df is None or df.empty:
         raise ValueError("df is empty")
@@ -246,6 +259,7 @@ def run_backtest(
     drawdown_values: list[float] = []
     timestamps: list[pd.Timestamp] = []
     trades: list[Trade] = []
+    deposits: list[Deposit] = []
 
     closes = df["close"].astype(float).to_numpy()
     rets = pd.Series(closes).pct_change().fillna(0.0)
@@ -315,6 +329,20 @@ def run_backtest(
         )
         state["ts"] = ts
         state["fgi_value"] = _fgi_lookup.get(str(ts.date()))
+
+        # ── Apply recurring cash inflows (deposits) ─────────────────────
+        if inflows:
+            for inflow in inflows:
+                triggered = False
+                if "every_n_bars" in inflow and inflow["every_n_bars"] > 0:
+                    triggered = (i % inflow["every_n_bars"] == 0)
+                elif "day_of_month" in inflow:
+                    triggered = (ts.day == inflow["day_of_month"])
+                if triggered:
+                    amt = float(inflow["amount_usd"])
+                    src = inflow.get("source", "")
+                    cash += amt
+                    deposits.append(Deposit(ts=ts, amount_usd=amt, source=src))
 
         # Decide what the strategy wants
         sig = target_frac.iloc[i]
@@ -459,12 +487,15 @@ def run_backtest(
         "num_buys": int(sum(1 for t in trades if t.side == "buy")),
         "num_sells": int(sum(1 for t in trades if t.side == "sell")),
         "years": float(years),
+        "total_deposited": float(sum(d.amount_usd for d in deposits)),
+        "num_deposits": int(len(deposits)),
     }
 
     return BacktestResult(
         equity_curve=equity_curve,
         drawdown_curve=drawdown_curve,
         trades=trades,
+        deposits=deposits,
         metrics=metrics,
         strategy_name=strategy.name,
         scaling_name=scaling.name if scaling else "None",
@@ -489,6 +520,7 @@ def run_backtest_from_names(
     starting_equity: float = 10_000.0,
     fee_bps: float = 10.0,
     slippage_bps: float = 5.0,
+    inflows: list[dict] | None = None,
 ) -> BacktestResult:
     """Convenience wrapper that looks up strategy and scaling by name."""
     from ..strategies import get_strategy as _gs
@@ -503,4 +535,5 @@ def run_backtest_from_names(
         starting_equity=starting_equity,
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
+        inflows=inflows,
     )
