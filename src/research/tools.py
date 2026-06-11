@@ -194,6 +194,7 @@ def tool_run_backtest(args: dict) -> ToolResult:
     fee_bps = float(args.get("fee_bps", 10.0))
     slippage_bps = float(args.get("slippage_bps", 5.0))
     timeframe = args.get("timeframe", "daily")
+    inflows = args.get("inflows")  # optional list of deposit schedules
 
     try:
         if timeframe == "hourly":
@@ -216,6 +217,7 @@ def tool_run_backtest(args: dict) -> ToolResult:
             starting_equity=starting_equity,
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
+            inflows=inflows,
         )
     except KeyError as e:
         return ToolResult(success=False, error=f"Unknown strategy or scaling: {e}")
@@ -240,6 +242,7 @@ def tool_run_backtest(args: dict) -> ToolResult:
             "starting_equity": starting_equity,
             "fee_bps": fee_bps,
             "slippage_bps": slippage_bps,
+            "inflows": inflows,
         },
         metrics=result.metrics,
         artifacts=artifacts,
