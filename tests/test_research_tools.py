@@ -349,3 +349,21 @@ def test_backtest_report_includes_artifacts(tmp_reports, sample_daily):
     # The artifact files should exist (placeholder PNGs or matplotlib PNGs)
     assert (artifacts_dir / f"{rid}.equity_png.png").exists()
     assert (artifacts_dir / f"{rid}.drawdown_png.png").exists()
+
+
+def test_run_backtest_tool_accepts_inflows(sample_daily, tmp_reports):
+    """The run_backtest tool should accept and pass through the inflows parameter."""
+    r = tool_run_backtest(
+        {
+            "strategy": "NoTrade",
+            "start": "2024-01-01",
+            "end": "2024-04-01",
+            "starting_equity": 0,
+            "fee_bps": 0,
+            "slippage_bps": 0,
+            "inflows": [{"every_n_bars": 30, "amount_usd": 500.0, "source": "salary"}],
+        }
+    )
+    assert r.success, r.error
+    assert r.data["metrics"]["total_deposited"] > 0
+    assert r.data["metrics"]["num_deposits"] > 0
