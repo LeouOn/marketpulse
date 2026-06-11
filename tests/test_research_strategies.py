@@ -116,9 +116,9 @@ def test_dca_fixed_amount_signals_only_on_buy_days():
     assert sig.iloc[0] == 1.0
     assert sig.iloc[7] == 1.0
     assert sig.iloc[14] == 1.0
-    # Bar 1 should be 0.0
-    assert sig.iloc[1] == 0.0
-    assert sig.iloc[8] == 0.0
+    # Non-buy days should be NaN (backtester skips them)
+    assert np.isnan(sig.iloc[1])
+    assert np.isnan(sig.iloc[8])
 
 
 def test_dca_value_averaging_ramps_to_1():

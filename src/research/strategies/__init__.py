@@ -141,9 +141,9 @@ class DCAFixedAmount(Strategy):
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         every = max(1, int(self.params["every_n_bars"]))
-        # Use a binary "buying day" signal: 1.0 on buy days, 0.0 otherwise.
+        # Use a binary "buying day" signal: 1.0 on buy days, NaN otherwise.
         # The backtester interprets this as "spend `amount_usd` then hold".
-        signal = np.zeros(len(df), dtype=float)
+        signal = np.full(len(df), np.nan, dtype=float)
         signal[::every] = 1.0
         return pd.Series(signal, index=df.index)
 
