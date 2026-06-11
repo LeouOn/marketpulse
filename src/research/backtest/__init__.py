@@ -290,6 +290,17 @@ def run_backtest(
     except Exception:
         pass  # FGI unavailable — SentimentModulated falls back to 1.0
 
+    # ── Load MVRV Z-score for OnChainGated scaling ──────────────────────────
+    _mvrv_lookup: dict[str, float] = {}
+    try:
+        from src.research.data.on_chain import fetch_mvrv
+        _mvrv_df = fetch_mvrv()
+        if not _mvrv_df.empty and "ts" in _mvrv_df.columns and "mvrv_z" in _mvrv_df.columns:
+            for _, row in _mvrv_df.iterrows():
+                _mvrv_lookup[str(row["ts"].date())] = float(row["mvrv_z"])
+    except Exception:
+        pass  # on-chain unavailable
+
     for i in range(len(df)):
         ts = df["ts"].iloc[i]
         price = float(closes[i])
@@ -329,6 +340,7 @@ def run_backtest(
         )
         state["ts"] = ts
         state["fgi_value"] = _fgi_lookup.get(str(ts.date()))
+        state["mvrv_z"] = _mvrv_lookup.get(str(ts.date()))
 
         # ── Apply recurring cash inflows (deposits) ─────────────────────
         if inflows:
