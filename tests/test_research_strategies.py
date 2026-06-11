@@ -217,7 +217,9 @@ def test_list_strategies_returns_all_known():
         "MeanReversionBollinger",
         "MeanReversionRSI",
         "LadderLimit",
+        "RecurringFundingDCA",
         "HalvingCycleAccumulation",
+        "CompositeAccumulation",
     }
 
 
