@@ -1,14 +1,19 @@
-"""Bitcoin long-term OHLCV data pipeline.
+"""Bitcoin long-term OHLCV data pipeline (multi-tranche, multi-source).
 
 Sources (in priority order, all free / no API key):
-  1. Local CSV cache at ``data/btc/{daily,hourly}.csv`` (idempotent loader)
-  2. Yahoo Finance via yfinance for daily (BTC-USD, 2010+)
-  3. CryptoCompare public API for hourly (no key, paginated 2000 rows/call)
 
-The loader is **idempotent**: running it again fills in only the missing rows
-beyond what's already in the cache. CSVs are human-readable so a researcher can
-inspect and edit them. (We chose CSV over Parquet because pyarrow is not in
-requirements-lite.txt; CSV is plenty fast for these dataset sizes.)
+  - **Tranche 1 (daily, 2010-07-16 -> present)**: Yahoo Finance via yfinance.
+    Single request returns the full daily history (~5,800+ bars).
+  - **Tranche 2 (hourly, 2010-07-17 -> 2017-08-16)**: CryptoCompare histohour.
+    Paginated, 2,000 rows per call. ~31 calls.
+  - **Tranche 3 (hourly, 2017-08-17 -> present)**: Binance klines.
+    Paginated, 1,000 rows per call. Exchange-verified, includes trade count.
+
+The loader is **idempotent**: each run only fetches bars newer than the
+last cached bar (or fills gaps). All network calls are wrapped in a
+``tenacity`` retry with exponential backoff + jitter.
+
+Output: local CSV at ``data/btc/{daily,hourly}.csv``.
 """
 
 from __future__ import annotations
@@ -21,7 +26,14 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+import yfinance as yf
 from loguru import logger
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 # ---------------------------------------------------------------------------
 # Paths and constants
@@ -35,9 +47,24 @@ HOURLY_CSV = DATA_DIR / "hourly.csv"
 SRC_LOCAL = "local"
 SRC_YAHOO = "yahoo"
 SRC_CRYPTOCOMPARE = "cryptocompare"
+SRC_BINANCE = "binance"
+SRC_RECONCILED = "reconciled"
+
+# Earliest BTC-USD date on Yahoo Finance (per `firstTradeDate`).
+YAHOO_BTC_EARLIEST = "2010-07-16"
+# Binance BTCUSDT trading started ~2017-08-17.
+BINANCE_BTC_START = pd.Timestamp("2017-08-17", tz="UTC").tz_convert(None)
 
 # CryptoCompare free hourly endpoint.
 CRYPTOCOMPARE_URL = "https://min-api.cryptocompare.com/data/v2/histohour"
+# Binance public klines endpoint.
+BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
+
+# Network defaults.
+REQ_TIMEOUT = 30
+RETRY_ATTEMPTS = 4
+RETRY_MIN_WAIT = 2
+RETRY_MAX_WAIT = 60
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +81,66 @@ class BTCBar:
     close: float
     volume: float
     source: str
+
+
+# ---------------------------------------------------------------------------
+# Retry-wrapped HTTP
+# ---------------------------------------------------------------------------
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Return True for transient errors we should retry."""
+    if isinstance(exc, requests.HTTPError):
+        return exc.response is not None and exc.response.status_code in (408, 429, 500, 502, 503, 504)
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+        return True
+    return False
+
+
+@retry(
+    stop=stop_after_attempt(RETRY_ATTEMPTS),
+    wait=wait_exponential_jitter(initial=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+    retry=retry_if_exception_type((requests.HTTPError, requests.Timeout, requests.ConnectionError)),
+    reraise=True,
+)
+def _http_get_json(url: str, params: dict | None = None, timeout: int = REQ_TIMEOUT) -> dict:
+    """GET a URL and return JSON. Retries on transient errors."""
+    r = requests.get(url, params=params, timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
+
+@retry(
+    stop=stop_after_attempt(RETRY_ATTEMPTS),
+    wait=wait_exponential_jitter(initial=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+    retry=retry_if_exception_type((requests.HTTPError, requests.Timeout, requests.ConnectionError)),
+    reraise=True,
+)
+def _http_get_data_list(url: str, params: dict | None = None, timeout: int = REQ_TIMEOUT) -> list | None:
+    """GET a URL; on success return the data list, on non-Success return None.
+
+    Handles both shapes:
+      - {"Data": [list of bars]}            (flat)
+      - {"Data": {"Data": [list of bars]}}  (CryptoCompare nested)
+
+    CryptoCompare's "silent 200 with non-Success body" failure mode is
+    turned into a rate-limit HTTPError so tenacity retries.
+    """
+    r = requests.get(url, params=params, timeout=timeout)
+    r.raise_for_status()
+    payload = r.json()
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("Response") not in (None, "Success"):
+        msg = (payload.get("Message") or "").lower()
+        if "rate limit" in msg:
+            raise requests.HTTPError(f"Rate limit: {payload.get('Message')}")
+        return None
+    data = payload.get("Data")
+    if isinstance(data, dict):
+        # CryptoCompare nests: Data.Data = [list]
+        data = data.get("Data")
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +170,10 @@ def _write_cache(df: pd.DataFrame, path: Path) -> None:
 
 
 def _merge(new: pd.DataFrame, existing: pd.DataFrame) -> pd.DataFrame:
-    """Combine new bars with existing cache, dedupe by ts, sort."""
+    """Combine new bars with existing cache, dedupe by ts, sort.
+
+    On conflict (same ts in both), the new row wins.
+    """
     if existing.empty:
         combined = new.copy()
     elif new.empty:
@@ -100,18 +190,25 @@ def _merge(new: pd.DataFrame, existing: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def fetch_daily_yahoo(start: str = "2010-01-01", end: str | None = None) -> pd.DataFrame:
-    """Fetch daily BTC-USD from Yahoo Finance."""
-    import yfinance as yf
+def fetch_daily_yahoo(
+    start: str = YAHOO_BTC_EARLIEST,
+    end: str | None = None,
+) -> pd.DataFrame:
+    """Fetch daily BTC-USD from Yahoo Finance. Single request, no pagination.
 
-    logger.info(f"Fetching daily BTC-USD from Yahoo Finance ({start} -> {end or 'today'})")
+    Note: Yahoo Finance's BTC-USD data starts on 2010-07-16 (the earliest
+    trade date for BTC-USD on Yahoo). For dates before that, the response
+    is empty. We default to that start so callers don't request 2010-01-01
+    and get a 5,800+ row history that "looks" complete but is actually
+    missing the first half-year of BTC's existence on Yahoo.
+    """
+    logger.info(f"[T1] Fetching daily BTC-USD from Yahoo ({start} -> {end or 'today'})")
     ticker = yf.Ticker("BTC-USD")
     df = ticker.history(start=start, end=end, interval="1d", auto_adjust=False)
     if df.empty:
         return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "source"])
 
     df = df.reset_index()
-    # yfinance returns the date column as "Date" or "index" depending on version
     date_col = "Date" if "Date" in df.columns else df.columns[0]
     df = df.rename(
         columns={
@@ -127,49 +224,37 @@ def fetch_daily_yahoo(start: str = "2010-01-01", end: str | None = None) -> pd.D
     df["source"] = SRC_YAHOO
     df = df[["ts", "open", "high", "low", "close", "volume", "source"]]
     df = df.dropna(subset=["open", "high", "low", "close"])
+    logger.info(f"[T1] Yahoo returned {len(df)} daily bars ({df['ts'].min().date()} -> {df['ts'].max().date()})")
     return df
 
 
-def fetch_hourly_cryptocompare(start_ts: int | None = None, end_ts: int | None = None) -> pd.DataFrame:
-    """Fetch hourly BTC-USD from CryptoCompare.
+def fetch_hourly_cryptocompare(
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+    symbol: str = "BTC",
+    tsym: str = "USD",
+) -> pd.DataFrame:
+    """Fetch hourly BTC-USD from CryptoCompare (paginated 2000 rows/call).
 
-    The free endpoint paginates 2000 rows per call. We walk backwards from
-    ``end_ts`` (defaults to ``now``) collecting 2000 rows at a time until we
-    reach ``start_ts`` (defaults to 2018-01-01).
+    Used for **Tranche 2**: hourly history from 2010-07-17 to 2017-08-16,
+    the only era where Binance doesn't have data.
     """
     if end_ts is None:
         end_ts = int(time.time())
     if start_ts is None:
-        start_ts = int(datetime(2018, 1, 1, tzinfo=timezone.utc).timestamp())
+        start_ts = int(datetime(2010, 7, 17, tzinfo=timezone.utc).timestamp())
 
     rows: list[dict] = []
     cursor = end_ts
     pages = 0
     logger.info(
-        f"Fetching hourly BTC-USD from CryptoCompare (>= {datetime.fromtimestamp(start_ts, tz=timezone.utc).date()})"
+        f"[T2] Fetching hourly BTC-USD from CryptoCompare (>= {datetime.fromtimestamp(start_ts, tz=timezone.utc).date()})"
     )
-    while cursor > start_ts and pages < 50:  # 50 pages * 2000 = 100k hours ~ 11 years
-        params = {
-            "fsym": "BTC",
-            "tsym": "USD",
-            "limit": 2000,
-            "toTs": cursor,
-        }
-        try:
-            r = requests.get(CRYPTOCOMPARE_URL, params=params, timeout=30)
-            r.raise_for_status()
-            payload = r.json()
-        except Exception as e:
-            logger.warning(f"CryptoCompare page {pages} failed: {e}")
-            break
-
-        if payload.get("Response") != "Success":
-            logger.warning(
-                f"CryptoCompare page {pages} returned non-Success: {payload.get('Message')}"
-            )
-            break
-
-        data = payload.get("Data", {}).get("Data", [])
+    while cursor > start_ts and pages < 50:  # 50 * 2000 = 100k hours ~ 11 years
+        data = _http_get_data_list(
+            CRYPTOCOMPARE_URL,
+            params={"fsym": symbol, "tsym": tsym, "limit": 2000, "toTs": cursor},
+        )
         if not data:
             break
 
@@ -184,20 +269,233 @@ def fetch_hourly_cryptocompare(start_ts: int | None = None, end_ts: int | None =
                     "high": float(d.get("high", 0.0)),
                     "low": float(d.get("low", 0.0)),
                     "close": float(d.get("close", 0.0)),
-                    "volume": float(d.get("volumefrom", 0.0)),
+                    "volume": float(d.get("volumeto", 0.0)),  # USD volume for consistency
                     "source": SRC_CRYPTOCOMPARE,
                 }
             )
 
-        cursor = int(data[0]["time"])  # earliest ts on this page
+        cursor = int(data[0]["time"])
         pages += 1
 
     df = pd.DataFrame(rows).drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
+    logger.info(f"[T2] CryptoCompare returned {len(df)} hourly bars across {pages} pages")
+    return df
+
+
+def fetch_hourly_binance(
+    start_ms: int | None = None,
+    end_ms: int | None = None,
+    symbol: str = "BTCUSDT",
+) -> pd.DataFrame:
+    """Fetch hourly BTCUSDT from Binance public klines API (paginated 1000/call).
+
+    Used for **Tranche 3**: hourly history from 2017-08-17 to present.
+    Exchange-verified; volume is in quote asset (USDT) for consistency
+    with CryptoCompare.
+    """
+    if end_ms is None:
+        end_ms = int(time.time() * 1000)
+    if start_ms is None:
+        start_ms = int(BINANCE_BTC_START.tz_localize("UTC").timestamp() * 1000)
+
+    rows: list[dict] = []
+    cursor = start_ms
+    pages = 0
+    logger.info(
+        f"[T3] Fetching hourly BTCUSDT from Binance (>= {datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc).date()})"
+    )
+    while cursor < end_ms and pages < 200:  # 200 * 1000 = 200k hours ~ 23 years
+        params = {
+            "symbol": symbol,
+            "interval": "1h",
+            "startTime": cursor,
+            "endTime": end_ms,
+            "limit": 1000,
+        }
+        try:
+            data = _http_get_json(BINANCE_KLINES_URL, params=params)
+        except Exception as e:
+            logger.warning(f"[T3] Binance page {pages} failed: {e}")
+            break
+        if not data:
+            break
+
+        for d in data:
+            rows.append(
+                {
+                    "ts": pd.Timestamp(d[0], unit="ms", tz="UTC").tz_convert(None),
+                    "open": float(d[1]),
+                    "high": float(d[2]),
+                    "low": float(d[3]),
+                    "close": float(d[4]),
+                    "volume": float(d[7]),  # quote volume (USDT) for consistency
+                    "source": SRC_BINANCE,
+                }
+            )
+
+        cursor = int(data[-1][0]) + 1
+        pages += 1
+
+    df = pd.DataFrame(rows).drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
+    logger.info(f"[T3] Binance returned {len(df)} hourly bars across {pages} pages")
     return df
 
 
 # ---------------------------------------------------------------------------
-# Public loaders (cache-first, source-fill)
+# Tranche orchestration
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TrancheResult:
+    """Outcome of a single data tranche fetch."""
+
+    name: str
+    source: str
+    rows_fetched: int
+    rows_added: int
+    start: str | None
+    end: str | None
+    error: str | None = None
+
+
+def _run_tranche(
+    name: str,
+    source: str,
+    fetcher,
+    existing: pd.DataFrame,
+    cache_path: Path,
+) -> TrancheResult:
+    """Run a single tranche, merge with existing cache, persist."""
+    try:
+        new = fetcher()
+    except Exception as e:
+        logger.error(f"[{name}] Failed: {e}")
+        return TrancheResult(
+            name=name, source=source, rows_fetched=0, rows_added=0, start=None, end=None, error=str(e)
+        )
+
+    if new.empty:
+        return TrancheResult(
+            name=name, source=source, rows_fetched=0, rows_added=0, start=None, end=None
+        )
+
+    # Incremental: only keep new rows whose ts is strictly newer than existing
+    if not existing.empty and not new.empty:
+        last_existing_ts = existing["ts"].max()
+        new_only = new[new["ts"] > last_existing_ts]
+        if len(new_only) < len(new):
+            logger.info(
+                f"[{name}] Filtered to {len(new_only)} new bars (older ones already cached)"
+            )
+            new = new_only
+
+    merged = _merge(new, existing)
+    added = len(merged) - len(existing)
+    _write_cache(merged, cache_path)
+
+    return TrancheResult(
+        name=name,
+        source=source,
+        rows_fetched=int(len(new)),
+        rows_added=int(added),
+        start=str(new["ts"].min().date()) if not new.empty else None,
+        end=str(new["ts"].max().date()) if not new.empty else None,
+    )
+
+
+def update_cache(
+    tranches: list[str] | None = None,
+    daily: bool = True,
+    hourly: bool = True,
+) -> dict:
+    """Run the multi-tranche BTC data acquisition pipeline.
+
+    Args:
+        tranches: optional list of tranche names to run. Default is
+            all of ``["t1_daily_yahoo", "t2_hourly_cc", "t3_hourly_binance"]``.
+        daily: run the daily (T1) tranche.
+        hourly: run the hourly tranches (T2, T3).
+
+    Returns a summary dict with per-tranche results.
+    """
+    if tranches is None:
+        tranches = []
+        if daily:
+            tranches.append("t1_daily_yahoo")
+        if hourly:
+            tranches.extend(["t2_hourly_cc", "t3_hourly_binance"])
+
+    logger.info(f"=== Multi-tranche BTC data update starting: {tranches} ===")
+    _ensure_data_dir()
+    summary: dict = {"tranches": [], "started_at": pd.Timestamp.now("UTC").isoformat()}
+
+    daily_existing = _read_cache(DAILY_CSV) if "t1_daily_yahoo" in tranches else pd.DataFrame()
+    hourly_existing = _read_cache(HOURLY_CSV) if any(
+        t.startswith("t2") or t.startswith("t3") for t in tranches
+    ) else pd.DataFrame()
+
+    if "t1_daily_yahoo" in tranches:
+        result = _run_tranche(
+            "T1",
+            SRC_YAHOO,
+            lambda start=YAHOO_BTC_EARLIEST: fetch_daily_yahoo(start=start),
+            daily_existing,
+            DAILY_CSV,
+        )
+        summary["tranches"].append(_result_to_dict(result))
+        daily_existing = _read_cache(DAILY_CSV)
+
+    if "t2_hourly_cc" in tranches:
+        end_ts_t2 = int(BINANCE_BTC_START.tz_localize("UTC").timestamp()) - 1
+        result = _run_tranche(
+            "T2",
+            SRC_CRYPTOCOMPARE,
+            lambda end_ts=end_ts_t2: fetch_hourly_cryptocompare(end_ts=end_ts),
+            hourly_existing,
+            HOURLY_CSV,
+        )
+        summary["tranches"].append(_result_to_dict(result))
+        hourly_existing = _read_cache(HOURLY_CSV)
+
+    if "t3_hourly_binance" in tranches:
+        end_ms_t3 = int(time.time() * 1000)
+        start_ms_t3 = int(BINANCE_BTC_START.tz_localize("UTC").timestamp() * 1000)
+        result = _run_tranche(
+            "T3",
+            SRC_BINANCE,
+            lambda start_ms=start_ms_t3, end_ms=end_ms_t3: fetch_hourly_binance(
+                start_ms=start_ms, end_ms=end_ms
+            ),
+            hourly_existing,
+            HOURLY_CSV,
+        )
+        summary["tranches"].append(_result_to_dict(result))
+        hourly_existing = _read_cache(HOURLY_CSV)
+
+    summary["ended_at"] = pd.Timestamp.now("UTC").isoformat()
+    summary["daily_total"] = int(len(_read_cache(DAILY_CSV)))
+    summary["hourly_total"] = int(len(_read_cache(HOURLY_CSV)))
+    logger.info(
+        f"=== Update complete: {summary['daily_total']} daily bars, {summary['hourly_total']} hourly bars ==="
+    )
+    return summary
+
+
+def _result_to_dict(r: TrancheResult) -> dict:
+    return {
+        "name": r.name,
+        "source": r.source,
+        "rows_fetched": r.rows_fetched,
+        "rows_added": r.rows_added,
+        "start": r.start,
+        "end": r.end,
+        "error": r.error,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Public loaders (cache-first)
 # ---------------------------------------------------------------------------
 
 
@@ -217,7 +515,7 @@ def load_daily(
         ) > pd.Timedelta(days=1):
             try:
                 fetch_start = (
-                    str(merged["ts"].max().date()) if not merged.empty else "2010-01-01"
+                    str(merged["ts"].max().date()) if not merged.empty else YAHOO_BTC_EARLIEST
                 )
                 new = fetch_daily_yahoo(start=fetch_start)
                 merged = _merge(new, merged)
@@ -235,26 +533,23 @@ def load_daily(
 def load_hourly(
     start: str | None = None, end: str | None = None, force_refresh: bool = False
 ) -> pd.DataFrame:
-    """Return the hourly BTC-USD DataFrame, fetching from CryptoCompare if needed."""
+    """Return the hourly BTC-USD DataFrame, fetching as needed."""
     if force_refresh or not HOURLY_CSV.exists():
-        new = fetch_hourly_cryptocompare()
-        existing = pd.DataFrame() if force_refresh else _read_cache(HOURLY_CSV)
-        merged = _merge(new, existing)
-        _write_cache(merged, HOURLY_CSV)
+        summary = update_cache(daily=False, hourly=True)
+        logger.info(f"Initial hourly fetch summary: {summary}")
     else:
         merged = _read_cache(HOURLY_CSV)
         if merged.empty or (
             pd.Timestamp.now("UTC").tz_convert(None) - merged["ts"].max()
         ) > pd.Timedelta(hours=2):
             try:
-                end_ts = int(time.time())
-                start_ts = int(merged["ts"].max().timestamp()) if not merged.empty else None
-                new = fetch_hourly_cryptocompare(end_ts=end_ts, start_ts=start_ts)
-                merged = _merge(new, merged)
-                _write_cache(merged, HOURLY_CSV)
+                # Re-run T3 only (the live tranche) for incremental updates
+                summary = update_cache(tranches=["t3_hourly_binance"])
+                logger.info(f"Hourly incremental update: {summary}")
             except Exception as e:
                 logger.warning(f"Hourly auto-refresh failed; using stale cache: {e}")
 
+    merged = _read_cache(HOURLY_CSV)
     if start is not None:
         merged = merged[merged["ts"] >= pd.Timestamp(start)]
     if end is not None:
@@ -263,12 +558,12 @@ def load_hourly(
 
 
 # ---------------------------------------------------------------------------
-# Summary helpers (used by the LLM tools)
+# Summary helpers
 # ---------------------------------------------------------------------------
 
 
 def _cagr(start: float, end: float, years: float) -> float:
-    if years <= 0 or start <= 0:
+    if years <= 0 or start <= 0 or end <= 0:
         return 0.0
     return (end / start) ** (1.0 / years) - 1.0
 
@@ -288,6 +583,7 @@ def data_summary(df: pd.DataFrame) -> dict:
         return {"rows": 0}
     close = df["close"].astype(float)
     rets = close.pct_change().dropna()
+    years = (df["ts"].iloc[-1] - df["ts"].iloc[0]).days / 365.25
     return {
         "rows": int(len(df)),
         "start": str(df["ts"].min().date()),
@@ -295,42 +591,12 @@ def data_summary(df: pd.DataFrame) -> dict:
         "first_close": float(close.iloc[0]),
         "last_close": float(close.iloc[-1]),
         "total_return_pct": float((close.iloc[-1] / close.iloc[0] - 1.0) * 100.0),
-        "cagr_pct": float(
-            _cagr(
-                close.iloc[0],
-                close.iloc[-1],
-                (df["ts"].iloc[-1] - df["ts"].iloc[0]).days / 365.25,
-            )
-        ),
+        "cagr_pct": float(_cagr(close.iloc[0], close.iloc[-1], years) * 100.0),
         "realized_vol_annual_pct": float(rets.std() * (365.25**0.5) * 100.0)
         if len(rets) > 1
         else 0.0,
         "max_drawdown_pct": float(_max_drawdown(close) * 100.0),
         "best_day_pct": float(rets.max() * 100.0) if len(rets) else 0.0,
         "worst_day_pct": float(rets.min() * 100.0) if len(rets) else 0.0,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Cache refresh helper (used by the research CLI)
-# ---------------------------------------------------------------------------
-
-
-def update_cache() -> dict:
-    """Refresh both daily and hourly caches. Returns counts of new rows added."""
-    existing_daily = _read_cache(DAILY_CSV)
-    existing_hourly = _read_cache(HOURLY_CSV)
-    new_daily = fetch_daily_yahoo()
-    new_hourly = fetch_hourly_cryptocompare()
-    daily_merged = _merge(new_daily, existing_daily)
-    hourly_merged = _merge(new_hourly, existing_hourly)
-    daily_added = len(daily_merged) - len(existing_daily)
-    hourly_added = len(hourly_merged) - len(existing_hourly)
-    _write_cache(daily_merged, DAILY_CSV)
-    _write_cache(hourly_merged, HOURLY_CSV)
-    return {
-        "daily_total": len(daily_merged),
-        "daily_added": daily_added,
-        "hourly_total": len(hourly_merged),
-        "hourly_added": hourly_added,
+        "sources": sorted(df["source"].unique().tolist()) if "source" in df.columns else [],
     }
