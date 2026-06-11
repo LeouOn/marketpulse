@@ -170,10 +170,14 @@ def _ensure_data_dir() -> None:
 
 
 def _read_cache(path: Path) -> pd.DataFrame:
-    """Read a cached CSV. Empty DataFrame if file is missing."""
+    """Read a cached CSV. Empty DataFrame if file is missing or corrupt."""
     if not path.exists():
         return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "source"])
-    df = pd.read_csv(path, parse_dates=["ts"])
+    try:
+        df = pd.read_csv(path, parse_dates=["ts"])
+    except Exception as exc:
+        logger.warning(f"Corrupt CSV cache {path}: {exc}; returning empty DataFrame")
+        return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "source"])
     df = df.drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
     return df
 
