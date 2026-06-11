@@ -17,6 +17,7 @@ import pytest
 
 from src.research.backtest import (
     BacktestResult,
+    Deposit,
     cagr,
     calmar_ratio,
     hit_rate,
@@ -393,3 +394,72 @@ def test_zero_price_bar_preserves_btc_equity():
     assert result.equity_curve.iloc[1] > 0
     # It should be close to the starting equity (since price didn't change from bar 0).
     assert result.equity_curve.iloc[1] == pytest.approx(10_000.0, abs=100.0)
+
+
+# ---------------------------------------------------------------------------
+# Wave 3: recurring cash inflows
+# ---------------------------------------------------------------------------
+
+
+def test_recurring_inflows_every_n_bars():
+    """$500 deposited every 30 bars on a flat price series."""
+    df = _flat(n=120, price=100.0)
+    result = run_backtest(
+        df, NoTrade(), starting_equity=0.0, fee_bps=0, slippage_bps=0,
+        inflows=[{"every_n_bars": 30, "amount_usd": 500.0, "source": "monthly_salary"}],
+    )
+    # Deposits at bars 0, 30, 60, 90 = 4 deposits × $500 = $2000
+    assert len(result.deposits) == 4
+    assert all(d.amount_usd == 500.0 for d in result.deposits)
+    assert all(d.source == "monthly_salary" for d in result.deposits)
+    # Cash should equal total deposited since NoTrade buys nothing
+    assert result.ending_equity == pytest.approx(2_000.0, abs=0.01)
+
+
+def test_inflows_dont_apply_fees():
+    """Deposits should add exactly amount_usd to cash — no fees."""
+    df = _flat(n=60, price=100.0)
+    result = run_backtest(
+        df, NoTrade(), starting_equity=0.0, fee_bps=50.0, slippage_bps=10.0,
+        inflows=[{"every_n_bars": 30, "amount_usd": 500.0}],
+    )
+    # 2 deposits × $500 = $1000. Fees/slippage should NOT be applied.
+    assert len(result.deposits) == 2
+    assert result.ending_equity == pytest.approx(1_000.0, abs=0.01)
+
+
+def test_inflows_with_zero_starting_equity():
+    """Deposits should fund the entire portfolio when starting_equity=0."""
+    df = _flat(n=31, price=100.0)
+    result = run_backtest(
+        df, BuyAndHold(), starting_equity=0.0, fee_bps=0, slippage_bps=0,
+        inflows=[{"every_n_bars": 30, "amount_usd": 1_000.0}],
+    )
+    # Bar 0: starting_equity=0, no deposit yet at bar 0? Actually bar 0 triggers
+    # because 0 % 30 == 0. So bar 0: deposit $1000, then BuyAndHold buys BTC.
+    # On flat price, ending equity should equal the deposit minus any trade costs.
+    # With fee_bps=0 and slippage_bps=0, ending equity = $1000.
+    assert len(result.deposits) >= 1
+    # Total deposited should be either $1000 (bar 0 only, since 30 doesn't trigger for i=30 in 31 bars)
+    # Actually bar 30: i=30, 30 % 30 == 0, so deposit at i=0 and i=30 = 2 deposits
+    assert result.metrics["total_deposited"] == pytest.approx(2_000.0, abs=0.01)
+    # BuyAndHold should buy on bar 0 and bar 30 with the deposited cash
+    assert result.ending_equity > 0
+
+
+def test_total_deposited_in_metrics():
+    """metrics['total_deposited'] should equal the sum of all deposit amounts."""
+    df = _flat(n=91, price=100.0)
+    result = run_backtest(
+        df, NoTrade(), starting_equity=0.0, fee_bps=0, slippage_bps=0,
+        inflows=[
+            {"every_n_bars": 30, "amount_usd": 500.0, "source": "salary"},
+            {"day_of_month": 15, "amount_usd": 200.0, "source": "bonus"},
+        ],
+    )
+    # Verify metric exists and equals sum
+    assert "total_deposited" in result.metrics
+    assert "num_deposits" in result.metrics
+    total = sum(d.amount_usd for d in result.deposits)
+    assert result.metrics["total_deposited"] == pytest.approx(total, abs=0.01)
+    assert result.metrics["num_deposits"] == len(result.deposits)
