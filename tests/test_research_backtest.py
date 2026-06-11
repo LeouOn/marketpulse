@@ -463,3 +463,39 @@ def test_total_deposited_in_metrics():
     total = sum(d.amount_usd for d in result.deposits)
     assert result.metrics["total_deposited"] == pytest.approx(total, abs=0.01)
     assert result.metrics["num_deposits"] == len(result.deposits)
+
+
+# ---------------------------------------------------------------------------
+# Wave 4: on-chain state wiring
+# ---------------------------------------------------------------------------
+
+
+def test_state_dict_has_mvrv_key(monkeypatch):
+    """Backtest engine should set state['mvrv_z'] when on-chain data is loaded."""
+    # Mock fetch_mvrv to return known data matching our test dates
+    _mock_mvrv = pd.DataFrame({
+        "ts": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-02")],
+        "mvrv_z": [1.5, 2.0],
+    })
+    monkeypatch.setattr(
+        "src.research.data.on_chain.fetch_mvrv",
+        lambda force=False: _mock_mvrv,
+    )
+    # We can't directly inspect state inside the engine, but we can verify
+    # that the OnChainGated scaling model receives the correct mvrv_z values
+    # by checking that trades are executed correctly.
+    from src.research.scaling.OnChainGated import OnChainGated
+
+    df = _flat(n=2, price=100.0)
+    # Use OnChainGated so the state["mvrv_z"] value is consumed
+    scaling = OnChainGated(params={"base_buy_multiplier": 100.0})
+    result = run_backtest(
+        df, BuyAndHold(), scaling=scaling, starting_equity=10_000.0,
+        fee_bps=0, slippage_bps=0,
+    )
+    # If mvrv_z=1.5 was loaded, OnChainGated uses multiplier 0.75
+    # (1.5 < 3.0 band → 0.75 multiplier → 100 * 0.75 = 75)
+    # The engine should have at least one buy trade with the scaled amount
+    assert len(result.trades) >= 1
+    first_buy = [t for t in result.trades if t.side == "buy"][0]
+    assert first_buy.notional_usd == pytest.approx(75.0, abs=0.01)
