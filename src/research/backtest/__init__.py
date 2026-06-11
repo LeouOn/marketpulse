@@ -247,6 +247,7 @@ def run_backtest(
     closes = df["close"].astype(float).to_numpy()
     rets = pd.Series(closes).pct_change().fillna(0.0)
     recent_returns: list[float] = []  # rolling window for scaling model
+    last_valid_price: float = 0.0  # used to preserve BTC equity on zero-price bars
 
     # ── Pre-compute indicators needed by scaling models ──────────────────
     # RSI(14) – identical to the calculation in MeanReversionRSI.generate_signals
@@ -276,12 +277,14 @@ def run_backtest(
         ts = df["ts"].iloc[i]
         price = float(closes[i])
         if price <= 0:
-            # Skip degenerate bars
-            equity = cash
+            # Skip degenerate bars — preserve BTC equity at last valid price
+            equity = cash + btc * last_valid_price
             equity_values.append(equity)
             drawdown_values.append(0.0)
             timestamps.append(ts)
             continue
+
+        last_valid_price = price
 
         # Mark-to-market equity
         equity = cash + btc * price
