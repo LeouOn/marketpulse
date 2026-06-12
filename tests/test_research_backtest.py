@@ -499,3 +499,29 @@ def test_state_dict_has_mvrv_key(monkeypatch):
     assert len(result.trades) >= 1
     first_buy = [t for t in result.trades if t.side == "buy"][0]
     assert first_buy.notional_usd == pytest.approx(75.0, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# F23/F24/F28: negative-parameter validation guards
+# ---------------------------------------------------------------------------
+
+
+def test_negative_starting_equity_rejected():
+    """Negative starting_equity must raise a clear ValueError."""
+    df = _growing(n=10)
+    with pytest.raises(ValueError, match="starting_equity must be >= 0"):
+        run_backtest(df, BuyAndHold(), starting_equity=-1000)
+
+
+def test_negative_fee_bps_rejected():
+    """Negative fee_bps must raise a clear ValueError."""
+    df = _growing(n=10)
+    with pytest.raises(ValueError, match="fee_bps must be >= 0"):
+        run_backtest(df, BuyAndHold(), fee_bps=-5)
+
+
+def test_negative_slippage_bps_rejected():
+    """Negative slippage_bps must raise a clear ValueError."""
+    df = _growing(n=10)
+    with pytest.raises(ValueError, match="slippage_bps must be >= 0"):
+        run_backtest(df, BuyAndHold(), slippage_bps=-5)

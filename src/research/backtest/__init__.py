@@ -228,6 +228,12 @@ def run_backtest(
         raise ValueError("df is empty")
     if "close" not in df.columns or "ts" not in df.columns:
         raise ValueError("df must contain 'ts' and 'close' columns")
+    if starting_equity < 0:
+        raise ValueError(f"starting_equity must be >= 0, got {starting_equity}")
+    if fee_bps < 0:
+        raise ValueError(f"fee_bps must be >= 0, got {fee_bps}")
+    if slippage_bps < 0:
+        raise ValueError(f"slippage_bps must be >= 0, got {slippage_bps}")
     if scaling is None:
         _no_scaling = True
         scaling = None
@@ -267,39 +273,12 @@ def run_backtest(
     last_valid_price: float = 0.0  # used to preserve BTC equity on zero-price bars
 
     # ── Pre-compute indicators needed by scaling models ──────────────────
-    # RSI(14) – identical to the calculation in MeanReversionRSI.generate_signals
-    _close_series = df["close"].astype(float)
-    _delta = _close_series.diff()
-    _gain = _delta.clip(lower=0.0)
-    _loss = (-_delta).clip(lower=0.0)
-    _avg_gain = _gain.ewm(alpha=1.0 / 14, adjust=False, min_periods=14).mean()
-    _avg_loss = _loss.ewm(alpha=1.0 / 14, adjust=False, min_periods=14).mean()
-    _rs = _avg_gain / _avg_loss.replace(0.0, np.nan)
-    _rsi_14 = (100.0 - (100.0 / (1.0 + _rs))).to_numpy()
-    # Mayer Multiple = close / SMA(200)
-    _sma200 = _close_series.rolling(200).mean().to_numpy()
-
-    # ── Load Fear & Greed Index for SentimentModulated scaling ──────────
-    _fgi_lookup: dict[str, float] = {}
-    try:
-        from src.research.data.fear_greed import fetch_fear_greed
-        _fgi_df = fetch_fear_greed()
-        if not _fgi_df.empty and "ts" in _fgi_df.columns and "fgi_value" in _fgi_df.columns:
-            for _, row in _fgi_df.iterrows():
-                _fgi_lookup[str(row["ts"].date())] = float(row["fgi_value"])
-    except Exception:
-        pass  # FGI unavailable — SentimentModulated falls back to 1.0
-
-    # ── Load MVRV Z-score for OnChainGated scaling ──────────────────────────
-    _mvrv_lookup: dict[str, float] = {}
-    try:
-        from src.research.data.on_chain import fetch_mvrv
-        _mvrv_df = fetch_mvrv()
-        if not _mvrv_df.empty and "ts" in _mvrv_df.columns and "mvrv_z" in _mvrv_df.columns:
-            for _, row in _mvrv_df.iterrows():
-                _mvrv_lookup[str(row["ts"].date())] = float(row["mvrv_z"])
-    except Exception:
-        pass  # on-chain unavailable
+    from .indicators import IndicatorProvider
+    _indicators = IndicatorProvider().compute(df)
+    _rsi_14 = _indicators["rsi_14"]
+    _mayer_multiple = _indicators["mayer_multiple"]
+    _fgi_lookup = _indicators["fgi_lookup"]
+    _mvrv_lookup = _indicators["mvrv_lookup"]
 
     for i in range(len(df)):
         ts = df["ts"].iloc[i]
@@ -334,8 +313,8 @@ def run_backtest(
         # Feed pre-computed indicators to scaling models that need them
         state["rsi_14"] = float(_rsi_14[i]) if not np.isnan(_rsi_14[i]) else 50.0
         state["mayer_multiple"] = (
-            float(closes[i] / _sma200[i])
-            if (not np.isnan(_sma200[i]) and _sma200[i] > 0)
+            float(_mayer_multiple[i])
+            if not np.isnan(_mayer_multiple[i])
             else 1.0
         )
         state["ts"] = ts
