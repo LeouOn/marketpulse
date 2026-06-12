@@ -14,7 +14,11 @@ from src.research.scaling import (
     InvalidParamsError,
     KellyCriterion,
     Martingale,
+    MayerMultipleGated,
+    OnChainGated,
     RiskParity,
+    RSIModulated,
+    SentimentModulated,
     VolatilityTargeted,
     describe_scaling,
     get_scaling,
@@ -211,6 +215,12 @@ def test_get_scaling_with_params():
 def test_all_scaling_models_return_nonneg_sizes():
     """Every scaling model must return non-negative buy/sell amounts."""
     r = _returns(0.0, 0.02, 200)
+    _indicator_state = {
+        "rsi_14": 50.0,
+        "mayer_multiple": 1.0,
+        "fgi_value": 50.0,
+        "mvrv_z": 1.0,
+    }
     for cls in [
         FixedFractional,
         FixedDollar,
@@ -220,10 +230,15 @@ def test_all_scaling_models_return_nonneg_sizes():
         DrawdownScaled,
         AntiMartingale,
         Martingale,
+        RSIModulated,
+        MayerMultipleGated,
+        SentimentModulated,
+        OnChainGated,
     ]:
         s = cls()
         for eq, pv, st in [(10_000.0, 0.0, {}), (5_000.0, 3_000.0, {"win_streak": 1})]:
-            buy, sell = s.size(eq, pv, 30_000.0, r, st)
+            merged = {**st, **_indicator_state}
+            buy, sell = s.size(eq, pv, 30_000.0, r, merged)
             assert buy >= 0, f"{cls.__name__} returned negative buy: {buy}"
             assert sell >= 0, f"{cls.__name__} returned negative sell: {sell}"
 
