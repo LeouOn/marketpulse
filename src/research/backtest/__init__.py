@@ -459,14 +459,16 @@ def run_backtest(
             # model provides explicit sizing (e.g. FixedDollar $500, RSI-modulated).
             # We use that directly as the buy amount, otherwise fall back to the
             # strategy's target-fraction diff.
-            buy_hint, sell_hint = scaling.size(equity, current_position_value, price, recent_rets, state)
+            buy_hint, _ = scaling.size(equity, current_position_value, price, recent_rets, state)
             if buy_hint > 1e-9:
                 buy_usd = buy_hint
             elif isinstance(strategy, BuyAndHold) or diff_usd > 0:
                 buy_usd = max(diff_usd, 0.0)
             else:
                 buy_usd = 0.0
-            sell_usd = max(-diff_usd, 0.0) if sell_hint <= 0 else sell_hint
+            # Scaling models currently always return sell_usd=0.0; sells are
+            # derived from target-fraction diff only.
+            sell_usd = max(-diff_usd, 0.0)
 
         # Cap buys at available cash AFTER accounting for the fee (so we don't go
         # negative on cash). Max spendable = cash / (1 + fee_rate).
