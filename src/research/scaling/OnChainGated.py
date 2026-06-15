@@ -19,7 +19,12 @@ class OnChainGated(ScalingModel):
     """Gates buy size by on-chain MVRV Z-score bands.
 
     Low MVRV (undervalued) → higher multiplier, high MVRV (overvalued) →
-    lower multiplier. Falls back to 1.0× when MVRV data is unavailable.
+    lower multiplier. Falls back to a 1.0× multiplier (i.e. the base buy
+    size unchanged) when MVRV data is missing, ``NaN``, or flagged as
+    synthetic by the data layer (see ``on_chain.fetch_mvrv``'s ``source``
+    column). Callers that want to refuse trading on synthetic data should
+    check ``state.get("mvrv_z")`` provenance upstream before calling
+    ``size()``.
     """
 
     name: ClassVar[str] = "OnChainGated"

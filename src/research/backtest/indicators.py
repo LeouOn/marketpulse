@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from loguru import logger
 
 
 def compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
@@ -126,6 +127,19 @@ class IndicatorProvider:
                     and "ts" in mvrv_df.columns
                     and "mvrv_z" in mvrv_df.columns
                 ):
+                    # Warn if the entire series is synthetic - a backtest
+                    # run on noise is misleading. We do NOT change behavior;
+                    # the caller still gets the lookup dict, just with a
+                    # visible warning so the user knows the data is fake.
+                    if "source" in mvrv_df.columns and (
+                        mvrv_df["source"] == "synthetic"
+                    ).all():
+                        logger.warning(
+                            "MVRV data is entirely synthetic - backtest "
+                            "results on this series are not meaningful. "
+                            "Configure a Glassnode API key or provide real "
+                            "data to get trustworthy results."
+                        )
                     for _, row in mvrv_df.iterrows():
                         mvrv_lookup[str(row["ts"].date())] = float(row["mvrv_z"])
             except Exception:

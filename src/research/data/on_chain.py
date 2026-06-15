@@ -19,6 +19,13 @@ Output
 ------
 - ``data/btc/mvrv.csv``  — columns ``ts, mvrv_z``
 - ``data/btc/puell.csv``  — columns ``ts, puell``
+
+Both fetchers also return a ``source`` column on the in-memory DataFrame
+tagging each row's provenance: ``"real"`` (API-fetched), ``"cache"``
+(served from local CSV), or ``"synthetic"`` (deterministic fallback).
+The ``source`` column is not persisted to the CSV cache. Downstream code
+(e.g. ``IndicatorProvider``) can inspect it to detect synthetic data and
+warn the user that backtest results may not be meaningful.
 """
 
 from __future__ import annotations
@@ -145,13 +152,20 @@ def fetch_mvrv(force: bool = False) -> pd.DataFrame:
         force: If ``True``, re-fetch from the API even if a cache exists.
 
     Returns:
-        DataFrame with columns ``ts`` (datetime), ``mvrv_z`` (float).
+        DataFrame with columns ``ts`` (datetime), ``mvrv_z`` (float),
+        and ``source`` (str). The ``source`` column tags data provenance:
+        ``"real"`` for API-fetched rows, ``"cache"`` for rows served from
+        the local CSV cache, and ``"synthetic"`` for the deterministic
+        fallback series used when both API and cache are unavailable.
+        Downstream code can inspect ``df["source"]`` to avoid silently
+        running on synthetic noise.
     """
     # Return cached data if available and not forced.
     if not force and MVRV_CSV.exists():
         cached = _read_mvrv_cache(MVRV_CSV)
         if not cached.empty:
             logger.info(f"MVRV: returning {len(cached)} rows from cache")
+            cached["source"] = "cache"
             return cached
 
     # Fetch from API.
@@ -164,10 +178,14 @@ def fetch_mvrv(force: bool = False) -> pd.DataFrame:
         logger.warning(f"MVRV fetch failed: {exc}")
         if MVRV_CSV.exists():
             logger.warning("MVRV: returning stale cache due to fetch error")
-            return _read_mvrv_cache(MVRV_CSV)
+            stale = _read_mvrv_cache(MVRV_CSV)
+            stale["source"] = "cache"
+            return stale
         # Fall back to synthetic series
         logger.warning("MVRV: using synthetic fallback")
-        return _synthetic_mvrv()
+        df = _synthetic_mvrv()
+        df["source"] = "synthetic"
+        return df
 
     # Parse Glassnode response — list of {t: unix_timestamp, v: value}
     rows = []
@@ -186,17 +204,26 @@ def fetch_mvrv(force: bool = False) -> pd.DataFrame:
     elif isinstance(payload, dict) and "error" in payload:
         logger.warning(f"MVRV API error: {payload['error']}")
         if MVRV_CSV.exists():
-            return _read_mvrv_cache(MVRV_CSV)
-        return _synthetic_mvrv()
+            stale = _read_mvrv_cache(MVRV_CSV)
+            stale["source"] = "cache"
+            return stale
+        df = _synthetic_mvrv()
+        df["source"] = "synthetic"
+        return df
 
     if not rows:
         logger.warning("MVRV: API returned no data; using synthetic fallback")
         if MVRV_CSV.exists():
-            return _read_mvrv_cache(MVRV_CSV)
-        return _synthetic_mvrv()
+            stale = _read_mvrv_cache(MVRV_CSV)
+            stale["source"] = "cache"
+            return stale
+        df = _synthetic_mvrv()
+        df["source"] = "synthetic"
+        return df
 
     df = pd.DataFrame(rows)
     df = df.drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
+    df["source"] = "real"
     _write_cache(df, MVRV_CSV)
     logger.info(f"MVRV: fetched and cached {len(df)} rows ({df['ts'].min().date()} -> {df['ts'].max().date()})")
     return df
@@ -209,13 +236,20 @@ def fetch_puell(force: bool = False) -> pd.DataFrame:
         force: If ``True``, re-fetch from the API even if a cache exists.
 
     Returns:
-        DataFrame with columns ``ts`` (datetime), ``puell`` (float).
+        DataFrame with columns ``ts`` (datetime), ``puell`` (float),
+        and ``source`` (str). The ``source`` column tags data provenance:
+        ``"real"`` for API-fetched rows, ``"cache"`` for rows served from
+        the local CSV cache, and ``"synthetic"`` for the deterministic
+        fallback series used when both API and cache are unavailable.
+        Downstream code can inspect ``df["source"]`` to avoid silently
+        running on synthetic noise.
     """
     # Return cached data if available and not forced.
     if not force and PUELL_CSV.exists():
         cached = _read_puell_cache(PUELL_CSV)
         if not cached.empty:
             logger.info(f"Puell: returning {len(cached)} rows from cache")
+            cached["source"] = "cache"
             return cached
 
     # Fetch from API.
@@ -228,9 +262,13 @@ def fetch_puell(force: bool = False) -> pd.DataFrame:
         logger.warning(f"Puell fetch failed: {exc}")
         if PUELL_CSV.exists():
             logger.warning("Puell: returning stale cache due to fetch error")
-            return _read_puell_cache(PUELL_CSV)
+            stale = _read_puell_cache(PUELL_CSV)
+            stale["source"] = "cache"
+            return stale
         logger.warning("Puell: using synthetic fallback")
-        return _synthetic_puell()
+        df = _synthetic_puell()
+        df["source"] = "synthetic"
+        return df
 
     # Parse Glassnode response
     rows = []
@@ -249,17 +287,26 @@ def fetch_puell(force: bool = False) -> pd.DataFrame:
     elif isinstance(payload, dict) and "error" in payload:
         logger.warning(f"Puell API error: {payload['error']}")
         if PUELL_CSV.exists():
-            return _read_puell_cache(PUELL_CSV)
-        return _synthetic_puell()
+            stale = _read_puell_cache(PUELL_CSV)
+            stale["source"] = "cache"
+            return stale
+        df = _synthetic_puell()
+        df["source"] = "synthetic"
+        return df
 
     if not rows:
         logger.warning("Puell: API returned no data; using synthetic fallback")
         if PUELL_CSV.exists():
-            return _read_puell_cache(PUELL_CSV)
-        return _synthetic_puell()
+            stale = _read_puell_cache(PUELL_CSV)
+            stale["source"] = "cache"
+            return stale
+        df = _synthetic_puell()
+        df["source"] = "synthetic"
+        return df
 
     df = pd.DataFrame(rows)
     df = df.drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
+    df["source"] = "real"
     _write_cache(df, PUELL_CSV)
     logger.info(f"Puell: fetched and cached {len(df)} rows ({df['ts'].min().date()} -> {df['ts'].max().date()})")
     return df
