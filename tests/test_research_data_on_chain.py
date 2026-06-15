@@ -13,7 +13,7 @@ import pytest
 
 from src.research.data.on_chain import (
     MVRV_CSV,
-    PELL_CSV,
+    PUELL_CSV,
     fetch_mvrv,
     fetch_puell,
     _read_mvrv_cache,
@@ -34,7 +34,7 @@ def tmp_data_dir(tmp_path, monkeypatch):
     import src.research.data.on_chain as mod
     monkeypatch.setattr(mod, "DATA_DIR", tmp_path)
     monkeypatch.setattr(mod, "MVRV_CSV", tmp_path / "mvrv.csv")
-    monkeypatch.setattr(mod, "PELL_CSV", tmp_path / "puell.csv")
+    monkeypatch.setattr(mod, "PUELL_CSV", tmp_path / "puell.csv")
     return tmp_path
 
 

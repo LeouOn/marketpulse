@@ -37,12 +37,12 @@ from loguru import logger
 
 DATA_DIR = Path("data/btc")
 MVRV_CSV = DATA_DIR / "mvrv.csv"
-PELL_CSV = DATA_DIR / "puell.csv"
+PUELL_CSV = DATA_DIR / "puell.csv"
 
 MVRV_API_URL = (
     "https://api.glassnode.com/v1/metrics/market/mvrv_z_score?a=BTC&i=24h"
 )
-PELL_API_URL = (
+PUELL_API_URL = (
     "https://api.glassnode.com/v1/metrics/mining/puell_multiple?a=BTC&i=24h"
 )
 
@@ -105,14 +105,14 @@ def _synthetic_mvrv(n_days: int = 2500) -> pd.DataFrame:
     This is NOT real data — it exists so that tests and offline runs
     have something to work with.
     """
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     dates = pd.date_range(end=pd.Timestamp.now(), periods=n_days, freq="D")
     # Halving-cycle periodicity (~4 years = 1461 days)
     t = np.arange(n_days)
     cycle = np.sin(2 * np.pi * t / 1461)
     # Amplitude decays as market matures
     amp = 2.5 * np.exp(-t / 5000)
-    mvrv_z = 1.0 + amp * cycle + np.random.normal(0, 0.2, n_days)
+    mvrv_z = 1.0 + amp * cycle + rng.normal(0, 0.2, n_days)
     return pd.DataFrame({"ts": dates, "mvrv_z": mvrv_z})
 
 
@@ -123,12 +123,12 @@ def _synthetic_puell(n_days: int = 2500) -> pd.DataFrame:
     miner capitulation (good buy signal); high values (~3+) indicate
     overheated issuance economics.
     """
-    np.random.seed(43)
+    rng = np.random.default_rng(43)
     dates = pd.date_range(end=pd.Timestamp.now(), periods=n_days, freq="D")
     t = np.arange(n_days)
     cycle = np.sin(2 * np.pi * t / 1461 + np.pi / 4)
     amp = 1.2 * np.exp(-t / 6000)
-    puell = 1.0 + amp * cycle + np.random.normal(0, 0.15, n_days)
+    puell = 1.0 + amp * cycle + rng.normal(0, 0.15, n_days)
     puell = np.clip(puell, 0.1, 6.0)
     return pd.DataFrame({"ts": dates, "puell": puell})
 
@@ -212,8 +212,8 @@ def fetch_puell(force: bool = False) -> pd.DataFrame:
         DataFrame with columns ``ts`` (datetime), ``puell`` (float).
     """
     # Return cached data if available and not forced.
-    if not force and PELL_CSV.exists():
-        cached = _read_puell_cache(PELL_CSV)
+    if not force and PUELL_CSV.exists():
+        cached = _read_puell_cache(PUELL_CSV)
         if not cached.empty:
             logger.info(f"Puell: returning {len(cached)} rows from cache")
             return cached
@@ -221,14 +221,14 @@ def fetch_puell(force: bool = False) -> pd.DataFrame:
     # Fetch from API.
     logger.info("Puell: fetching from Glassnode API")
     try:
-        resp = requests.get(PELL_API_URL, timeout=REQ_TIMEOUT)
+        resp = requests.get(PUELL_API_URL, timeout=REQ_TIMEOUT)
         resp.raise_for_status()
         payload = resp.json()
     except Exception as exc:
         logger.warning(f"Puell fetch failed: {exc}")
-        if PELL_CSV.exists():
+        if PUELL_CSV.exists():
             logger.warning("Puell: returning stale cache due to fetch error")
-            return _read_puell_cache(PELL_CSV)
+            return _read_puell_cache(PUELL_CSV)
         logger.warning("Puell: using synthetic fallback")
         return _synthetic_puell()
 
@@ -248,18 +248,18 @@ def fetch_puell(force: bool = False) -> pd.DataFrame:
             )
     elif isinstance(payload, dict) and "error" in payload:
         logger.warning(f"Puell API error: {payload['error']}")
-        if PELL_CSV.exists():
-            return _read_puell_cache(PELL_CSV)
+        if PUELL_CSV.exists():
+            return _read_puell_cache(PUELL_CSV)
         return _synthetic_puell()
 
     if not rows:
         logger.warning("Puell: API returned no data; using synthetic fallback")
-        if PELL_CSV.exists():
-            return _read_puell_cache(PELL_CSV)
+        if PUELL_CSV.exists():
+            return _read_puell_cache(PUELL_CSV)
         return _synthetic_puell()
 
     df = pd.DataFrame(rows)
     df = df.drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
-    _write_cache(df, PELL_CSV)
+    _write_cache(df, PUELL_CSV)
     logger.info(f"Puell: fetched and cached {len(df)} rows ({df['ts'].min().date()} -> {df['ts'].max().date()})")
     return df
