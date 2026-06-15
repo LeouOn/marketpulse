@@ -237,11 +237,6 @@ def run_backtest(
     fee_rate = fee_bps / 10_000.0
     slip_rate = slippage_bps / 10_000.0
 
-    # Generate target position fractions from the strategy
-    target_frac = strategy.generate_signals(df).reindex(df.index)
-    # If any are NaN (e.g. DCAValueAveraging on non-buy days), keep as NaN
-    # and the engine will treat that as "no change".
-
     cash = starting_equity
     btc = 0.0
     avg_cost = 0.0
@@ -273,6 +268,22 @@ def run_backtest(
     _mayer_multiple = _indicators["mayer_multiple"]
     _fgi_lookup = _indicators["fgi_lookup"]
     _mvrv_lookup = _indicators["mvrv_lookup"]
+
+    # ── Inject indicators into df for strategies that read them as columns
+    # (e.g. CompositeAccumulation checks `fgi_value in df.columns`). The FGI
+    # data lives in _fgi_lookup keyed by date string; surface it as a column
+    # so strategies can consume it directly. This is generic: any future
+    # strategy can read any indicator via df columns.
+    df_enriched = df.copy()
+    if _fgi_lookup:
+        df_enriched["fgi_value"] = df_enriched["ts"].apply(
+            lambda ts: _fgi_lookup.get(str(pd.Timestamp(ts).date()))
+        )
+
+    # Generate target position fractions from the strategy
+    target_frac = strategy.generate_signals(df_enriched).reindex(df.index)
+    # If any are NaN (e.g. DCAValueAveraging on non-buy days), keep as NaN
+    # and the engine will treat that as "no change".
 
     for i in range(len(df)):
         ts = df["ts"].iloc[i]
