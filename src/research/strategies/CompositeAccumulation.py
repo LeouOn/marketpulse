@@ -115,8 +115,15 @@ class CompositeAccumulation(Strategy):
         mayer_score = 1.0 - (mayer - 0.5) / 2.0
         mayer_score = mayer_score.clip(lower=0.0, upper=1.0)
 
-        # --- SMA trend score (binary: 1 if close > SMA, else 0) ---
-        sma_trend_score = (close > sma).astype(float)
+        # --- SMA trend score (binary contrarian: 1 if close < SMA, else 0) ---
+        # Below SMA = bearish -> score 1.0 -> buy more (contrarian, matching
+        # the FGI/RSI/Mayer sibling signals which all reward bearish conditions).
+        sma_trend_score = (close < sma).astype(float)
+        # During SMA warmup (first sma_period bars), sma is NaN so the
+        # comparison yields False (0.0) — i.e. "not below SMA". Use a neutral
+        # 0.5 so warmup doesn't bias the composite toward the conservative side.
+        warmup = sma.isna()
+        sma_trend_score[warmup] = 0.5
 
         # Fill NaN sub-signals with neutral (0.5)
         fgi_score = fgi_score.fillna(0.5)

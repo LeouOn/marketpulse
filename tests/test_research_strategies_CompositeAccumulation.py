@@ -85,13 +85,18 @@ class TestCompositeAccumulationSignals:
         late_mean = sig.iloc[-30:].mean()
         assert late_mean < 0.6, f"Expected mean < 0.6, got {late_mean}"
 
-    def test_sma_trend_off_yields_low_target(self):
-        """Declining price (close < SMA) → sma_trend_score = 0 → lower target."""
+    def test_sma_trend_bearish_yields_high_target(self):
+        """Declining price (close < SMA) → sma_trend_score = 1.0 → higher target.
+
+        The SMA-trend signal is contrarian (like FGI/RSI/Mayer): below-SMA
+        (bearish) → score 1.0 → buy more. We isolate it by zeroing the
+        sibling weights so only sma_trend drives the composite.
+        """
         df = _make_declining_df(250)
         s = CompositeAccumulation()
         sig = s.generate_signals(df)
-        # In a declining market, the SMA trend is off but RSI is very low
-        # which drives the composite HIGH (bearish = accumulate more).
+        # In a declining market the SMA trend is bearish (close < SMA) and RSI
+        # is very low — both drive the composite HIGH (bearish = accumulate more).
         # So we test with a config where only sma_trend_weight matters.
         s2 = CompositeAccumulation(params={
             "fgi_weight": 0.0,
@@ -105,8 +110,8 @@ class TestCompositeAccumulationSignals:
         })
         sig2 = s2.generate_signals(df)
         late_mean = sig2.iloc[-30:].mean()
-        # close < SMA → score 0 → target = conservative_frac = 0.3
-        assert late_mean < 0.5, f"Expected mean < 0.5, got {late_mean}"
+        # close < SMA → score 1.0 → target = aggressive_frac = 0.9 (high)
+        assert late_mean > 0.5, f"Expected mean > 0.5 (bearish → accumulate), got {late_mean}"
 
     def test_missing_fgi_falls_back_to_neutral(self):
         """When fgi_value column is missing, signals should still be valid."""
