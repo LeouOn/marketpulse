@@ -25,6 +25,13 @@ class OnChainGated(ScalingModel):
     column). Callers that want to refuse trading on synthetic data should
     check ``state.get("mvrv_z")`` provenance upstream before calling
     ``size()``.
+
+    ``base_buy_multiplier`` is a *fractional* multiplier (default ``1.0``),
+    consistent with the sibling scaling models (RSIModulated,
+    MayerMultipleGated, SentimentModulated). The returned buy size is
+    ``base_buy_multiplier * mvrv_multiplier``. Users who want a specific
+    dollar buy size should pass it explicitly, e.g.
+    ``OnChainGated(params={"base_buy_multiplier": 500.0})`` for $500 buys.
     """
 
     name: ClassVar[str] = "OnChainGated"
@@ -33,13 +40,13 @@ class OnChainGated(ScalingModel):
         "Low MVRV (cheap) = buy more, high MVRV (expensive) = buy less."
     )
     default_params: ClassVar[dict[str, Any]] = {
-        "base_buy_multiplier": 500.0,
+        "base_buy_multiplier": 1.0,
         "mvrv_bands": [-1.0, 0.0, 1.5, 3.0, 5.0],
         "mvrv_multipliers": [2.0, 1.5, 1.0, 0.75, 0.5],
     }
 
     def validate_params(self, params: dict[str, Any]) -> None:
-        if params.get("base_buy_multiplier", 500.0) <= 0:
+        if params.get("base_buy_multiplier", 1.0) <= 0:
             raise InvalidParamsError(
                 f"base_buy_multiplier must be > 0, got {params['base_buy_multiplier']}"
             )

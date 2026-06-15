@@ -23,7 +23,7 @@ def _returns(n: int = 200) -> pd.Series:
 def test_default_params_validate():
     """Default params should pass validation."""
     m = OnChainGated()
-    assert m.params["base_buy_multiplier"] == 500.0
+    assert m.params["base_buy_multiplier"] == 1.0
 
 
 def test_reject_zero_base_buy_multiplier():
@@ -47,7 +47,7 @@ def test_reject_empty_bands():
 
 
 def test_mvrv_below_first_band_returns_2x():
-    m = OnChainGated()
+    m = OnChainGated(params={"base_buy_multiplier": 500.0})
     buy, sell = m.size(
         equity=10_000, position_value=0, price=30_000,
         recent_returns=_returns(),
@@ -59,7 +59,7 @@ def test_mvrv_below_first_band_returns_2x():
 
 
 def test_mvrv_in_neutral_band_returns_1x():
-    m = OnChainGated()
+    m = OnChainGated(params={"base_buy_multiplier": 500.0})
     buy, sell = m.size(
         equity=10_000, position_value=0, price=30_000,
         recent_returns=_returns(),
@@ -71,7 +71,7 @@ def test_mvrv_in_neutral_band_returns_1x():
 
 
 def test_mvrv_above_last_band_returns_0_5x():
-    m = OnChainGated()
+    m = OnChainGated(params={"base_buy_multiplier": 500.0})
     buy, sell = m.size(
         equity=10_000, position_value=0, price=30_000,
         recent_returns=_returns(),
@@ -83,7 +83,7 @@ def test_mvrv_above_last_band_returns_0_5x():
 
 
 def test_no_state_returns_neutral():
-    m = OnChainGated()
+    m = OnChainGated(params={"base_buy_multiplier": 500.0})
     buy, sell = m.size(
         equity=10_000, position_value=0, price=30_000,
         recent_returns=_returns(),
@@ -94,7 +94,7 @@ def test_no_state_returns_neutral():
 
 
 def test_none_mvrv_returns_neutral():
-    m = OnChainGated()
+    m = OnChainGated(params={"base_buy_multiplier": 500.0})
     buy, sell = m.size(
         equity=10_000, position_value=0, price=30_000,
         recent_returns=_returns(),
@@ -106,7 +106,7 @@ def test_none_mvrv_returns_neutral():
 
 def test_bands_boundary_values():
     """Exact boundary values should use the NEXT band's multiplier."""
-    m = OnChainGated()
+    m = OnChainGated(params={"base_buy_multiplier": 500.0})
     # mvrv_z == 0.0 exactly -> 0.0 < 0.0 is False, so it goes to next band (1.5)
     # Actually 0.0 < 0.0 is False, so it checks < 1.5 -> multiplier 1.0
     buy, _ = m.size(10_000, 0, 30_000, _returns(), state={"mvrv_z": 0.0})
@@ -122,7 +122,7 @@ def test_bands_boundary_values():
 
 
 def test_nan_mvrv_returns_neutral():
-    m = OnChainGated()
+    m = OnChainGated(params={"base_buy_multiplier": 500.0})
     buy, sell = m.size(
         equity=10_000, position_value=0, price=30_000,
         recent_returns=_returns(),
