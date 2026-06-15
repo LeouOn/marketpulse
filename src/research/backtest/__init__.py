@@ -463,14 +463,27 @@ def run_backtest(
     years = (timestamps[-1] - timestamps[0]).days / 365.25 if len(timestamps) >= 2 else 0.0
     rets_series = equity_curve.pct_change().dropna()
     max_dd = max_drawdown_pct(equity_curve)
+    # When starting_equity <= 0 (inflows-funded portfolios), return-based
+    # metrics divide by zero / are undefined. Guard them to 0.0 rather than
+    # emitting RuntimeWarning("divide by zero") and producing inf/nan.
+    # cagr() and calmar_ratio() already guard start <= 0 internally, but we
+    # short-circuit all three here for clarity and to skip the division.
+    if starting_equity > 0 and len(equity_curve):
+        total_return_pct = float((equity_curve.iloc[-1] / starting_equity - 1.0) * 100.0)
+        cagr_pct = float(cagr(starting_equity, equity_curve.iloc[-1], years) * 100.0)
+        calmar = float(calmar_ratio(starting_equity, equity_curve.iloc[-1], years, max_dd))
+    else:
+        total_return_pct = 0.0
+        cagr_pct = 0.0
+        calmar = 0.0
     metrics = {
         "start_equity": float(starting_equity),
         "end_equity": float(equity_curve.iloc[-1]) if len(equity_curve) else float(starting_equity),
-        "total_return_pct": float((equity_curve.iloc[-1] / starting_equity - 1.0) * 100.0) if len(equity_curve) else 0.0,
-        "cagr_pct": float(cagr(starting_equity, equity_curve.iloc[-1], years) * 100.0) if len(equity_curve) else 0.0,
+        "total_return_pct": total_return_pct,
+        "cagr_pct": cagr_pct,
         "sharpe": float(sharpe_ratio(rets_series)),
         "sortino": float(sortino_ratio(rets_series)),
-        "calmar": float(calmar_ratio(starting_equity, equity_curve.iloc[-1], years, max_dd)),
+        "calmar": calmar,
         "max_drawdown_pct": float(max_dd),
         "profit_factor": float(profit_factor(trades)) if trades else 0.0,
         "hit_rate_pct": float(hit_rate(trades) * 100.0),
