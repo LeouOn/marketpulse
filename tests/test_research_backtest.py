@@ -368,6 +368,88 @@ def test_profit_factor_no_losses_no_inf():
     assert math.isfinite(pf)
 
 
+def test_profit_factor_profitable_closed_trade_above_one():
+    """A profitable buy→sell must yield profit_factor > 1.0.
+
+    Regression test: the old implementation mixed cash outflows (buys) with
+    realized PnL (sells), so every buy counted as a "loss" and made
+    profit_factor meaningless for DCA strategies (e.g. buy $100 / sell for
+    $150 used to return ~0.45 instead of 999.0 / a large number).
+    """
+    from src.research.backtest import Trade
+
+    # Buy 1 BTC at $100 (cost basis = $100), then sell 1 BTC at $150.
+    # Realized PnL = $150 - $0 fee - $0 slip - $100 cost = +$50 (win, no loss).
+    trades = [
+        Trade(
+            ts=pd.Timestamp("2024-01-01"),
+            side="buy",
+            btc_amount=1.0,
+            price=100.0,
+            notional_usd=100.0,
+            fee_usd=0.0,
+            slippage_usd=0.0,
+            cash_after=9900.0,
+            btc_after=1.0,
+            equity_after=10000.0,
+        ),
+        Trade(
+            ts=pd.Timestamp("2024-01-02"),
+            side="sell",
+            btc_amount=1.0,
+            price=150.0,
+            notional_usd=150.0,
+            fee_usd=0.0,
+            slippage_usd=0.0,
+            cash_after=10150.0,
+            btc_after=0.0,
+            equity_after=10150.0,
+        ),
+    ]
+    pf = profit_factor(trades)
+    assert pf > 1.0, f"profitable closed trade should have profit_factor > 1.0, got {pf}"
+    assert pf == 999.0  # wins only, no losses -> capped at 999.0
+    # hit_rate should be 100% on the single profitable closed trade
+    assert hit_rate(trades) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_profit_factor_losing_closed_trade_below_one():
+    """An unprofitable buy→sell must yield profit_factor < 1.0 (or 0)."""
+    from src.research.backtest import Trade
+
+    # Buy 1 BTC at $100, sell 1 BTC at $80 -> realized PnL = -$20 (loss).
+    trades = [
+        Trade(
+            ts=pd.Timestamp("2024-01-01"),
+            side="buy",
+            btc_amount=1.0,
+            price=100.0,
+            notional_usd=100.0,
+            fee_usd=0.0,
+            slippage_usd=0.0,
+            cash_after=9900.0,
+            btc_after=1.0,
+            equity_after=10000.0,
+        ),
+        Trade(
+            ts=pd.Timestamp("2024-01-02"),
+            side="sell",
+            btc_amount=1.0,
+            price=80.0,
+            notional_usd=80.0,
+            fee_usd=0.0,
+            slippage_usd=0.0,
+            cash_after=9980.0,
+            btc_after=0.0,
+            equity_after=9980.0,
+        ),
+    ]
+    pf = profit_factor(trades)
+    # Only losses, no wins -> 0.0 (per the no-wins branch of the cap)
+    assert pf == 0.0
+    assert hit_rate(trades) == pytest.approx(0.0, abs=1e-9)
+
+
 # ---------------------------------------------------------------------------
 # F19: zero-price bar preserves BTC equity
 # ---------------------------------------------------------------------------

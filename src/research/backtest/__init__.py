@@ -128,41 +128,48 @@ def calmar_ratio(start: float, end: float, years: float, max_dd_pct: float) -> f
     return c / (abs(max_dd_pct) / 100.0)
 
 
-def profit_factor(trades: list[Trade]) -> float:
-    """Sum of winning trade PnL / |sum of losing trade PnL|. None -> 0."""
-    if not trades:
-        return 0.0
-    wins = 0.0
-    losses = 0.0
-    # Pair up buys with the next sell to compute per-trade PnL
-    open_pos: dict[str, float] = {}  # not used here; we just sum signed cash flows
-    # Simpler: realized PnL = sells - buys (in USD notional, since we hold BTC)
-    # For a coherent PF, we need to mark-to-market; for now use the cash-flow view:
-    cash_flows = []
-    cumulative = 0.0
+def _realized_pnl_per_closed_trade(trades: list[Trade]) -> list[float]:
+    """Return realized PnL for each closed (sell) trade.
+
+    Walks the trade list tracking the running BTC position and an
+    average cost basis. Each SELL realizes PnL = sell_notional - sell_fee
+    - sell_slip - cost_basis_of_sold_btc. Open buys (no offsetting sell)
+    contribute nothing — they are unrealized.
+
+    Positive values are winning trades, negative are losing trades.
+    """
+    pnls: list[float] = []
     btc_pos = 0.0
     avg_cost = 0.0
     for t in trades:
         if t.side == "buy":
-            cash_flows.append(-t.notional_usd - t.fee_usd - t.slippage_usd)
             btc_pos += t.btc_amount
-            # update avg cost
             total_cost = avg_cost * (btc_pos - t.btc_amount) + t.notional_usd + t.fee_usd + t.slippage_usd
             avg_cost = total_cost / btc_pos if btc_pos > 0 else 0.0
-        else:
-            # realized PnL = sell_price * btc - cost basis
+        else:  # sell closes a (partial) position
             cost_basis = avg_cost * t.btc_amount
             realized = t.notional_usd - t.fee_usd - t.slippage_usd - cost_basis
-            cash_flows.append(realized)
+            pnls.append(realized)
             btc_pos -= t.btc_amount
             if btc_pos <= 1e-12:
                 btc_pos = 0.0
                 avg_cost = 0.0
-    for cf in cash_flows:
-        if cf > 0:
-            wins += cf
-        else:
-            losses += abs(cf)
+    return pnls
+
+
+def profit_factor(trades: list[Trade]) -> float:
+    """Sum of winning closed-trade PnL / |sum of losing closed-trade PnL|.
+
+    Classifies CLOSED TRADES (sells) by realized PnL only — open buys
+    are unrealized and excluded. Returns 0.0 if there are no closed
+    trades. Capped at 999.0 (instead of inf) when there are wins but
+    no losses, for JSON serialization safety.
+    """
+    pnls = _realized_pnl_per_closed_trade(trades)
+    if not pnls:
+        return 0.0
+    wins = sum(p for p in pnls if p > 0)
+    losses = sum(abs(p) for p in pnls if p < 0)
     if losses == 0:
         # Cap at 999.0 instead of float("inf") for JSON serialization safety
         return 999.0 if wins > 0 else 0.0
@@ -170,29 +177,16 @@ def profit_factor(trades: list[Trade]) -> float:
 
 
 def hit_rate(trades: list[Trade]) -> float:
-    """Fraction of closed trades that were profitable. Uses the same pairing as profit_factor."""
-    if not trades:
+    """Fraction of closed trades that were profitable.
+
+    Uses the same realized-PnL-per-closed-trade computation as
+    :func:`profit_factor` (no code duplication).
+    """
+    pnls = _realized_pnl_per_closed_trade(trades)
+    if not pnls:
         return 0.0
-    btc_pos = 0.0
-    avg_cost = 0.0
-    closed = 0
-    wins = 0
-    for t in trades:
-        if t.side == "buy":
-            btc_pos += t.btc_amount
-            total_cost = avg_cost * (btc_pos - t.btc_amount) + t.notional_usd + t.fee_usd + t.slippage_usd
-            avg_cost = total_cost / btc_pos if btc_pos > 0 else 0.0
-        else:
-            cost_basis = avg_cost * t.btc_amount
-            realized = t.notional_usd - t.fee_usd - t.slippage_usd - cost_basis
-            closed += 1
-            if realized > 0:
-                wins += 1
-            btc_pos -= t.btc_amount
-            if btc_pos <= 1e-12:
-                btc_pos = 0.0
-                avg_cost = 0.0
-    return wins / closed if closed > 0 else 0.0
+    wins = sum(1 for p in pnls if p > 0)
+    return wins / len(pnls)
 
 
 # ---------------------------------------------------------------------------
