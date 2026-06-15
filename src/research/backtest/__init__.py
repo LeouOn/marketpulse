@@ -25,6 +25,7 @@ Outputs
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -194,6 +195,86 @@ def hit_rate(trades: list[Trade]) -> float:
 # ---------------------------------------------------------------------------
 
 
+_log = logging.getLogger(__name__)
+
+
+def _validate_inflows(inflows: list[dict] | None) -> None:
+    """Validate the structure of an ``inflows`` schedule list.
+
+    Each inflow must be a dict with:
+    - ``amount_usd``: a positive float/int (the recurring deposit amount)
+    - exactly one trigger key: ``every_n_bars`` (positive int) or
+      ``day_of_month`` (int 1-31). At least one is required.
+
+    Raises:
+        ValueError: with a clear message on any violation.
+
+    Warns (via the module logger):
+        If ``day_of_month > 28``, logs a warning that some months will be
+        skipped (Feb, and 30-day months), since the engine silently skips
+        days that don't exist in the current month.
+    """
+    if not inflows:
+        return
+    for idx, inflow in enumerate(inflows):
+        if not isinstance(inflow, dict):
+            raise ValueError(
+                f"inflows[{idx}] must be a dict, got {type(inflow).__name__}"
+            )
+        if "amount_usd" not in inflow:
+            raise ValueError(
+                f"inflows[{idx}] is missing required key 'amount_usd'"
+            )
+        amount = inflow["amount_usd"]
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool):
+            raise ValueError(
+                f"inflows[{idx}]['amount_usd'] must be a number, "
+                f"got {type(amount).__name__}"
+            )
+        if amount <= 0:
+            raise ValueError(
+                f"inflows[{idx}]['amount_usd'] must be positive, got {amount}"
+            )
+        has_every = "every_n_bars" in inflow
+        has_dom = "day_of_month" in inflow
+        if not has_every and not has_dom:
+            raise ValueError(
+                f"inflows[{idx}] must define a trigger: "
+                f"'every_n_bars' (positive int) or 'day_of_month' (int 1-31)"
+            )
+        if has_every:
+            enb = inflow["every_n_bars"]
+            if not isinstance(enb, int) or isinstance(enb, bool):
+                raise ValueError(
+                    f"inflows[{idx}]['every_n_bars'] must be an int, "
+                    f"got {type(enb).__name__}"
+                )
+            if enb <= 0:
+                raise ValueError(
+                    f"inflows[{idx}]['every_n_bars'] must be a positive int, "
+                    f"got {enb}"
+                )
+        if has_dom:
+            dom = inflow["day_of_month"]
+            if not isinstance(dom, int) or isinstance(dom, bool):
+                raise ValueError(
+                    f"inflows[{idx}]['day_of_month'] must be an int, "
+                    f"got {type(dom).__name__}"
+                )
+            if dom < 1 or dom > 31:
+                raise ValueError(
+                    f"inflows[{idx}]['day_of_month'] must be 1-31, got {dom}"
+                )
+            if dom > 28:
+                _log.warning(
+                    "inflows[%d]['day_of_month']=%d does not exist in every "
+                    "month (Feb has 28/29 days; Apr/Jun/Sep/Nov have 30). "
+                    "The engine will silently skip months where this day is "
+                    "absent.",
+                    idx, dom,
+                )
+
+
 def run_backtest(
     df: pd.DataFrame,
     strategy: Strategy,
@@ -228,6 +309,7 @@ def run_backtest(
         raise ValueError(f"fee_bps must be >= 0, got {fee_bps}")
     if slippage_bps < 0:
         raise ValueError(f"slippage_bps must be >= 0, got {slippage_bps}")
+    _validate_inflows(inflows)
     if scaling is None:
         _no_scaling = True
         scaling = None

@@ -607,3 +607,53 @@ def test_negative_slippage_bps_rejected():
     df = _growing(n=10)
     with pytest.raises(ValueError, match="slippage_bps must be >= 0"):
         run_backtest(df, BuyAndHold(), slippage_bps=-5)
+
+
+# ---------------------------------------------------------------------------
+# Wave 3 (follow-up): inflow dict validation
+# ---------------------------------------------------------------------------
+
+
+def test_inflow_missing_amount_rejected():
+    """Inflow dict without 'amount_usd' must raise ValueError before the loop."""
+    df = _flat(n=30, price=100.0)
+    with pytest.raises(ValueError, match=r"missing required key 'amount_usd'"):
+        run_backtest(
+            df, NoTrade(), starting_equity=0.0,
+            inflows=[{"every_n_bars": 30}],  # no amount_usd
+        )
+
+
+def test_inflow_negative_amount_rejected():
+    """Negative amount_usd would silently subtract cash; must be rejected."""
+    df = _flat(n=30, price=100.0)
+    with pytest.raises(ValueError, match=r"amount_usd.{0,5}must be positive"):
+        run_backtest(
+            df, NoTrade(), starting_equity=0.0,
+            inflows=[{"every_n_bars": 30, "amount_usd": -500.0}],
+        )
+
+
+def test_inflow_no_trigger_key_rejected():
+    """Inflow without any trigger key would never fire; must be rejected."""
+    df = _flat(n=30, price=100.0)
+    with pytest.raises(ValueError, match="must define a trigger"):
+        run_backtest(
+            df, NoTrade(), starting_equity=0.0,
+            inflows=[{"amount_usd": 500.0}],  # no every_n_bars or day_of_month
+        )
+
+
+def test_inflow_day_31_warns(caplog):
+    """day_of_month > 28 should log a warning that some months will be skipped."""
+    df = _flat(n=30, price=100.0)
+    with caplog.at_level("WARNING", logger="src.research.backtest"):
+        run_backtest(
+            df, NoTrade(), starting_equity=0.0,
+            inflows=[{"day_of_month": 31, "amount_usd": 500.0}],
+        )
+    # The warning should mention the day and the skip behavior.
+    warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert any("day_of_month" in m and "31" in m for m in warning_msgs), (
+        f"expected a warning about day_of_month=31, got: {warning_msgs}"
+    )
