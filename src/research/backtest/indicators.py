@@ -15,6 +15,37 @@ import numpy as np
 import pandas as pd
 
 
+def compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    """Compute Wilder's RSI as a pandas Series.
+
+    Uses the EWM formulation ``alpha = 1/period`` with ``adjust=False`` and
+    ``min_periods=period``, identical to the formula previously inlined in
+    ``IndicatorProvider.compute``, ``MeanReversionRSI.generate_signals``, and
+    ``CompositeAccumulation``.
+
+    Parameters
+    ----------
+    close : pd.Series
+        Close prices.
+    period : int, default 14
+        RSI window (must be >= 2 for a meaningful RSI).
+
+    Returns
+    -------
+    pd.Series
+        RSI values in the range 0-100. The first ``period`` bars are NaN
+        (warmup). Callers that need a non-NaN signal (e.g. trading
+        strategies) should apply their own ``.fillna(50.0)`` afterwards.
+    """
+    delta = close.diff()
+    gain = delta.clip(lower=0.0)
+    loss = (-delta).clip(lower=0.0)
+    avg_gain = gain.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
+    avg_loss = loss.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
+    rs = avg_gain / avg_loss.replace(0.0, np.nan)
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
 class IndicatorProvider:
     """Compute backtest indicators from an OHLCV DataFrame.
 
@@ -58,13 +89,7 @@ class IndicatorProvider:
         # ── RSI(14) ────────────────────────────────────────────────────
         # Same formula as MeanReversionRSI.generate_signals:
         #   ewm(alpha=1/period, adjust=False, min_periods=period)
-        delta = close.diff()
-        gain = delta.clip(lower=0.0)
-        loss = (-delta).clip(lower=0.0)
-        avg_gain = gain.ewm(alpha=1.0 / 14, adjust=False, min_periods=14).mean()
-        avg_loss = loss.ewm(alpha=1.0 / 14, adjust=False, min_periods=14).mean()
-        rs = avg_gain / avg_loss.replace(0.0, np.nan)
-        rsi_14 = (100.0 - (100.0 / (1.0 + rs))).to_numpy()
+        rsi_14 = compute_rsi(close, 14).to_numpy()
 
         # ── Mayer Multiple = close / SMA(200) ──────────────────────────
         sma200 = close.rolling(200).mean().to_numpy()

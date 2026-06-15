@@ -94,17 +94,11 @@ class CompositeAccumulation(Strategy):
             fgi_score = pd.Series(0.5, index=df.index)
 
         # --- RSI score (low RSI → bullish → score 1.0) ---
-        delta = close.diff()
-        gain = delta.clip(lower=0.0)
-        loss = (-delta).clip(lower=0.0)
-        avg_gain = gain.ewm(
-            alpha=1.0 / rsi_period, adjust=False, min_periods=rsi_period
-        ).mean()
-        avg_loss = loss.ewm(
-            alpha=1.0 / rsi_period, adjust=False, min_periods=rsi_period
-        ).mean()
-        rs = avg_gain / avg_loss.replace(0.0, np.nan)
-        rsi = 100.0 - (100.0 / (1.0 + rs))
+        # Lazy import to avoid a circular import: backtest/__init__.py
+        # re-exports from src.research.strategies.
+        from src.research.backtest.indicators import compute_rsi
+
+        rsi = compute_rsi(close, rsi_period)
         rsi = rsi.fillna(50.0)
         rsi_score = ((50.0 - rsi) / 50.0).clip(lower=0.0, upper=1.0)
 
