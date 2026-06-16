@@ -2,6 +2,7 @@
 Orchestrates data collection from Alpaca, Rithmic, Coinbase, Yahoo Finance with Redis caching
 """
 
+import os
 from datetime import datetime
 from typing import Any
 
@@ -172,13 +173,21 @@ class MarketDataCollector:
                 except Exception as e:
                     logger.error(f"Yahoo Finance fallback failed: {e}")
 
-        # Final fallback to mock data
+        # Final fallback to mock data -- only if explicitly opted in.
         if not internals or len(internals) < 3:
-            logger.warning("All data sources failed, using mock data")
-            from .mock_market import mock_provider
+            if os.getenv("MARKETPULSE_ALLOW_MOCK", "").lower() in ("1", "true", "yes"):
+                logger.warning("All data sources failed; using mock data (opt-in via MARKETPULSE_ALLOW_MOCK)")
+                from .mock_market import mock_provider
 
-            internals = await mock_provider.get_market_internals()
-            internals["data_source"] = "mock"
+                internals = await mock_provider.get_market_internals()
+                internals["data_source"] = "mock"
+            else:
+                logger.error(
+                    "All data sources failed and MARKETPULSE_ALLOW_MOCK is not set; "
+                    "returning empty internals. Set MARKETPULSE_ALLOW_MOCK=1 to allow mock fallback."
+                )
+                internals = {}
+                internals["data_source"] = "none"
         else:
             internals["data_source"] = ",".join(sources_used) if sources_used else "unknown"
 

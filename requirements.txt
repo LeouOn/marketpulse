@@ -31,3 +31,5 @@ kaleido>=0.2.1
 pydantic-ai>=0.0.14
 anthropic>=0.39.0
 rich>=13.9.4
+tenacity>=9.0.0
+requests>=2.32.0

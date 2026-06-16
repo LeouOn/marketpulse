@@ -120,6 +120,111 @@ class MarketPulseAPIClient {
   async getHistoricalFromDB(symbol: string, timeframe: string = '1d', period: string = '1mo'): Promise<{symbol: string, data: OHLCVBar[]}> {
     return this.fetchAPI(`/market/historical/${encodeURIComponent(symbol)}?timeframe=${timeframe}&period=${period}`);
   }
+
+  // ----------------------- BTC Research Lab (B7) -----------------------
+
+  async listResearchStrategies(): Promise<any[]> {
+    return this.fetchAPI<any[]>('/research/strategies');
+  }
+
+  async describeResearchStrategy(name: string): Promise<any> {
+    return this.fetchAPI<any>(`/research/strategies/${encodeURIComponent(name)}`);
+  }
+
+  async listResearchScaling(): Promise<any[]> {
+    return this.fetchAPI<any[]>('/research/scaling');
+  }
+
+  async describeResearchScaling(name: string): Promise<any> {
+    return this.fetchAPI<any>(`/research/scaling/${encodeURIComponent(name)}`);
+  }
+
+  async researchDataSummary(params: { start?: string; end?: string; timeframe?: string } = {}): Promise<any> {
+    const qs = new URLSearchParams();
+    if (params.start) qs.set('start', params.start);
+    if (params.end) qs.set('end', params.end);
+    if (params.timeframe) qs.set('timeframe', params.timeframe);
+    const tail = qs.toString() ? `?${qs.toString()}` : '';
+    return this.fetchAPI<any>(`/research/data/summary${tail}`);
+  }
+
+  async runResearchBacktest(req: {
+    strategy: string;
+    strategy_params?: Record<string, any>;
+    scaling?: string;
+    scaling_params?: Record<string, any>;
+    start?: string;
+    end?: string;
+    timeframe?: string;
+    starting_equity?: number;
+    fee_bps?: number;
+    slippage_bps?: number;
+  }): Promise<any> {
+    return this.fetchAPI<any>('/research/backtest', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async runResearchMonteCarlo(req: {
+    method: 'gbm' | 'block_bootstrap' | 'regime_switching';
+    n_paths?: number;
+    n_steps?: number;
+    starting_value?: number;
+    mu?: number;
+    sigma?: number;
+    block_size?: number;
+    start?: string;
+    end?: string;
+    seed?: number;
+  }): Promise<any> {
+    return this.fetchAPI<any>('/research/montecarlo', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async compareResearchStrategies(req: {
+    strategies: (string | { name: string; params?: Record<string, any> })[];
+    scaling?: string;
+    start?: string;
+    end?: string;
+    timeframe?: string;
+    starting_equity?: number;
+  }): Promise<any> {
+    return this.fetchAPI<any>('/research/compare', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async listResearchReports(params: { kind?: string; limit?: number } = {}): Promise<{ reports: any[] }> {
+    const qs = new URLSearchParams();
+    if (params.kind) qs.set('kind', params.kind);
+    if (params.limit) qs.set('limit', String(params.limit));
+    const tail = qs.toString() ? `?${qs.toString()}` : '';
+    return this.fetchAPI<{ reports: any[] }>(`/research/reports${tail}`);
+  }
+
+  async getResearchReport(id: string): Promise<any> {
+    return this.fetchAPI<any>(`/research/reports/${encodeURIComponent(id)}`);
+  }
+
+  getResearchReportImageUrl(id: string, kind: 'equity_png' | 'drawdown_png'): string {
+    return `${API_BASE}/research/reports/${encodeURIComponent(id)}/image/${kind}`;
+  }
+
+  /**
+   * Stream the research chat. Returns the raw Response so the caller can
+   * read NDJSON line by line.
+   */
+  async streamResearchChat(messages: Array<{ role: string; content: string }>): Promise<Response> {
+    return fetch(`${API_BASE}/research/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, max_tool_calls: 5 }),
+    });
+  }
 }
 
 export async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {

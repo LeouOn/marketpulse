@@ -30,6 +30,25 @@ class MiniMaxClient:
         if self.session:
             await self.session.close()
 
+    async def check_health(self) -> bool:
+        """Check whether the MiniMax endpoint is reachable + the API key is set.
+
+        Used by ModelRouter for fast health probing. We consider the provider
+        healthy if the API key is set to a non-default value; full validation
+        happens on the first real request.
+        """
+        try:
+            if not self.api_key or self.api_key == "your_minimax_api_key":
+                return False
+            if not self.session:
+                return True  # key valid; session will be opened on first call
+            # Lightweight probe: hit /models (cheap, OpenAI-compatible).
+            url = f"{self.base_url}/models"
+            async with self.session.get(url) as r:
+                return r.status == 200
+        except Exception:
+            return False
+
     async def generate_completion(
         self, messages: list[dict[str, str]], model: str = None, max_tokens: int = 300, temperature: float = 0.3
     ) -> dict[str, Any] | None:

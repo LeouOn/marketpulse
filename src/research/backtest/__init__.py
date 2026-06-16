@@ -1,0 +1,865 @@
+"""Event-driven backtest engine for the BTC research lab.
+
+Inputs
+------
+- df: OHLCV DataFrame (ts, open, high, low, close, volume)
+- strategy: a Strategy instance (produces target position fraction per bar)
+- scaling: a ScalingModel instance (sizes the trade in USD)
+- starting_equity: float
+- fee_bps, slippage_bps: float (basis points of trade notional)
+
+Semantics
+---------
+- The strategy is asked for a target fraction in [0, 1] at the **close** of
+  each bar. We treat the close as the fill price (with slippage).
+- If the strategy's target goes from f_prev to f_now, we buy/sell the
+  difference at the close. ``DCAFixedAmount`` is the only exception: it
+  signals "spend $N on this bar" directly via the signal value (we read
+  ``strategy.params['amount_usd']`` for that case).
+- All buys pay ``fee + slippage`` bps of notional; all sells similarly.
+
+Outputs
+-------
+- BacktestResult with: equity_curve, trades, metrics, drawdown_curve
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from ..loans import Loan, LoanPayment, MarginLoan, NoRecourseLoan
+from ..scaling import ScalingModel, FixedDollar
+from ..strategies import Strategy, BuyAndHold, NoTrade
+
+
+# ---------------------------------------------------------------------------
+# Result types
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Trade:
+    ts: pd.Timestamp
+    side: str  # "buy" | "sell"
+    btc_amount: float
+    price: float
+    notional_usd: float
+    fee_usd: float
+    slippage_usd: float
+    cash_after: float
+    btc_after: float
+    equity_after: float
+    reason: str = ""
+
+
+@dataclass
+class Deposit:
+    ts: pd.Timestamp
+    amount_usd: float
+    source: str = ""
+
+
+@dataclass
+class BacktestResult:
+    equity_curve: pd.Series
+    drawdown_curve: pd.Series
+    trades: list[Trade] = field(default_factory=list)
+    deposits: list[Deposit] = field(default_factory=list)
+    loan_payments: list[LoanPayment] = field(default_factory=list)
+    metrics: dict[str, float] = field(default_factory=dict)
+    strategy_name: str = ""
+    scaling_name: str = ""
+    starting_equity: float = 0.0
+    ending_equity: float = 0.0
+    start_date: str = ""
+    end_date: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Metrics
+# ---------------------------------------------------------------------------
+
+
+def cagr(start: float, end: float, years: float) -> float:
+    if years <= 0 or start <= 0 or end <= 0:
+        return 0.0
+    return (end / start) ** (1.0 / years) - 1.0
+
+
+def sharpe_ratio(returns: pd.Series, periods_per_year: float = 365.25) -> float:
+    """Annualized Sharpe; assumes 0% risk-free rate."""
+    if returns.empty:
+        return 0.0
+    std = float(returns.std(ddof=0))
+    if std < 1e-12:  # treat floating-point noise / constant series as zero vol
+        return 0.0
+    return float(returns.mean() / std * np.sqrt(periods_per_year))
+
+
+def sortino_ratio(returns: pd.Series, periods_per_year: float = 365.25) -> float:
+    """Annualized Sortino (downside deviation only)."""
+    if returns.empty:
+        return 0.0
+    downside = returns[returns < 0]
+    if downside.empty:
+        return 0.0
+    dstd = float(downside.std(ddof=0))
+    if dstd < 1e-12:
+        return 0.0
+    return float(returns.mean() / dstd * np.sqrt(periods_per_year))
+
+
+def max_drawdown_pct(equity: pd.Series) -> float:
+    """Return the max drawdown as a *negative* percentage (e.g. -83.0 for 83%)."""
+    if equity.empty:
+        return 0.0
+    running_max = equity.cummax()
+    drawdown = equity / running_max - 1.0
+    return float(drawdown.min() * 100.0)
+
+
+def calmar_ratio(start: float, end: float, years: float, max_dd_pct: float) -> float:
+    """Calmar = CAGR / |max DD|. Returns 0 if max_dd is 0."""
+    if max_dd_pct == 0 or years <= 0:
+        return 0.0
+    c = cagr(start, end, years)
+    return c / (abs(max_dd_pct) / 100.0)
+
+
+def _realized_pnl_per_closed_trade(trades: list[Trade]) -> list[float]:
+    """Return realized PnL for each closed (sell) trade.
+
+    Walks the trade list tracking the running BTC position and an
+    average cost basis. Each SELL realizes PnL = sell_notional - sell_fee
+    - sell_slip - cost_basis_of_sold_btc. Open buys (no offsetting sell)
+    contribute nothing — they are unrealized.
+
+    Positive values are winning trades, negative are losing trades.
+    """
+    pnls: list[float] = []
+    btc_pos = 0.0
+    avg_cost = 0.0
+    for t in trades:
+        if t.side == "buy":
+            btc_pos += t.btc_amount
+            total_cost = avg_cost * (btc_pos - t.btc_amount) + t.notional_usd + t.fee_usd + t.slippage_usd
+            avg_cost = total_cost / btc_pos if btc_pos > 0 else 0.0
+        else:  # sell closes a (partial) position
+            cost_basis = avg_cost * t.btc_amount
+            realized = t.notional_usd - t.fee_usd - t.slippage_usd - cost_basis
+            pnls.append(realized)
+            btc_pos -= t.btc_amount
+            if btc_pos <= 1e-12:
+                btc_pos = 0.0
+                avg_cost = 0.0
+    return pnls
+
+
+def profit_factor(trades: list[Trade]) -> float:
+    """Sum of winning closed-trade PnL / |sum of losing closed-trade PnL|.
+
+    Classifies CLOSED TRADES (sells) by realized PnL only — open buys
+    are unrealized and excluded. Returns 0.0 if there are no closed
+    trades. Capped at 999.0 (instead of inf) when there are wins but
+    no losses, for JSON serialization safety.
+    """
+    pnls = _realized_pnl_per_closed_trade(trades)
+    if not pnls:
+        return 0.0
+    wins = sum(p for p in pnls if p > 0)
+    losses = sum(abs(p) for p in pnls if p < 0)
+    if losses == 0:
+        # Cap at 999.0 instead of float("inf") for JSON serialization safety
+        return 999.0 if wins > 0 else 0.0
+    return float(wins / losses)
+
+
+def hit_rate(trades: list[Trade]) -> float:
+    """Fraction of closed trades that were profitable.
+
+    Uses the same realized-PnL-per-closed-trade computation as
+    :func:`profit_factor` (no code duplication).
+    """
+    pnls = _realized_pnl_per_closed_trade(trades)
+    if not pnls:
+        return 0.0
+    wins = sum(1 for p in pnls if p > 0)
+    return wins / len(pnls)
+
+
+# ---------------------------------------------------------------------------
+# Engine
+# ---------------------------------------------------------------------------
+
+
+_log = logging.getLogger(__name__)
+
+
+def _validate_inflows(inflows: list[dict] | None) -> None:
+    """Validate the structure of an ``inflows`` schedule list.
+
+    Each inflow must be a dict with:
+    - ``amount_usd``: a positive float/int (the recurring deposit amount)
+    - exactly one trigger key: ``every_n_bars`` (positive int) or
+      ``day_of_month`` (int 1-31). At least one is required.
+
+    Raises:
+        ValueError: with a clear message on any violation.
+
+    Warns (via the module logger):
+        If ``day_of_month > 28``, logs a warning that some months will be
+        skipped (Feb, and 30-day months), since the engine silently skips
+        days that don't exist in the current month.
+    """
+    if not inflows:
+        return
+    for idx, inflow in enumerate(inflows):
+        if not isinstance(inflow, dict):
+            raise ValueError(
+                f"inflows[{idx}] must be a dict, got {type(inflow).__name__}"
+            )
+        if "amount_usd" not in inflow:
+            raise ValueError(
+                f"inflows[{idx}] is missing required key 'amount_usd'"
+            )
+        amount = inflow["amount_usd"]
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool):
+            raise ValueError(
+                f"inflows[{idx}]['amount_usd'] must be a number, "
+                f"got {type(amount).__name__}"
+            )
+        if amount <= 0:
+            raise ValueError(
+                f"inflows[{idx}]['amount_usd'] must be positive, got {amount}"
+            )
+        has_every = "every_n_bars" in inflow
+        has_dom = "day_of_month" in inflow
+        if not has_every and not has_dom:
+            raise ValueError(
+                f"inflows[{idx}] must define a trigger: "
+                f"'every_n_bars' (positive int) or 'day_of_month' (int 1-31)"
+            )
+        if has_every:
+            enb = inflow["every_n_bars"]
+            if not isinstance(enb, int) or isinstance(enb, bool):
+                raise ValueError(
+                    f"inflows[{idx}]['every_n_bars'] must be an int, "
+                    f"got {type(enb).__name__}"
+                )
+            if enb <= 0:
+                raise ValueError(
+                    f"inflows[{idx}]['every_n_bars'] must be a positive int, "
+                    f"got {enb}"
+                )
+        if has_dom:
+            dom = inflow["day_of_month"]
+            if not isinstance(dom, int) or isinstance(dom, bool):
+                raise ValueError(
+                    f"inflows[{idx}]['day_of_month'] must be an int, "
+                    f"got {type(dom).__name__}"
+                )
+            if dom < 1 or dom > 31:
+                raise ValueError(
+                    f"inflows[{idx}]['day_of_month'] must be 1-31, got {dom}"
+                )
+            if dom > 28:
+                _log.warning(
+                    "inflows[%d]['day_of_month']=%d does not exist in every "
+                    "month (Feb has 28/29 days; Apr/Jun/Sep/Nov have 30). "
+                    "The engine will silently skip months where this day is "
+                    "absent.",
+                    idx, dom,
+                )
+
+
+def run_backtest(
+    df: pd.DataFrame,
+    strategy: Strategy,
+    scaling: ScalingModel | None = None,
+    starting_equity: float = 10_000.0,
+    fee_bps: float = 10.0,
+    slippage_bps: float = 5.0,
+    inflows: list[dict] | None = None,
+    loan: Loan | None = None,
+) -> BacktestResult:
+    """Run an event-driven backtest.
+
+    Args:
+        df: OHLCV DataFrame (ts, open, high, low, close, volume).
+        strategy: a Strategy instance (must implement generate_signals).
+        scaling: a ScalingModel. If None, target-fraction-only sizing is used
+            (so only the strategy's own DCA behavior is active).
+        starting_equity: float.
+        fee_bps: round-trip fee in basis points (10 bps = 0.10%).
+        slippage_bps: slippage in basis points on each fill.
+        inflows: optional list of recurring deposit schedules. Each dict has
+            ``amount_usd`` (float) and one of ``every_n_bars`` (int) or
+            ``day_of_month`` (int). An optional ``source`` label is stored
+            on the Deposit record. Deposits add to cash with no fee/slippage.
+        loan: optional :class:`~src.research.loans.Loan` to model borrowed
+            capital. When provided, the engine processes the loan each bar
+            (margin-call check, scheduled interest payment, maturity
+            balloon, no-recourse default) and reports five loan-specific
+            metrics: ``debt_balance``, ``total_interest_paid``,
+            ``loan_to_equity_ratio``, ``margin_call_count``,
+            ``liquidation_price`` (plus a boolean ``loan_defaulted``).
+            ``loan=None`` (default) preserves the legacy loan-free behavior.
+    """
+    if df is None or df.empty:
+        raise ValueError("df is empty")
+    if "close" not in df.columns or "ts" not in df.columns:
+        raise ValueError("df must contain 'ts' and 'close' columns")
+    if starting_equity < 0:
+        raise ValueError(f"starting_equity must be >= 0, got {starting_equity}")
+    if fee_bps < 0:
+        raise ValueError(f"fee_bps must be >= 0, got {fee_bps}")
+    if slippage_bps < 0:
+        raise ValueError(f"slippage_bps must be >= 0, got {slippage_bps}")
+    _validate_inflows(inflows)
+    if scaling is None:
+        _no_scaling = True
+        scaling = None
+    else:
+        _no_scaling = False
+
+    fee_rate = fee_bps / 10_000.0
+    slip_rate = slippage_bps / 10_000.0
+
+    cash = starting_equity
+    btc = 0.0
+    avg_cost = 0.0
+    peak_equity = starting_equity
+    state: dict[str, Any] = {
+        "win_streak": 0,
+        "loss_streak": 0,
+        "peak_equity": peak_equity,
+    }
+    last_equity = starting_equity
+    win_streak = 0
+    loss_streak = 0
+
+    equity_values: list[float] = []
+    drawdown_values: list[float] = []
+    timestamps: list[pd.Timestamp] = []
+    trades: list[Trade] = []
+    deposits: list[Deposit] = []
+    # === LOAN TRACKING ===
+    # Populated when a Loan is passed; left empty for legacy runs.
+    loan_payments: list[LoanPayment] = []
+    total_interest_paid = 0.0
+    margin_call_count = 0
+    loan_defaulted = False
+    loan_settled = False  # balloon paid — stop further loan processing
+
+    closes = df["close"].astype(float).to_numpy()
+    rets = pd.Series(closes).pct_change().fillna(0.0)
+    recent_returns: list[float] = []  # rolling window for scaling model
+    last_valid_price: float = 0.0  # used to preserve BTC equity on zero-price bars
+
+    # ── Pre-compute indicators needed by scaling models ──────────────────
+    from .indicators import IndicatorProvider
+    _indicators = IndicatorProvider().compute(df)
+    _rsi_14 = _indicators["rsi_14"]
+    _mayer_multiple = _indicators["mayer_multiple"]
+    _fgi_lookup = _indicators["fgi_lookup"]
+    _mvrv_lookup = _indicators["mvrv_lookup"]
+
+    # ── Inject indicators into df for strategies that read them as columns
+    # (e.g. CompositeAccumulation checks `fgi_value in df.columns`). The FGI
+    # data lives in _fgi_lookup keyed by date string; surface it as a column
+    # so strategies can consume it directly. This is generic: any future
+    # strategy can read any indicator via df columns.
+    df_enriched = df.copy()
+    if _fgi_lookup:
+        df_enriched["fgi_value"] = df_enriched["ts"].apply(
+            lambda ts: _fgi_lookup.get(str(pd.Timestamp(ts).date()))
+        )
+
+    # Generate target position fractions from the strategy
+    target_frac = strategy.generate_signals(df_enriched).reindex(df.index)
+    # If any are NaN (e.g. DCAValueAveraging on non-buy days), keep as NaN
+    # and the engine will treat that as "no change".
+
+    for i in range(len(df)):
+        ts = df["ts"].iloc[i]
+        price = float(closes[i])
+        if price <= 0:
+            # Skip degenerate bars — preserve BTC equity at last valid price
+            equity = cash + btc * last_valid_price
+            equity_values.append(equity)
+            drawdown_values.append(0.0)
+            timestamps.append(ts)
+            continue
+
+        last_valid_price = price
+
+        # Mark-to-market equity
+        equity = cash + btc * price
+        if equity > peak_equity:
+            peak_equity = equity
+        state["peak_equity"] = peak_equity
+
+        # Track win/loss streaks across bars (for martingale-style models)
+        bar_return = (equity / last_equity - 1.0) if last_equity > 0 else 0.0
+        if bar_return > 0:
+            win_streak += 1
+            loss_streak = 0
+        elif bar_return < 0:
+            loss_streak += 1
+            win_streak = 0
+        state["win_streak"] = win_streak
+        state["loss_streak"] = loss_streak
+
+        # Feed pre-computed indicators to scaling models that need them
+        state["rsi_14"] = float(_rsi_14[i]) if not np.isnan(_rsi_14[i]) else 50.0
+        state["mayer_multiple"] = (
+            float(_mayer_multiple[i])
+            if not np.isnan(_mayer_multiple[i])
+            else 1.0
+        )
+        state["ts"] = ts
+        state["fgi_value"] = _fgi_lookup.get(str(ts.date()))
+        state["mvrv_z"] = _mvrv_lookup.get(str(ts.date()))
+
+        # ── Apply recurring cash inflows (deposits) ─────────────────────
+        if inflows:
+            for inflow in inflows:
+                triggered = False
+                if "every_n_bars" in inflow and inflow["every_n_bars"] > 0:
+                    triggered = (i % inflow["every_n_bars"] == 0)
+                elif "day_of_month" in inflow:
+                    triggered = (ts.day == inflow["day_of_month"])
+                if triggered:
+                    amt = float(inflow["amount_usd"])
+                    src = inflow.get("source", "")
+                    cash += amt
+                    deposits.append(Deposit(ts=ts, amount_usd=amt, source=src))
+
+        # Decide what the strategy wants
+        sig = target_frac.iloc[i]
+        if pd.isna(sig):
+            # No rebalance this bar (e.g. DCAValueAveraging off-buy-day)
+            equity_values.append(equity)
+            dd = (equity / peak_equity - 1.0) if peak_equity > 0 else 0.0
+            drawdown_values.append(dd)
+            timestamps.append(ts)
+            last_equity = equity
+            recent_returns.append(bar_return)
+            continue
+
+        target_frac_value = float(sig)
+        if target_frac_value < 0:
+            target_frac_value = 0.0
+        if target_frac_value > 1:
+            target_frac_value = 1.0
+
+        target_position_value = equity * target_frac_value
+        current_position_value = btc * price
+        diff_usd = target_position_value - current_position_value
+
+        # Ask the scaling model for a buy/sell size hint
+        # (most scaling models ignore this and use their own logic; we use
+        # it only to *enforce* a position-size constraint per bar)
+        recent_rets = pd.Series(recent_returns[-252:])  # last year
+        if len(recent_rets) < 5:
+            recent_rets = pd.Series(recent_returns)  # all we have
+        if _no_scaling:
+            # user didn't specify a scaling size -> scale by target fraction only
+            buy_usd = max(diff_usd, 0.0)
+            sell_usd = max(-diff_usd, 0.0)
+        else:
+            # Scaling model returns a *buy* hint. If it's positive, the scaling
+            # model provides explicit sizing (e.g. FixedDollar $500, RSI-modulated).
+            # We use that directly as the buy amount, otherwise fall back to the
+            # strategy's target-fraction diff.
+            buy_hint, _ = scaling.size(equity, current_position_value, price, recent_rets, state)
+            if buy_hint > 1e-9:
+                buy_usd = buy_hint
+            elif isinstance(strategy, BuyAndHold) or diff_usd > 0:
+                buy_usd = max(diff_usd, 0.0)
+            else:
+                buy_usd = 0.0
+            # Scaling models currently always return sell_usd=0.0; sells are
+            # derived from target-fraction diff only.
+            sell_usd = max(-diff_usd, 0.0)
+
+        # Cap buys at available cash AFTER accounting for the fee (so we don't go
+        # negative on cash). Max spendable = cash / (1 + fee_rate).
+        if fee_rate > 0:
+            buy_usd = min(buy_usd, cash / (1.0 + fee_rate))
+        else:
+            buy_usd = min(buy_usd, cash)
+        sell_usd = min(sell_usd, current_position_value)
+
+        # Reject dust trades below $1 (rounding noise; not a real signal)
+        MIN_TRADE_USD = 1.0
+        if buy_usd < MIN_TRADE_USD:
+            buy_usd = 0.0
+        if sell_usd < MIN_TRADE_USD:
+            sell_usd = 0.0
+
+        # Execute
+        if buy_usd > 1e-9:
+            buy_price = price * (1.0 + slip_rate)
+            btc_bought = buy_usd / buy_price
+            fee = buy_usd * fee_rate
+            cash -= buy_usd + fee
+            btc += btc_bought
+            # update avg cost (in cost basis, include fee)
+            total_cost = avg_cost * (btc - btc_bought) + buy_usd + fee
+            avg_cost = total_cost / btc if btc > 0 else 0.0
+            trades.append(
+                Trade(
+                    ts=ts,
+                    side="buy",
+                    btc_amount=btc_bought,
+                    price=buy_price,
+                    notional_usd=buy_usd,
+                    fee_usd=fee,
+                    slippage_usd=buy_usd * slip_rate,
+                    cash_after=cash,
+                    btc_after=btc,
+                    equity_after=cash + btc * price,
+                    reason="strategy_target",
+                )
+            )
+
+        if sell_usd > 1e-9:
+            sell_price = price * (1.0 - slip_rate)
+            btc_sold = sell_usd / sell_price
+            fee = sell_usd * fee_rate
+            cash += sell_usd - fee
+            btc -= btc_sold
+            trades.append(
+                Trade(
+                    ts=ts,
+                    side="sell",
+                    btc_amount=btc_sold,
+                    price=sell_price,
+                    notional_usd=sell_usd,
+                    fee_usd=fee,
+                    slippage_usd=sell_usd * slip_rate,
+                    cash_after=cash,
+                    btc_after=btc,
+                    equity_after=cash + btc * price,
+                    reason="strategy_target",
+                )
+            )
+
+        # === LOAN PROCESSING ===
+        # Order matters: margin call → scheduled interest → maturity
+        # balloon → no-recourse default. Each branch records a
+        # LoanPayment (parallel to Trade/Deposit) so callers can audit
+        # the full loan lifecycle. ``loan_defaulted`` and
+        # ``loan_settled`` short-circuit all further loan activity.
+        if loan is not None and not loan_defaulted and not loan_settled:
+            # 1. Margin call (MarginLoan only): force-sell all BTC and
+            #    record the event. We use the pre-trade ``equity`` (mark
+            #    to market at the close) for the threshold check.
+            #    H4: current_debt uses remaining_debt() which includes
+            #    accrued interest (MarginLoan compounds interest into
+            #    the debt — the docstring's stated behavior).
+            #
+            #    LATCH HYSTERESIS: once a margin call fires the latch
+            #    (loan.margin_call_active) is SET and subsequent bars
+            #    skip the force-sell even if the ratio is still below
+            #    threshold — this prevents the death spiral where the
+            #    strategy re-buys BTC every bar and the engine
+            #    re-force-sells it. The latch clears only when
+            #    equity/debt recovers to threshold + recovery_buffer
+            #    (checked every bar, see 1b below). margin_call_count
+            #    counts distinct latch transitions inactive→active,
+            #    NOT the number of bars below threshold.
+            if isinstance(loan, MarginLoan):
+                current_debt = loan.remaining_debt(ts)
+                # 1a. Fire a margin call only when the latch is clear.
+                if (
+                    not loan.margin_call_active
+                    and loan.should_margin_call(equity, current_debt)
+                    and btc > 0
+                ):
+                    sell_usd_loan = btc * price
+                    cash += sell_usd_loan
+                    btc = 0.0
+                    margin_call_count += 1
+                    loan.margin_call_active = True
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=sell_usd_loan,
+                            interest_usd=0.0,
+                            principal_usd=sell_usd_loan,
+                            loan_name=loan.name,
+                            reason="margin_call",
+                        )
+                    )
+                # 1b. Clear the latch (hysteresis) once equity/debt
+                #     recovers past threshold + recovery_buffer. Record
+                #     a zero-dollar "margin_call_cleared" event for
+                #     auditability so callers can see when the loan
+                #     became eligible to fire another margin call.
+                if (
+                    loan.margin_call_active
+                    and loan.should_clear_margin_call(equity, current_debt)
+                ):
+                    loan.margin_call_active = False
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=0.0,
+                            interest_usd=0.0,
+                            principal_usd=0.0,
+                            loan_name=loan.name,
+                            reason="margin_call_cleared",
+                        )
+                    )
+
+            # 2. Scheduled interest payment (interest-only for term loans
+            #    and revolvers; 0 for MarginLoan which compounds instead).
+            payment = loan.scheduled_payment(ts)
+            if payment > 0 and not loan.is_matured(ts):
+                cash -= payment
+                total_interest_paid += payment
+                loan_payments.append(
+                    LoanPayment(
+                        ts=ts,
+                        amount_usd=payment,
+                        interest_usd=payment,
+                        principal_usd=0.0,
+                        loan_name=loan.name,
+                        reason="scheduled",
+                    )
+                )
+
+            # 3. Maturity balloon payment (term loans only). If the
+            #    borrower cannot cover the balloon:
+            #    - NoRecourseLoan: first sell BTC to cover, then default
+            #      (debt written off, lender eats the loss).
+            #    - FixedRateLoan: default immediately, debt remains
+            #      outstanding (recourse).
+            #    H3: previously an unpayable balloon left the loan in
+            #    permanent limbo (no default, no warning, no partial pay).
+            if loan.is_matured(ts):
+                balloon = loan.remaining_debt(ts)
+                # NoRecourseLoan: liquidate BTC collateral first
+                if cash < balloon and isinstance(loan, NoRecourseLoan) and btc > 0:
+                    shortfall = balloon - cash
+                    btc_to_sell = min(btc, shortfall / price)
+                    proceeds = btc_to_sell * price
+                    cash += proceeds
+                    btc -= btc_to_sell
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=proceeds,
+                            interest_usd=0.0,
+                            principal_usd=proceeds,
+                            loan_name=loan.name,
+                            reason="maturity",
+                        )
+                    )
+
+                if cash >= balloon:
+                    cash -= balloon
+                    loan_settled = True  # balloon paid — loan fully discharged
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=balloon,
+                            interest_usd=0.0,
+                            principal_usd=balloon,
+                            loan_name=loan.name,
+                            reason="maturity",
+                        )
+                    )
+                else:
+                    # H3: Balloon cannot be covered → default
+                    loan_defaulted = True
+                    _log.warning(
+                        "%s defaulted at maturity on %s: balloon $%.2f "
+                        "exceeded available cash $%.2f; %s",
+                        loan.name, ts, balloon, cash,
+                        "debt written off (non-recourse)"
+                        if isinstance(loan, NoRecourseLoan)
+                        else "debt remains outstanding (recourse)",
+                    )
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=0.0,
+                            interest_usd=0.0,
+                            principal_usd=balloon,
+                            loan_name=loan.name,
+                            reason="default",
+                        )
+                    )
+
+            # 4. No-recourse default: borrower walks away, debt written
+            #    off, equity stays. Sets the ``loan_defaulted`` flag so
+            #    subsequent bars skip all loan processing.
+            #    H4: current_debt uses remaining_debt() — for term loans
+            #    this equals remaining_principal() since interest is
+            #    serviced by scheduled payments.
+            if isinstance(loan, NoRecourseLoan):
+                current_debt = loan.remaining_debt(ts)
+                if loan.should_default(equity, current_debt):
+                    loan_defaulted = True
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=current_debt,
+                            interest_usd=0.0,
+                            principal_usd=current_debt,
+                            loan_name=loan.name,
+                            reason="default",
+                        )
+                    )
+
+        # Recompute equity and store
+        equity = cash + btc * price
+        if equity > peak_equity:
+            peak_equity = equity
+        state["peak_equity"] = peak_equity
+        equity_values.append(equity)
+        dd = (equity / peak_equity - 1.0) if peak_equity > 0 else 0.0
+        drawdown_values.append(dd)
+        timestamps.append(ts)
+        last_equity = equity
+        recent_returns.append(bar_return)
+
+    equity_curve = pd.Series(equity_values, index=pd.DatetimeIndex(timestamps), name="equity")
+    drawdown_curve = pd.Series(drawdown_values, index=pd.DatetimeIndex(timestamps), name="drawdown")
+
+    # Metrics
+    years = (timestamps[-1] - timestamps[0]).days / 365.25 if len(timestamps) >= 2 else 0.0
+    rets_series = equity_curve.pct_change().dropna()
+    max_dd = max_drawdown_pct(equity_curve)
+    total_deposited = float(sum(d.amount_usd for d in deposits))
+    # Return-based metrics need a positive denominator. When starting_equity > 0
+    # we use it as the baseline (classic lump-sum case). When starting_equity <= 0
+    # (income DCA — funded entirely by recurring deposits) the meaningful baseline
+    # is the total cash deposited, not 0; without this branch CAGR/return/calmar
+    # would silently report 0.0% even on a profitable DCA portfolio. Only when
+    # there is also no deposited capital do we fall through to 0.0.
+    # cagr() and calmar_ratio() guard against non-positive inputs internally, so
+    # this short-circuits purely to pick the right denominator and skip div-by-zero.
+    if starting_equity > 0 and len(equity_curve):
+        total_return_pct = float((equity_curve.iloc[-1] / starting_equity - 1.0) * 100.0)
+        cagr_pct = float(cagr(starting_equity, equity_curve.iloc[-1], years) * 100.0)
+        calmar = float(calmar_ratio(starting_equity, equity_curve.iloc[-1], years, max_dd))
+    elif total_deposited > 0 and len(equity_curve):
+        # Income DCA: measure return against total cash invested.
+        total_return_pct = float((equity_curve.iloc[-1] / total_deposited - 1.0) * 100.0)
+        cagr_pct = float(cagr(total_deposited, equity_curve.iloc[-1], years) * 100.0)
+        calmar = float(calmar_ratio(total_deposited, equity_curve.iloc[-1], years, max_dd))
+    else:
+        total_return_pct = 0.0
+        cagr_pct = 0.0
+        calmar = 0.0
+    metrics = {
+        "start_equity": float(starting_equity),
+        "end_equity": float(equity_curve.iloc[-1]) if len(equity_curve) else float(starting_equity),
+        "total_return_pct": total_return_pct,
+        "cagr_pct": cagr_pct,
+        "sharpe": float(sharpe_ratio(rets_series)),
+        "sortino": float(sortino_ratio(rets_series)),
+        "calmar": calmar,
+        "max_drawdown_pct": float(max_dd),
+        "profit_factor": float(profit_factor(trades)) if trades else 0.0,
+        "hit_rate_pct": float(hit_rate(trades) * 100.0),
+        "num_trades": int(len(trades)),
+        "num_buys": int(sum(1 for t in trades if t.side == "buy")),
+        "num_sells": int(sum(1 for t in trades if t.side == "sell")),
+        "years": float(years),
+        "total_deposited": total_deposited,
+        "num_deposits": int(len(deposits)),
+    }
+
+    # === LOAN METRICS ===
+    # Five user-facing metrics + a ``loan_defaulted`` flag. When
+    # ``loan=None`` (the default) every value is the zero/False sentinel
+    # so callers can rely on the keys always being present.
+    if loan is not None and len(timestamps) > 0:
+        # H3/H4: Settled loan → debt 0 (balloon paid).
+        # NoRecourseLoan default → debt 0 (non-recourse, written off).
+        # FixedRateLoan default → debt remains (recourse).
+        # Otherwise → remaining_debt (principal + accrued unpaid interest).
+        if loan_settled or (loan_defaulted and isinstance(loan, NoRecourseLoan)):
+            end_debt = 0.0
+        else:
+            end_debt = float(loan.remaining_debt(timestamps[-1]))
+        end_equity = float(equity_curve.iloc[-1]) if len(equity_curve) else float(starting_equity)
+        metrics["debt_balance"] = end_debt
+        metrics["total_interest_paid"] = float(total_interest_paid)
+        metrics["loan_to_equity_ratio"] = (
+            float(end_debt / end_equity) if end_equity > 0 else 0.0
+        )
+        metrics["margin_call_count"] = int(margin_call_count)
+        metrics["liquidation_price"] = (
+            float(loan.liquidation_price())
+            if isinstance(loan, MarginLoan)
+            else 0.0
+        )
+        metrics["loan_defaulted"] = bool(loan_defaulted)
+    else:
+        metrics["debt_balance"] = 0.0
+        metrics["total_interest_paid"] = 0.0
+        metrics["loan_to_equity_ratio"] = 0.0
+        metrics["margin_call_count"] = 0
+        metrics["liquidation_price"] = 0.0
+        metrics["loan_defaulted"] = False
+
+    return BacktestResult(
+        equity_curve=equity_curve,
+        drawdown_curve=drawdown_curve,
+        trades=trades,
+        deposits=deposits,
+        loan_payments=loan_payments,
+        metrics=metrics,
+        strategy_name=strategy.name,
+        scaling_name=scaling.name if scaling else "None",
+        starting_equity=starting_equity,
+        ending_equity=float(equity_curve.iloc[-1]) if len(equity_curve) else starting_equity,
+        start_date=str(timestamps[0].date()) if timestamps else "",
+        end_date=str(timestamps[-1].date()) if timestamps else "",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Convenience: run from CLI / agent
+# ---------------------------------------------------------------------------
+
+
+def run_backtest_from_names(
+    df: pd.DataFrame,
+    strategy_name: str,
+    strategy_params: dict[str, Any] | None = None,
+    scaling_name: str | None = None,
+    scaling_params: dict[str, Any] | None = None,
+    starting_equity: float = 10_000.0,
+    fee_bps: float = 10.0,
+    slippage_bps: float = 5.0,
+    inflows: list[dict] | None = None,
+    loan: Loan | None = None,
+) -> BacktestResult:
+    """Convenience wrapper that looks up strategy and scaling by name."""
+    from ..strategies import get_strategy as _gs
+    from ..scaling import get_scaling as _gc
+
+    strategy = _gs(strategy_name, strategy_params)
+    scaling = _gc(scaling_name, scaling_params) if scaling_name else None
+    return run_backtest(
+        df,
+        strategy,
+        scaling=scaling,
+        starting_equity=starting_equity,
+        fee_bps=fee_bps,
+        slippage_bps=slippage_bps,
+        inflows=inflows,
+        loan=loan,
+    )

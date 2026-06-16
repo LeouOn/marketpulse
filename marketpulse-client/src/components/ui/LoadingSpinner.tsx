@@ -47,19 +47,3 @@ export function SkeletonCard({ className = '' }: { className?: string }) {
     </div>
   );
 }
-
-export function MarketDataSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <SkeletonCard />
-        <SkeletonCard />
-        <SkeletonCard />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <SkeletonCard />
-        <SkeletonCard />
-      </div>
-    </div>
-  );
-}

@@ -49,7 +49,7 @@ export default function OptionsFlowTab() {
   const fetchExpirations = async () => {
     try {
       setError(null);
-      const data = await apiFetch<any>(`/api/options/expirations/${symbol}`);
+      const data = await apiFetch<any>(`/options/expirations/${symbol}`);
       if (data.success && data.data.expirations.length > 0) {
         setExpirations(data.data.expirations);
         setSelectedExpiration(data.data.expirations[0]);
@@ -65,7 +65,7 @@ export default function OptionsFlowTab() {
     setError(null);
     try {
       const data = await apiFetch<{ success: boolean; data: { calls: OptionsContract[]; puts: OptionsContract[] } }>(
-        `/api/options/chain/${symbol}/${selectedExpiration}?include_greeks=true`
+        `/options/chain/${symbol}/${selectedExpiration}?include_greeks=true`
       );
       if (data.success) {
         setOptionsChain(data.data);
@@ -80,7 +80,7 @@ export default function OptionsFlowTab() {
 
   const fetchMacroContext = async () => {
     try {
-      const data = await apiFetch<{ success: boolean; data: MacroContext }>('/api/options/macro-context');
+      const data = await apiFetch<{ success: boolean; data: MacroContext }>('/options/macro-context');
       if (data.success) {
         setMacroContext(data.data);
       }

@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main, opencode/**]
+  pull_request:
+    branches: [main, opencode/**]
+
+jobs:
+  test-python:
+    name: Python tests + lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: |
+          python -m ruff check src/ tests/
+          python -m ruff format --check src/ tests/
+
+      - name: Run research + wiring tests (fast unit tests only)
+        run: |
+          python -m pytest tests/ -q \
+            --ignore=tests/test_e2e.py \
+            --ignore=tests/test_e2e_agentic.py \
+            --ignore=tests/test_e2e_full.py \
+            --ignore=tests/test_enhanced_llm_integration.py \
+            --ignore=tests/test_llm_integration.py \
+            --ignore=tests/test_llm_chat_cached_data.py \
+            --ignore=tests/test_alpaca_integration.py \
+            --ignore=tests/test_llm_demo.py \
+            --ignore=tests/test_marketpulse.py \
+            --ignore=tests/test_comprehensive.py \
+            --ignore=tests/test_application.py \
+            --ignore=tests/test_api.py \
+            --ignore=tests/test_api_endpoints.py \
+            --ignore=tests/test_integration.py \
+            --ignore=tests/test_http.py \
+            --ignore=tests/test_endpoints.py \
+            --ignore=tests/test_structure_validation.py \
+            -x
+
+  test-frontend-build:
+    name: Frontend lint + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: marketpulse-client/package-lock.json
+
+      - name: Install dependencies
+        working-directory: marketpulse-client
+        run: npm ci || npm install
+
+      - name: Lint
+        working-directory: marketpulse-client
+        run: npm run lint
+
+      - name: Type-check
+        working-directory: marketpulse-client
+        run: npx tsc --noEmit

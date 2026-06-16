@@ -55,7 +55,7 @@ export default function BacktestTab() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<any>('/api/backtest/run', {
+      const data = await apiFetch<any>('/backtest/run', {
         method: 'POST',
         body: JSON.stringify({
           symbol,

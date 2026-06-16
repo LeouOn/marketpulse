@@ -1,0 +1,566 @@
+{
+  "data_window": {
+    "rows": 4285,
+    "start": "2014-09-17",
+    "end": "2026-06-11",
+    "years": 11.73
+  },
+  "starting_equity": 10000.0,
+  "fee_bps": 10,
+  "slippage_bps": 5,
+  "generated_at": "2026-06-11T01:42:44.558862+00:00",
+  "matrix": [
+    {
+      "strategy": "BuyAndHold",
+      "strategy_params": {},
+      "strategy_desc": "Baseline: 100% BTC for the whole period.",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 1355493.36,
+      "total_return_pct": 13454.93,
+      "cagr_pct": 51.96,
+      "sharpe": 0.964,
+      "max_drawdown_pct": -83.4,
+      "profit_factor": 0.0,
+      "num_trades": 1
+    },
+    {
+      "strategy": "BuyAndHold",
+      "strategy_params": {},
+      "strategy_desc": "Baseline: 100% BTC for the whole period.",
+      "scaling": "FixedFractional",
+      "scaling_params": {
+        "fraction": 0.02
+      },
+      "scaling_desc": "Risk 2% of equity per buy",
+      "ending_equity": 1355493.36,
+      "total_return_pct": 13454.93,
+      "cagr_pct": 51.96,
+      "sharpe": 0.964,
+      "max_drawdown_pct": -83.4,
+      "profit_factor": 0.0,
+      "num_trades": 1
+    },
+    {
+      "strategy": "BuyAndHold",
+      "strategy_params": {},
+      "strategy_desc": "Baseline: 100% BTC for the whole period.",
+      "scaling": "VolatilityTargeted",
+      "scaling_params": {
+        "target_annual_vol": 0.5,
+        "lookback": 60
+      },
+      "scaling_desc": "Target 50% ann vol",
+      "ending_equity": 1355493.36,
+      "total_return_pct": 13454.93,
+      "cagr_pct": 51.96,
+      "sharpe": 0.964,
+      "max_drawdown_pct": -83.4,
+      "profit_factor": 0.0,
+      "num_trades": 1
+    },
+    {
+      "strategy": "DCAFixedAmount",
+      "strategy_params": {
+        "amount_usd": 100.0,
+        "every_n_bars": 7
+      },
+      "strategy_desc": "$100 weekly DCA",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 824.11,
+      "total_return_pct": -91.76,
+      "cagr_pct": -19.16,
+      "sharpe": -0.547,
+      "max_drawdown_pct": -95.3,
+      "profit_factor": 0.013,
+      "num_trades": 1726
+    },
+    {
+      "strategy": "DCAFixedAmount",
+      "strategy_params": {
+        "amount_usd": 100.0,
+        "every_n_bars": 7
+      },
+      "strategy_desc": "$100 weekly DCA",
+      "scaling": "FixedFractional",
+      "scaling_params": {
+        "fraction": 0.02
+      },
+      "scaling_desc": "Risk 2% of equity per buy",
+      "ending_equity": 808.84,
+      "total_return_pct": -91.91,
+      "cagr_pct": -19.29,
+      "sharpe": -0.552,
+      "max_drawdown_pct": -95.47,
+      "profit_factor": 0.013,
+      "num_trades": 6733
+    },
+    {
+      "strategy": "DCAFixedAmount",
+      "strategy_params": {
+        "amount_usd": 100.0,
+        "every_n_bars": 7
+      },
+      "strategy_desc": "$100 weekly DCA",
+      "scaling": "VolatilityTargeted",
+      "scaling_params": {
+        "target_annual_vol": 0.5,
+        "lookback": 60
+      },
+      "scaling_desc": "Target 50% ann vol",
+      "ending_equity": 1133.51,
+      "total_return_pct": -88.66,
+      "cagr_pct": -16.94,
+      "sharpe": -0.13,
+      "max_drawdown_pct": -96.51,
+      "profit_factor": 0.013,
+      "num_trades": 4714
+    },
+    {
+      "strategy": "DCAFixedAmount",
+      "strategy_params": {
+        "amount_usd": 200.0,
+        "every_n_bars": 30
+      },
+      "strategy_desc": "$200 monthly DCA",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 4484.71,
+      "total_return_pct": -55.15,
+      "cagr_pct": -6.61,
+      "sharpe": -0.515,
+      "max_drawdown_pct": -55.09,
+      "profit_factor": 0.011,
+      "num_trades": 429
+    },
+    {
+      "strategy": "DCAFixedAmount",
+      "strategy_params": {
+        "amount_usd": 200.0,
+        "every_n_bars": 30
+      },
+      "strategy_desc": "$200 monthly DCA",
+      "scaling": "FixedFractional",
+      "scaling_params": {
+        "fraction": 0.02
+      },
+      "scaling_desc": "Risk 2% of equity per buy",
+      "ending_equity": 4174.44,
+      "total_return_pct": -58.26,
+      "cagr_pct": -7.18,
+      "sharpe": -0.563,
+      "max_drawdown_pct": -58.2,
+      "profit_factor": 0.011,
+      "num_trades": 8141
+    },
+    {
+      "strategy": "DCAFixedAmount",
+      "strategy_params": {
+        "amount_usd": 200.0,
+        "every_n_bars": 30
+      },
+      "strategy_desc": "$200 monthly DCA",
+      "scaling": "VolatilityTargeted",
+      "scaling_params": {
+        "target_annual_vol": 0.5,
+        "lookback": 60
+      },
+      "scaling_desc": "Target 50% ann vol",
+      "ending_equity": 66.41,
+      "total_return_pct": -99.34,
+      "cagr_pct": -34.78,
+      "sharpe": -0.706,
+      "max_drawdown_pct": -99.34,
+      "profit_factor": 0.01,
+      "num_trades": 5615
+    },
+    {
+      "strategy": "DCAFixedAmount",
+      "strategy_params": {
+        "amount_usd": 50.0,
+        "every_n_bars": 7
+      },
+      "strategy_desc": "$50 weekly DCA (small)",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 824.11,
+      "total_return_pct": -91.76,
+      "cagr_pct": -19.16,
+      "sharpe": -0.547,
+      "max_drawdown_pct": -95.3,
+      "profit_factor": 0.013,
+      "num_trades": 1726
+    },
+    {
+      "strategy": "DCAFixedAmount",
+      "strategy_params": {
+        "amount_usd": 50.0,
+        "every_n_bars": 7
+      },
+      "strategy_desc": "$50 weekly DCA (small)",
+      "scaling": "FixedFractional",
+      "scaling_params": {
+        "fraction": 0.02
+      },
+      "scaling_desc": "Risk 2% of equity per buy",
+      "ending_equity": 808.84,
+      "total_return_pct": -91.91,
+      "cagr_pct": -19.29,
+      "sharpe": -0.552,
+      "max_drawdown_pct": -95.47,
+      "profit_factor": 0.013,
+      "num_trades": 6733
+    },
+    {
+      "strategy": "DCAFixedAmount",
+      "strategy_params": {
+        "amount_usd": 50.0,
+        "every_n_bars": 7
+      },
+      "strategy_desc": "$50 weekly DCA (small)",
+      "scaling": "VolatilityTargeted",
+      "scaling_params": {
+        "target_annual_vol": 0.5,
+        "lookback": 60
+      },
+      "scaling_desc": "Target 50% ann vol",
+      "ending_equity": 1133.51,
+      "total_return_pct": -88.66,
+      "cagr_pct": -16.94,
+      "sharpe": -0.13,
+      "max_drawdown_pct": -96.51,
+      "profit_factor": 0.013,
+      "num_trades": 4714
+    },
+    {
+      "strategy": "DCAValueAveraging",
+      "strategy_params": {
+        "target_final_usd": 50000.0,
+        "every_n_bars": 7
+      },
+      "strategy_desc": "VA: $50k target, weekly",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 107880.36,
+      "total_return_pct": 978.8,
+      "cagr_pct": 22.47,
+      "sharpe": 0.781,
+      "max_drawdown_pct": -58.89,
+      "profit_factor": 0.416,
+      "num_trades": 608
+    },
+    {
+      "strategy": "DCAValueAveraging",
+      "strategy_params": {
+        "target_final_usd": 50000.0,
+        "every_n_bars": 7
+      },
+      "strategy_desc": "VA: $50k target, weekly",
+      "scaling": "FixedFractional",
+      "scaling_params": {
+        "fraction": 0.02
+      },
+      "scaling_desc": "Risk 2% of equity per buy",
+      "ending_equity": 116332.91,
+      "total_return_pct": 1063.33,
+      "cagr_pct": 23.26,
+      "sharpe": 0.787,
+      "max_drawdown_pct": -60.24,
+      "profit_factor": 0.236,
+      "num_trades": 1160
+    },
+    {
+      "strategy": "DCAValueAveraging",
+      "strategy_params": {
+        "target_final_usd": 50000.0,
+        "every_n_bars": 7
+      },
+      "strategy_desc": "VA: $50k target, weekly",
+      "scaling": "VolatilityTargeted",
+      "scaling_params": {
+        "target_annual_vol": 0.5,
+        "lookback": 60
+      },
+      "scaling_desc": "Target 50% ann vol",
+      "ending_equity": 219281.31,
+      "total_return_pct": 2092.81,
+      "cagr_pct": 30.11,
+      "sharpe": 0.784,
+      "max_drawdown_pct": -71.52,
+      "profit_factor": 0.072,
+      "num_trades": 1172
+    },
+    {
+      "strategy": "DCAValueAveraging",
+      "strategy_params": {
+        "target_final_usd": 100000.0,
+        "every_n_bars": 30
+      },
+      "strategy_desc": "VA: $100k target, monthly",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 115269.45,
+      "total_return_pct": 1052.69,
+      "cagr_pct": 23.17,
+      "sharpe": 0.8,
+      "max_drawdown_pct": -59.0,
+      "profit_factor": 0.563,
+      "num_trades": 142
+    },
+    {
+      "strategy": "DCAValueAveraging",
+      "strategy_params": {
+        "target_final_usd": 100000.0,
+        "every_n_bars": 30
+      },
+      "strategy_desc": "VA: $100k target, monthly",
+      "scaling": "FixedFractional",
+      "scaling_params": {
+        "fraction": 0.02
+      },
+      "scaling_desc": "Risk 2% of equity per buy",
+      "ending_equity": 127773.12,
+      "total_return_pct": 1177.73,
+      "cagr_pct": 24.25,
+      "sharpe": 0.814,
+      "max_drawdown_pct": -59.85,
+      "profit_factor": 0.483,
+      "num_trades": 246
+    },
+    {
+      "strategy": "DCAValueAveraging",
+      "strategy_params": {
+        "target_final_usd": 100000.0,
+        "every_n_bars": 30
+      },
+      "strategy_desc": "VA: $100k target, monthly",
+      "scaling": "VolatilityTargeted",
+      "scaling_params": {
+        "target_annual_vol": 0.5,
+        "lookback": 60
+      },
+      "scaling_desc": "Target 50% ann vol",
+      "ending_equity": 394911.96,
+      "total_return_pct": 3849.12,
+      "cagr_pct": 36.8,
+      "sharpe": 0.886,
+      "max_drawdown_pct": -68.92,
+      "profit_factor": 0.195,
+      "num_trades": 247
+    },
+    {
+      "strategy": "MomentumTrend",
+      "strategy_params": {
+        "sma_period": 200
+      },
+      "strategy_desc": "Trend: long when close > SMA(200)",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 1820683.5,
+      "total_return_pct": 18106.84,
+      "cagr_pct": 55.83,
+      "sharpe": 1.119,
+      "max_drawdown_pct": -70.28,
+      "profit_factor": 0.078,
+      "num_trades": 101
+    },
+    {
+      "strategy": "MomentumTrend",
+      "strategy_params": {
+        "sma_period": 200
+      },
+      "strategy_desc": "Trend: long when close > SMA(200)",
+      "scaling": "FixedFractional",
+      "scaling_params": {
+        "fraction": 0.02
+      },
+      "scaling_desc": "Risk 2% of equity per buy",
+      "ending_equity": 1653256.48,
+      "total_return_pct": 16432.56,
+      "cagr_pct": 54.56,
+      "sharpe": 1.103,
+      "max_drawdown_pct": -71.18,
+      "profit_factor": 0.051,
+      "num_trades": 3514
+    },
+    {
+      "strategy": "MomentumTrend",
+      "strategy_params": {
+        "sma_period": 200
+      },
+      "strategy_desc": "Trend: long when close > SMA(200)",
+      "scaling": "VolatilityTargeted",
+      "scaling_params": {
+        "target_annual_vol": 0.5,
+        "lookback": 60
+      },
+      "scaling_desc": "Target 50% ann vol",
+      "ending_equity": 45687.77,
+      "total_return_pct": 356.88,
+      "cagr_pct": 13.83,
+      "sharpe": 0.517,
+      "max_drawdown_pct": -90.95,
+      "profit_factor": 0.013,
+      "num_trades": 3079
+    },
+    {
+      "strategy": "MomentumTrend",
+      "strategy_params": {
+        "sma_period": 50
+      },
+      "strategy_desc": "Trend: long when close > SMA(50)",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 4532229.32,
+      "total_return_pct": 45222.29,
+      "cagr_pct": 68.43,
+      "sharpe": 1.331,
+      "max_drawdown_pct": -59.04,
+      "profit_factor": 0.048,
+      "num_trades": 313
+    },
+    {
+      "strategy": "MomentumTrend",
+      "strategy_params": {
+        "sma_period": 50
+      },
+      "strategy_desc": "Trend: long when close > SMA(50)",
+      "scaling": "FixedFractional",
+      "scaling_params": {
+        "fraction": 0.02
+      },
+      "scaling_desc": "Risk 2% of equity per buy",
+      "ending_equity": 4085604.02,
+      "total_return_pct": 40756.04,
+      "cagr_pct": 66.95,
+      "sharpe": 1.312,
+      "max_drawdown_pct": -60.13,
+      "profit_factor": 0.039,
+      "num_trades": 3708
+    },
+    {
+      "strategy": "MomentumTrend",
+      "strategy_params": {
+        "sma_period": 50
+      },
+      "strategy_desc": "Trend: long when close > SMA(50)",
+      "scaling": "VolatilityTargeted",
+      "scaling_params": {
+        "target_annual_vol": 0.5,
+        "lookback": 60
+      },
+      "scaling_desc": "Target 50% ann vol",
+      "ending_equity": 370110.01,
+      "total_return_pct": 3601.1,
+      "cagr_pct": 36.05,
+      "sharpe": 0.831,
+      "max_drawdown_pct": -84.66,
+      "profit_factor": 0.014,
+      "num_trades": 3064
+    }
+  ],
+  "best_per_strategy": {
+    "BuyAndHold": {
+      "strategy": "BuyAndHold",
+      "strategy_params": {},
+      "strategy_desc": "Baseline: 100% BTC for the whole period.",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 1355493.36,
+      "total_return_pct": 13454.93,
+      "cagr_pct": 51.96,
+      "sharpe": 0.964,
+      "max_drawdown_pct": -83.4,
+      "profit_factor": 0.0,
+      "num_trades": 1
+    },
+    "DCAFixedAmount": {
+      "strategy": "DCAFixedAmount",
+      "strategy_params": {
+        "amount_usd": 200.0,
+        "every_n_bars": 30
+      },
+      "strategy_desc": "$200 monthly DCA",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 4484.71,
+      "total_return_pct": -55.15,
+      "cagr_pct": -6.61,
+      "sharpe": -0.515,
+      "max_drawdown_pct": -55.09,
+      "profit_factor": 0.011,
+      "num_trades": 429
+    },
+    "DCAValueAveraging": {
+      "strategy": "DCAValueAveraging",
+      "strategy_params": {
+        "target_final_usd": 100000.0,
+        "every_n_bars": 30
+      },
+      "strategy_desc": "VA: $100k target, monthly",
+      "scaling": "VolatilityTargeted",
+      "scaling_params": {
+        "target_annual_vol": 0.5,
+        "lookback": 60
+      },
+      "scaling_desc": "Target 50% ann vol",
+      "ending_equity": 394911.96,
+      "total_return_pct": 3849.12,
+      "cagr_pct": 36.8,
+      "sharpe": 0.886,
+      "max_drawdown_pct": -68.92,
+      "profit_factor": 0.195,
+      "num_trades": 247
+    },
+    "MomentumTrend": {
+      "strategy": "MomentumTrend",
+      "strategy_params": {
+        "sma_period": 50
+      },
+      "strategy_desc": "Trend: long when close > SMA(50)",
+      "scaling": "FixedDollar",
+      "scaling_params": {
+        "amount_usd": 0
+      },
+      "scaling_desc": "No scaling overlay; strategy decides",
+      "ending_equity": 4532229.32,
+      "total_return_pct": 45222.29,
+      "cagr_pct": 68.43,
+      "sharpe": 1.331,
+      "max_drawdown_pct": -59.04,
+      "profit_factor": 0.048,
+      "num_trades": 313
+    }
+  }
+}

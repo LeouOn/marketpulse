@@ -2282,6 +2282,17 @@ except Exception as e:
     logger.warning(f"Could not load ICT endpoints: {e}")
 
 
+# ==================== BTC RESEARCH LAB (B7) ====================
+# Exposes the Bitcoin long-term research tools (backtest, monte carlo,
+# strategy/scaling registries, agentic chat) at /api/research/*.
+try:
+    from .research_router import router as research_router
+    app.include_router(research_router)
+    logger.info("Research lab endpoints loaded successfully")
+except Exception as e:
+    logger.warning(f"Could not load research endpoints: {e}")
+
+
 # ==================== RISK MANAGEMENT & JOURNAL ENDPOINTS ====================
 # Include risk management, journaling, and alert routers
 try:
