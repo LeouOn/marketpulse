@@ -28,7 +28,12 @@ from src.research.backtest import (
     sharpe_ratio,
     sortino_ratio,
 )
-from src.research.loans import FixedRateLoan, MarginLoan
+from src.research.loans import (
+    FixedRateLoan,
+    MarginLoan,
+    NoRecourseLoan,
+    VariableRateLoan,
+)
 from src.research.scaling import FixedDollar, VolatilityTargeted
 from src.research.strategies import (
     BuyAndHold,
@@ -771,7 +776,7 @@ def test_run_backtest_margin_loan_triggers_call():
         principal=40_000.0,
         apr=0.05,
         start_date=pd.Timestamp("2024-01-01"),
-        params={"liquidation_threshold": 0.95, "force_sell_pct": 1.0},
+        params={"liquidation_threshold": 0.95},
     )
     result = run_backtest(
         df, BuyAndHold(),
@@ -819,4 +824,116 @@ def test_run_backtest_no_loan_preserves_existing_behavior():
         result_explicit.equity_curve,
         result_legacy.equity_curve,
         check_names=False,
+    )
+
+
+# ===========================================================================
+# H3/H4: Maturity balloon, NoRecourseLoan default, VariableRate integration
+# ===========================================================================
+
+
+def test_maturity_balloon_fires_correctly():
+    """FixedRateLoan balloon payment fires at maturity and clears debt.
+
+    Setup: principal 10_000, 12% APR, 3-month term (term_years=0.25),
+    monthly interest-only payments. Starting equity 15_000 (enough to
+    cover the 10_000 balloon). After maturity the debt_balance must be
+    0 and total_interest_paid must be positive.
+    """
+    start = pd.Timestamp("2024-01-01")
+    # 100 daily bars spans well past the 3-month (~91 day) maturity.
+    df = _flat(n=100, price=100.0)
+    loan = FixedRateLoan(
+        principal=10_000.0,
+        apr=0.12,
+        start_date=start,
+        params={"term_years": 0.25, "payment_freq_days": 30},
+    )
+    result = run_backtest(
+        df, NoTrade(),
+        starting_equity=15_000.0,
+        fee_bps=0, slippage_bps=0,
+        loan=loan,
+    )
+    # Balloon payment must have fired at maturity.
+    maturity_payments = [p for p in result.loan_payments if p.reason == "maturity"]
+    assert maturity_payments, "expected a maturity balloon LoanPayment"
+    # The balloon amount equals the principal (interest-only term loan).
+    assert maturity_payments[-1].amount_usd == pytest.approx(10_000.0, rel=1e-6)
+    # Debt balance should be 0 after the balloon clears the principal.
+    assert result.metrics["debt_balance"] == pytest.approx(0.0, abs=1e-6)
+    # Scheduled interest-only payments must have accrued some interest.
+    assert result.metrics["total_interest_paid"] > 0.0
+    # No default — the balloon was covered.
+    assert result.metrics["loan_defaulted"] is False
+
+
+def test_no_recourse_loan_default_in_engine():
+    """NoRecourseLoan defaults immediately when massively underwater.
+
+    Setup: principal 1_000_000 (far exceeds the 10_000 starting equity),
+    12% APR, 5-year term. The borrower is underwater on bar 1 so the
+    engine must set loan_defaulted=True and wipe the debt (non-recourse).
+    """
+    start = pd.Timestamp("2024-01-01")
+    df = _flat(n=40, price=100.0)
+    loan = NoRecourseLoan(
+        principal=1_000_000.0,
+        apr=0.12,
+        start_date=start,
+        params={"term_years": 5.0, "payment_freq_days": 30},
+    )
+    result = run_backtest(
+        df, NoTrade(),
+        starting_equity=10_000.0,
+        fee_bps=0, slippage_bps=0,
+        loan=loan,
+    )
+    # Borrower is massively underwater → must default.
+    assert result.metrics["loan_defaulted"] is True
+    # Non-recourse: debt is wiped on default.
+    assert result.metrics["debt_balance"] == pytest.approx(0.0, abs=1e-6)
+    # A default LoanPayment must exist.
+    defaults = [p for p in result.loan_payments if p.reason == "default"]
+    assert defaults, "expected a default LoanPayment"
+
+
+def test_variable_rate_loan_interest_increases_after_hike():
+    """Interest payments increase after a VariableRateLoan rate hike.
+
+    Two identical loans except one has a rate hike from 1% to 5% after
+    the first month. The hiked loan must accrue more total interest.
+    """
+    start = pd.Timestamp("2024-01-01")
+    # 90 daily bars = 3 months; hike after day 31.
+    df = _flat(n=90, price=100.0)
+    hike_date = start + pd.Timedelta(days=31)
+
+    loan_flat = VariableRateLoan(
+        principal=10_000.0, apr=0.01, start_date=start,
+        params={"initial_rate": 0.01, "payment_freq_days": 30},
+    )
+    loan_hike = VariableRateLoan(
+        principal=10_000.0, apr=0.01, start_date=start,
+        params={
+            "initial_rate": 0.01,
+            "rate_changes": {hike_date: 0.05},
+            "payment_freq_days": 30,
+        },
+    )
+    result_flat = run_backtest(
+        df, NoTrade(), starting_equity=20_000.0,
+        fee_bps=0, slippage_bps=0, loan=loan_flat,
+    )
+    result_hike = run_backtest(
+        df, NoTrade(), starting_equity=20_000.0,
+        fee_bps=0, slippage_bps=0, loan=loan_hike,
+    )
+    # After the hike, the hiked loan pays more interest.
+    assert (
+        result_hike.metrics["total_interest_paid"]
+        > result_flat.metrics["total_interest_paid"]
+    ), (
+        f"hiked interest {result_hike.metrics['total_interest_paid']} "
+        f"should exceed flat {result_flat.metrics['total_interest_paid']}"
     )

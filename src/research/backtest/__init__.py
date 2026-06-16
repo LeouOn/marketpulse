@@ -354,6 +354,7 @@ def run_backtest(
     total_interest_paid = 0.0
     margin_call_count = 0
     loan_defaulted = False
+    loan_settled = False  # balloon paid — stop further loan processing
 
     closes = df["close"].astype(float).to_numpy()
     rets = pd.Series(closes).pct_change().fillna(0.0)
@@ -554,14 +555,17 @@ def run_backtest(
         # Order matters: margin call → scheduled interest → maturity
         # balloon → no-recourse default. Each branch records a
         # LoanPayment (parallel to Trade/Deposit) so callers can audit
-        # the full loan lifecycle. ``loan_defaulted`` short-circuits all
-        # further loan activity once a no-recourse default fires.
-        if loan is not None and not loan_defaulted:
+        # the full loan lifecycle. ``loan_defaulted`` and
+        # ``loan_settled`` short-circuit all further loan activity.
+        if loan is not None and not loan_defaulted and not loan_settled:
             # 1. Margin call (MarginLoan only): force-sell all BTC and
             #    record the event. We use the pre-trade ``equity`` (mark
             #    to market at the close) for the threshold check.
+            #    H4: current_debt uses remaining_debt() which includes
+            #    accrued interest (MarginLoan compounds interest into
+            #    the debt — the docstring's stated behavior).
             if isinstance(loan, MarginLoan):
-                current_debt = loan.remaining_principal(ts)
+                current_debt = loan.remaining_debt(ts)
                 if loan.should_margin_call(equity, current_debt) and btc > 0:
                     sell_usd_loan = btc * price
                     cash += sell_usd_loan
@@ -595,13 +599,37 @@ def run_backtest(
                     )
                 )
 
-            # 3. Maturity balloon payment (term loans only). Only fires
-            #    if cash can cover it; otherwise the borrower stays in
-            #    default-adjacent limbo (no partial balloon).
+            # 3. Maturity balloon payment (term loans only). If the
+            #    borrower cannot cover the balloon:
+            #    - NoRecourseLoan: first sell BTC to cover, then default
+            #      (debt written off, lender eats the loss).
+            #    - FixedRateLoan: default immediately, debt remains
+            #      outstanding (recourse).
+            #    H3: previously an unpayable balloon left the loan in
+            #    permanent limbo (no default, no warning, no partial pay).
             if loan.is_matured(ts):
-                balloon = loan.remaining_principal(ts)
+                balloon = loan.remaining_debt(ts)
+                # NoRecourseLoan: liquidate BTC collateral first
+                if cash < balloon and isinstance(loan, NoRecourseLoan) and btc > 0:
+                    shortfall = balloon - cash
+                    btc_to_sell = min(btc, shortfall / price)
+                    proceeds = btc_to_sell * price
+                    cash += proceeds
+                    btc -= btc_to_sell
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=proceeds,
+                            interest_usd=0.0,
+                            principal_usd=proceeds,
+                            loan_name=loan.name,
+                            reason="maturity",
+                        )
+                    )
+
                 if cash >= balloon:
                     cash -= balloon
+                    loan_settled = True  # balloon paid — loan fully discharged
                     loan_payments.append(
                         LoanPayment(
                             ts=ts,
@@ -612,12 +640,36 @@ def run_backtest(
                             reason="maturity",
                         )
                     )
+                else:
+                    # H3: Balloon cannot be covered → default
+                    loan_defaulted = True
+                    _log.warning(
+                        "%s defaulted at maturity on %s: balloon $%.2f "
+                        "exceeded available cash $%.2f; %s",
+                        loan.name, ts, balloon, cash,
+                        "debt written off (non-recourse)"
+                        if isinstance(loan, NoRecourseLoan)
+                        else "debt remains outstanding (recourse)",
+                    )
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=0.0,
+                            interest_usd=0.0,
+                            principal_usd=balloon,
+                            loan_name=loan.name,
+                            reason="default",
+                        )
+                    )
 
             # 4. No-recourse default: borrower walks away, debt written
             #    off, equity stays. Sets the ``loan_defaulted`` flag so
             #    subsequent bars skip all loan processing.
+            #    H4: current_debt uses remaining_debt() — for term loans
+            #    this equals remaining_principal() since interest is
+            #    serviced by scheduled payments.
             if isinstance(loan, NoRecourseLoan):
-                current_debt = loan.remaining_principal(ts)
+                current_debt = loan.remaining_debt(ts)
                 if loan.should_default(equity, current_debt):
                     loan_defaulted = True
                     loan_payments.append(
@@ -696,7 +748,14 @@ def run_backtest(
     # ``loan=None`` (the default) every value is the zero/False sentinel
     # so callers can rely on the keys always being present.
     if loan is not None and len(timestamps) > 0:
-        end_debt = 0.0 if loan_defaulted else float(loan.remaining_principal(timestamps[-1]))
+        # H3/H4: Settled loan → debt 0 (balloon paid).
+        # NoRecourseLoan default → debt 0 (non-recourse, written off).
+        # FixedRateLoan default → debt remains (recourse).
+        # Otherwise → remaining_debt (principal + accrued unpaid interest).
+        if loan_settled or (loan_defaulted and isinstance(loan, NoRecourseLoan)):
+            end_debt = 0.0
+        else:
+            end_debt = float(loan.remaining_debt(timestamps[-1]))
         end_equity = float(equity_curve.iloc[-1]) if len(equity_curve) else float(starting_equity)
         metrics["debt_balance"] = end_debt
         metrics["total_interest_paid"] = float(total_interest_paid)
@@ -705,7 +764,7 @@ def run_backtest(
         )
         metrics["margin_call_count"] = int(margin_call_count)
         metrics["liquidation_price"] = (
-            float(loan.liquidation_price(end_equity))
+            float(loan.liquidation_price())
             if isinstance(loan, MarginLoan)
             else 0.0
         )

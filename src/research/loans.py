@@ -13,6 +13,7 @@ All four loan types share the same abstract interface::
     loan.accrued_interest(current_date)    # total interest accrued to date
     loan.scheduled_payment(current_date)   # payment due this date (0 if none)
     loan.remaining_principal(current_date) # outstanding principal
+    loan.remaining_debt(current_date)      # principal + accrued_unpaid_interest
     loan.is_matured(current_date)          # term reached?
 
 Loan-specific helpers (``should_margin_call``, ``should_default``,
@@ -141,6 +142,20 @@ class Loan(ABC):
         """Outstanding principal at ``current_date``."""
 
     @abstractmethod
+    def remaining_debt(self, current_date: pd.Timestamp) -> float:
+        """Total outstanding debt (principal + accrued_unpaid_interest).
+
+        For loan types where interest is serviced by scheduled payments
+        (FixedRateLoan, VariableRateLoan, NoRecourseLoan) this equals
+        :meth:`remaining_principal` because interest never compounds
+        into the principal balance.
+
+        For MarginLoan — which has no scheduled payments and compounds
+        interest into the debt — this returns principal plus all
+        accrued interest to date.
+        """
+
+    @abstractmethod
     def is_matured(self, current_date: pd.Timestamp) -> bool:
         """Whether the loan has reached its term end."""
 
@@ -217,6 +232,11 @@ class FixedRateLoan(Loan):
     def remaining_principal(self, current_date: pd.Timestamp) -> float:
         # Interest-only: principal never amortizes; balloon at maturity.
         return float(self.principal)
+
+    def remaining_debt(self, current_date: pd.Timestamp) -> float:
+        # Interest is serviced by periodic interest-only payments, so
+        # the outstanding debt equals the principal (the balloon amount).
+        return self.remaining_principal(current_date)
 
     def is_matured(self, current_date: pd.Timestamp) -> bool:
         term_days = float(self.params["term_years"]) * _DAYS_PER_YEAR
@@ -327,6 +347,11 @@ class VariableRateLoan(Loan):
         # Revolver: principal never amortizes on its own.
         return float(self.principal)
 
+    def remaining_debt(self, current_date: pd.Timestamp) -> float:
+        # Interest is serviced by periodic interest-only payments, so
+        # the outstanding debt equals the principal.
+        return self.remaining_principal(current_date)
+
     def is_matured(self, current_date: pd.Timestamp) -> bool:
         # Revolver: never matures.
         return False
@@ -344,8 +369,7 @@ class MarginLoan(Loan):
     - Interest accrues daily at ``apr / 365.25`` (compound).
     - No scheduled payments: interest compounds into the debt.
     - If ``equity / debt`` drops below ``liquidation_threshold`` the
-      lender force-sells collateral; ``force_sell_pct`` controls how
-      much of the position is liquidated (default: 100%).
+      lender force-sells all collateral (100% liquidation).
     - No fixed term.
     """
 
@@ -356,7 +380,6 @@ class MarginLoan(Loan):
     )
     default_params: ClassVar[dict[str, Any]] = {
         "liquidation_threshold": 0.30,  # equity/debt must stay above this
-        "force_sell_pct": 1.0,  # sell 100% of BTC on a margin call
     }
 
     def validate_params(self, params: dict[str, Any]) -> None:
@@ -389,6 +412,11 @@ class MarginLoan(Loan):
         # Base principal; accrued (unpaid) interest is tracked by the engine.
         return float(self.principal)
 
+    def remaining_debt(self, current_date: pd.Timestamp) -> float:
+        # MarginLoan has NO scheduled payments: interest compounds into
+        # the debt.  The true obligation is principal + all accrued interest.
+        return self.remaining_principal(current_date) + self.accrued_interest(current_date)
+
     def is_matured(self, current_date: pd.Timestamp) -> bool:
         # Margin loans have no term.
         return False
@@ -402,16 +430,14 @@ class MarginLoan(Loan):
         ratio = float(equity) / float(current_debt)
         return ratio < float(self.params["liquidation_threshold"])
 
-    def liquidation_price(self, current_equity: float) -> float:
+    def liquidation_price(self) -> float:
         """Equity level (USD) at which a margin call triggers.
 
         Equals ``liquidation_threshold * principal``.  If portfolio
         equity falls to this level the lender force-sells.  The engine
         converts this USD level to a BTC price using the current
-        position size.  ``current_equity`` is accepted for API symmetry
-        with :meth:`should_margin_call`.
+        position size.
         """
-        _ = current_equity  # noqa: ARG002 -- reserved for future use
         return (
             float(self.params["liquidation_threshold"]) * float(self.principal)
         )
@@ -479,6 +505,11 @@ class NoRecourseLoan(Loan):
 
     def remaining_principal(self, current_date: pd.Timestamp) -> float:
         return float(self.principal)
+
+    def remaining_debt(self, current_date: pd.Timestamp) -> float:
+        # Interest is serviced by periodic interest-only payments, so
+        # the outstanding debt equals the principal.
+        return self.remaining_principal(current_date)
 
     def is_matured(self, current_date: pd.Timestamp) -> bool:
         term_days = float(self.params["term_years"]) * _DAYS_PER_YEAR

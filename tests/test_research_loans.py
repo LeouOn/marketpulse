@@ -312,7 +312,6 @@ def test_margin_loan_creation():
     assert loan.name == "MarginLoan"
     assert loan.principal == 10_000
     assert loan.params["liquidation_threshold"] == 0.30
-    assert loan.params["force_sell_pct"] == 1.0
 
 
 def test_margin_loan_no_call_when_equity_above_threshold():
@@ -339,7 +338,7 @@ def test_margin_loan_liquidation_price_calculation():
     """liquidation_price = threshold * principal."""
     loan = MarginLoan(principal=10_000, apr=0.08, start_date=START)
     # 0.30 * 10_000 = 3_000
-    assert loan.liquidation_price(current_equity=99_999) == pytest.approx(
+    assert loan.liquidation_price() == pytest.approx(
         3_000.0
     )
     # Custom threshold
@@ -347,7 +346,7 @@ def test_margin_loan_liquidation_price_calculation():
         principal=50_000, apr=0.05, start_date=START,
         params={"liquidation_threshold": 0.50},
     )
-    assert loan2.liquidation_price(current_equity=100_000) == pytest.approx(
+    assert loan2.liquidation_price() == pytest.approx(
         25_000.0
     )
 
@@ -478,3 +477,45 @@ def test_default_params_not_mutated_by_instances():
     assert loan2.params["term_years"] == 5.0
     # Class-level default untouched
     assert FixedRateLoan.default_params["term_years"] == 5.0
+
+
+# ===========================================================================
+# H4: remaining_debt + VariableRateLoan scheduled_payment amount
+# ===========================================================================
+
+
+def test_margin_loan_remaining_debt_includes_accrued_interest():
+    """MarginLoan.remaining_debt = principal + accrued interest (compounds)."""
+    loan = MarginLoan(principal=10_000, apr=0.08, start_date=START)
+    d = START + pd.Timedelta(days=60)
+    expected = 10_000 + loan.accrued_interest(d)
+    assert loan.remaining_debt(d) == pytest.approx(expected, rel=1e-9)
+    # And strictly greater than just the principal.
+    assert loan.remaining_debt(d) > 10_000
+
+
+def test_fixed_rate_loan_remaining_debt_equals_principal():
+    """Term loans service interest periodically; remaining_debt = principal."""
+    loan = FixedRateLoan(principal=10_000, apr=0.08, start_date=START)
+    d = START + pd.Timedelta(days=200)
+    assert loan.remaining_debt(d) == pytest.approx(10_000)
+
+
+def test_variable_rate_loan_scheduled_payment_amount():
+    """scheduled_payment returns the compound interest for one period.
+
+    VariableRateLoan is interest-only (not amortizing), so the payment
+    equals the compound interest over one ``payment_freq_days`` period.
+    For principal 12_000, 12% APR, 30-day periods:
+      payment = 12000 * (1 + 0.12/365.25)^30 - 12000 ≈ 118.84
+    """
+    loan = VariableRateLoan(
+        principal=12_000, apr=0.12, start_date=START,
+        params={"initial_rate": 0.12, "payment_freq_days": 30},
+    )
+    pay_day = START + pd.Timedelta(days=30)
+    payment = loan.scheduled_payment(pay_day)
+    expected = 12_000 * (1 + 0.12 / DAYS_PER_YEAR) ** 30 - 12_000
+    assert payment == pytest.approx(expected, rel=1e-9)
+    # The payment is a specific, computable amount — not just > 0.
+    assert payment == pytest.approx(118.84, rel=0.01)
