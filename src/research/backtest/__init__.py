@@ -32,6 +32,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ..loans import Loan, LoanPayment, MarginLoan, NoRecourseLoan
 from ..scaling import ScalingModel, FixedDollar
 from ..strategies import Strategy, BuyAndHold, NoTrade
 
@@ -69,6 +70,7 @@ class BacktestResult:
     drawdown_curve: pd.Series
     trades: list[Trade] = field(default_factory=list)
     deposits: list[Deposit] = field(default_factory=list)
+    loan_payments: list[LoanPayment] = field(default_factory=list)
     metrics: dict[str, float] = field(default_factory=dict)
     strategy_name: str = ""
     scaling_name: str = ""
@@ -283,6 +285,7 @@ def run_backtest(
     fee_bps: float = 10.0,
     slippage_bps: float = 5.0,
     inflows: list[dict] | None = None,
+    loan: Loan | None = None,
 ) -> BacktestResult:
     """Run an event-driven backtest.
 
@@ -298,6 +301,14 @@ def run_backtest(
             ``amount_usd`` (float) and one of ``every_n_bars`` (int) or
             ``day_of_month`` (int). An optional ``source`` label is stored
             on the Deposit record. Deposits add to cash with no fee/slippage.
+        loan: optional :class:`~src.research.loans.Loan` to model borrowed
+            capital. When provided, the engine processes the loan each bar
+            (margin-call check, scheduled interest payment, maturity
+            balloon, no-recourse default) and reports five loan-specific
+            metrics: ``debt_balance``, ``total_interest_paid``,
+            ``loan_to_equity_ratio``, ``margin_call_count``,
+            ``liquidation_price`` (plus a boolean ``loan_defaulted``).
+            ``loan=None`` (default) preserves the legacy loan-free behavior.
     """
     if df is None or df.empty:
         raise ValueError("df is empty")
@@ -337,6 +348,12 @@ def run_backtest(
     timestamps: list[pd.Timestamp] = []
     trades: list[Trade] = []
     deposits: list[Deposit] = []
+    # === LOAN TRACKING ===
+    # Populated when a Loan is passed; left empty for legacy runs.
+    loan_payments: list[LoanPayment] = []
+    total_interest_paid = 0.0
+    margin_call_count = 0
+    loan_defaulted = False
 
     closes = df["close"].astype(float).to_numpy()
     rets = pd.Series(closes).pct_change().fillna(0.0)
@@ -533,6 +550,87 @@ def run_backtest(
                 )
             )
 
+        # === LOAN PROCESSING ===
+        # Order matters: margin call → scheduled interest → maturity
+        # balloon → no-recourse default. Each branch records a
+        # LoanPayment (parallel to Trade/Deposit) so callers can audit
+        # the full loan lifecycle. ``loan_defaulted`` short-circuits all
+        # further loan activity once a no-recourse default fires.
+        if loan is not None and not loan_defaulted:
+            # 1. Margin call (MarginLoan only): force-sell all BTC and
+            #    record the event. We use the pre-trade ``equity`` (mark
+            #    to market at the close) for the threshold check.
+            if isinstance(loan, MarginLoan):
+                current_debt = loan.remaining_principal(ts)
+                if loan.should_margin_call(equity, current_debt) and btc > 0:
+                    sell_usd_loan = btc * price
+                    cash += sell_usd_loan
+                    btc = 0.0
+                    margin_call_count += 1
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=sell_usd_loan,
+                            interest_usd=0.0,
+                            principal_usd=sell_usd_loan,
+                            loan_name=loan.name,
+                            reason="margin_call",
+                        )
+                    )
+
+            # 2. Scheduled interest payment (interest-only for term loans
+            #    and revolvers; 0 for MarginLoan which compounds instead).
+            payment = loan.scheduled_payment(ts)
+            if payment > 0 and not loan.is_matured(ts):
+                cash -= payment
+                total_interest_paid += payment
+                loan_payments.append(
+                    LoanPayment(
+                        ts=ts,
+                        amount_usd=payment,
+                        interest_usd=payment,
+                        principal_usd=0.0,
+                        loan_name=loan.name,
+                        reason="scheduled",
+                    )
+                )
+
+            # 3. Maturity balloon payment (term loans only). Only fires
+            #    if cash can cover it; otherwise the borrower stays in
+            #    default-adjacent limbo (no partial balloon).
+            if loan.is_matured(ts):
+                balloon = loan.remaining_principal(ts)
+                if cash >= balloon:
+                    cash -= balloon
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=balloon,
+                            interest_usd=0.0,
+                            principal_usd=balloon,
+                            loan_name=loan.name,
+                            reason="maturity",
+                        )
+                    )
+
+            # 4. No-recourse default: borrower walks away, debt written
+            #    off, equity stays. Sets the ``loan_defaulted`` flag so
+            #    subsequent bars skip all loan processing.
+            if isinstance(loan, NoRecourseLoan):
+                current_debt = loan.remaining_principal(ts)
+                if loan.should_default(equity, current_debt):
+                    loan_defaulted = True
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=current_debt,
+                            interest_usd=0.0,
+                            principal_usd=current_debt,
+                            loan_name=loan.name,
+                            reason="default",
+                        )
+                    )
+
         # Recompute equity and store
         equity = cash + btc * price
         if equity > peak_equity:
@@ -593,11 +691,39 @@ def run_backtest(
         "num_deposits": int(len(deposits)),
     }
 
+    # === LOAN METRICS ===
+    # Five user-facing metrics + a ``loan_defaulted`` flag. When
+    # ``loan=None`` (the default) every value is the zero/False sentinel
+    # so callers can rely on the keys always being present.
+    if loan is not None and len(timestamps) > 0:
+        end_debt = 0.0 if loan_defaulted else float(loan.remaining_principal(timestamps[-1]))
+        end_equity = float(equity_curve.iloc[-1]) if len(equity_curve) else float(starting_equity)
+        metrics["debt_balance"] = end_debt
+        metrics["total_interest_paid"] = float(total_interest_paid)
+        metrics["loan_to_equity_ratio"] = (
+            float(end_debt / end_equity) if end_equity > 0 else 0.0
+        )
+        metrics["margin_call_count"] = int(margin_call_count)
+        metrics["liquidation_price"] = (
+            float(loan.liquidation_price(end_equity))
+            if isinstance(loan, MarginLoan)
+            else 0.0
+        )
+        metrics["loan_defaulted"] = bool(loan_defaulted)
+    else:
+        metrics["debt_balance"] = 0.0
+        metrics["total_interest_paid"] = 0.0
+        metrics["loan_to_equity_ratio"] = 0.0
+        metrics["margin_call_count"] = 0
+        metrics["liquidation_price"] = 0.0
+        metrics["loan_defaulted"] = False
+
     return BacktestResult(
         equity_curve=equity_curve,
         drawdown_curve=drawdown_curve,
         trades=trades,
         deposits=deposits,
+        loan_payments=loan_payments,
         metrics=metrics,
         strategy_name=strategy.name,
         scaling_name=scaling.name if scaling else "None",
@@ -623,6 +749,7 @@ def run_backtest_from_names(
     fee_bps: float = 10.0,
     slippage_bps: float = 5.0,
     inflows: list[dict] | None = None,
+    loan: Loan | None = None,
 ) -> BacktestResult:
     """Convenience wrapper that looks up strategy and scaling by name."""
     from ..strategies import get_strategy as _gs
@@ -638,4 +765,5 @@ def run_backtest_from_names(
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
         inflows=inflows,
+        loan=loan,
     )

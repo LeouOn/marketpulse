@@ -28,6 +28,7 @@ from src.research.backtest import (
     sharpe_ratio,
     sortino_ratio,
 )
+from src.research.loans import FixedRateLoan, MarginLoan
 from src.research.scaling import FixedDollar, VolatilityTargeted
 from src.research.strategies import (
     BuyAndHold,
@@ -681,4 +682,141 @@ def test_inflow_day_31_warns(caplog):
     warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
     assert any("day_of_month" in m and "31" in m for m in warning_msgs), (
         f"expected a warning about day_of_month=31, got: {warning_msgs}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Wave 2: loan integration into run_backtest()
+# ---------------------------------------------------------------------------
+
+
+def test_run_backtest_with_loan_records_interest_payments():
+    """A FixedRateLoan must produce scheduled LoanPayment records and a
+    positive ``total_interest_paid`` over the backtest horizon.
+
+    Setup: a 1-year rising-price series with a BuyAndHold strategy and a
+    $40k FixedRateLoan at 8% APR, monthly interest-only payments. With
+    ~12 payment dates expected over 365 days at freq=30, both the
+    payment count and the cumulative interest must be strictly positive.
+    """
+    df = _growing(n=365, start=100.0, end=200.0)
+    loan = FixedRateLoan(
+        principal=40_000.0,
+        apr=0.08,
+        start_date=pd.Timestamp("2024-01-01"),
+        params={"term_years": 5.0, "payment_freq_days": 30},
+    )
+    result = run_backtest(
+        df, BuyAndHold(),
+        starting_equity=10_000.0,
+        fee_bps=0, slippage_bps=0,
+        loan=loan,
+    )
+    # At least one scheduled payment must have fired over a year.
+    assert len(result.loan_payments) > 0, (
+        f"expected scheduled LoanPayment records, got {result.loan_payments!r}"
+    )
+    # All recorded payments should be interest-only scheduled payments.
+    reasons = {p.reason for p in result.loan_payments}
+    assert reasons == {"scheduled"}, reasons
+    # Cumulative interest must be positive (8% APR on $40k for ~1 year).
+    assert result.metrics["total_interest_paid"] > 0.0
+
+
+def test_run_backtest_metrics_include_loan_fields():
+    """``result.metrics`` must always expose the five loan metrics plus
+    the ``loan_defaulted`` flag, with the correct types, regardless of
+    whether a loan was supplied."""
+    df = _growing(n=60, start=100.0, end=110.0)
+    loan = FixedRateLoan(
+        principal=10_000.0,
+        apr=0.05,
+        start_date=pd.Timestamp("2024-01-01"),
+        params={"term_years": 5.0, "payment_freq_days": 30},
+    )
+    result = run_backtest(df, BuyAndHold(), starting_equity=5_000.0, loan=loan)
+    required = {
+        "debt_balance",
+        "total_interest_paid",
+        "loan_to_equity_ratio",
+        "margin_call_count",
+        "liquidation_price",
+        "loan_defaulted",
+    }
+    missing = required - set(result.metrics.keys())
+    assert not missing, f"missing loan metrics: {missing}"
+    # Type contracts (these must be JSON-serializable).
+    assert isinstance(result.metrics["debt_balance"], float)
+    assert isinstance(result.metrics["total_interest_paid"], float)
+    assert isinstance(result.metrics["loan_to_equity_ratio"], float)
+    assert isinstance(result.metrics["margin_call_count"], int)
+    assert isinstance(result.metrics["liquidation_price"], float)
+    assert isinstance(result.metrics["loan_defaulted"], bool)
+    # With a live FixedRateLoan, debt_balance == principal (interest-only).
+    assert result.metrics["debt_balance"] == pytest.approx(10_000.0, rel=1e-9)
+
+
+def test_run_backtest_margin_loan_triggers_call():
+    """A MarginLoan with an aggressively high liquidation_threshold must
+    force-liquidate the BTC position when the equity/debt ratio falls
+    below the threshold.
+
+    Setup: $10k equity, $40k margin debt, threshold 0.95 -> the
+    portfolio is immediately underwater on the threshold (10k/40k = 0.25
+    << 0.95) so the engine must record at least one margin_call event
+    and zero out the BTC position.
+    """
+    df = _growing(n=30, start=100.0, end=110.0)
+    loan = MarginLoan(
+        principal=40_000.0,
+        apr=0.05,
+        start_date=pd.Timestamp("2024-01-01"),
+        params={"liquidation_threshold": 0.95, "force_sell_pct": 1.0},
+    )
+    result = run_backtest(
+        df, BuyAndHold(),
+        starting_equity=10_000.0,
+        fee_bps=0, slippage_bps=0,
+        loan=loan,
+    )
+    assert result.metrics["margin_call_count"] > 0, (
+        "expected at least one margin call given equity/debt << threshold"
+    )
+    # A margin_call LoanPayment must exist with the expected reason.
+    calls = [p for p in result.loan_payments if p.reason == "margin_call"]
+    assert calls, "no margin_call LoanPayment recorded"
+    # liquidation_price is computed as threshold * principal.
+    assert result.metrics["liquidation_price"] == pytest.approx(
+        0.95 * 40_000.0, rel=1e-9
+    )
+
+
+def test_run_backtest_no_loan_preserves_existing_behavior():
+    """``loan=None`` (the default) must keep every loan-related metric
+    at its zero / False sentinel so legacy callers see no loan noise.
+
+    Also verifies that the BacktestResult.loan_payments list is empty
+    when no loan is supplied, and that all pre-loan metrics are still
+    present and unchanged in shape.
+    """
+    df = _growing(n=120, start=100.0, end=150.0)
+    # Run with loan=None explicitly and with the legacy call shape.
+    result_explicit = run_backtest(df, BuyAndHold(), starting_equity=10_000.0, loan=None)
+    result_legacy = run_backtest(df, BuyAndHold(), starting_equity=10_000.0)
+
+    for label, result in (("explicit", result_explicit), ("legacy", result_legacy)):
+        assert result.loan_payments == [], (
+            f"{label}: loan_payments should be empty when loan=None"
+        )
+        assert result.metrics["debt_balance"] == 0.0
+        assert result.metrics["total_interest_paid"] == 0.0
+        assert result.metrics["loan_to_equity_ratio"] == 0.0
+        assert result.metrics["margin_call_count"] == 0
+        assert result.metrics["liquidation_price"] == 0.0
+        assert result.metrics["loan_defaulted"] is False
+    # Both call shapes must produce identical equity curves.
+    pd.testing.assert_series_equal(
+        result_explicit.equity_curve,
+        result_legacy.equity_curve,
+        check_names=False,
     )
