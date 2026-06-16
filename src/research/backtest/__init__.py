@@ -564,13 +564,30 @@ def run_backtest(
             #    H4: current_debt uses remaining_debt() which includes
             #    accrued interest (MarginLoan compounds interest into
             #    the debt — the docstring's stated behavior).
+            #
+            #    LATCH HYSTERESIS: once a margin call fires the latch
+            #    (loan.margin_call_active) is SET and subsequent bars
+            #    skip the force-sell even if the ratio is still below
+            #    threshold — this prevents the death spiral where the
+            #    strategy re-buys BTC every bar and the engine
+            #    re-force-sells it. The latch clears only when
+            #    equity/debt recovers to threshold + recovery_buffer
+            #    (checked every bar, see 1b below). margin_call_count
+            #    counts distinct latch transitions inactive→active,
+            #    NOT the number of bars below threshold.
             if isinstance(loan, MarginLoan):
                 current_debt = loan.remaining_debt(ts)
-                if loan.should_margin_call(equity, current_debt) and btc > 0:
+                # 1a. Fire a margin call only when the latch is clear.
+                if (
+                    not loan.margin_call_active
+                    and loan.should_margin_call(equity, current_debt)
+                    and btc > 0
+                ):
                     sell_usd_loan = btc * price
                     cash += sell_usd_loan
                     btc = 0.0
                     margin_call_count += 1
+                    loan.margin_call_active = True
                     loan_payments.append(
                         LoanPayment(
                             ts=ts,
@@ -579,6 +596,26 @@ def run_backtest(
                             principal_usd=sell_usd_loan,
                             loan_name=loan.name,
                             reason="margin_call",
+                        )
+                    )
+                # 1b. Clear the latch (hysteresis) once equity/debt
+                #     recovers past threshold + recovery_buffer. Record
+                #     a zero-dollar "margin_call_cleared" event for
+                #     auditability so callers can see when the loan
+                #     became eligible to fire another margin call.
+                if (
+                    loan.margin_call_active
+                    and loan.should_clear_margin_call(equity, current_debt)
+                ):
+                    loan.margin_call_active = False
+                    loan_payments.append(
+                        LoanPayment(
+                            ts=ts,
+                            amount_usd=0.0,
+                            interest_usd=0.0,
+                            principal_usd=0.0,
+                            loan_name=loan.name,
+                            reason="margin_call_cleared",
                         )
                     )
 

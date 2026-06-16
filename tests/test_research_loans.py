@@ -392,6 +392,61 @@ def test_margin_loan_is_matured_never():
     assert loan.is_matured(pd.Timestamp("2099-01-01")) is False
 
 
+def test_margin_loan_defaults_margin_call_active_false():
+    """A fresh MarginLoan starts with the latch clear (no active call)."""
+    loan = MarginLoan(principal=10_000, apr=0.08, start_date=START)
+    assert loan.margin_call_active is False
+
+
+def test_margin_loan_default_recovery_buffer():
+    """``margin_call_recovery_buffer`` defaults to 0.10 and is exposed
+    in ``params`` so callers can override it."""
+    loan = MarginLoan(principal=10_000, apr=0.08, start_date=START)
+    assert loan.params["margin_call_recovery_buffer"] == pytest.approx(0.10)
+
+
+def test_margin_call_recovery_buffer():
+    """Hysteresis between should_margin_call and should_clear_margin_call.
+
+    With threshold=0.50 and buffer=0.10:
+      - ratio < 0.50          → should_margin_call True
+      - 0.50 <= ratio < 0.60  → neither (the hysteresis dead-band)
+      - ratio >= 0.60         → should_clear_margin_call True
+    """
+    loan = MarginLoan(
+        principal=80_000, apr=0.05, start_date=START,
+        params={"liquidation_threshold": 0.50, "margin_call_recovery_buffer": 0.10},
+    )
+    # ratio 0.45 (36_000/80_000) → below 0.50, margin call fires
+    assert loan.should_margin_call(equity=36_000, current_debt=80_000) is True
+    # 0.45 is NOT past the recovery line (0.60) so the latch would not clear
+    assert loan.should_clear_margin_call(equity=36_000, current_debt=80_000) is False
+
+    # ratio 0.55 (44_000/80_000) → above 0.50 but below 0.60 (dead-band)
+    assert loan.should_margin_call(equity=44_000, current_debt=80_000) is False
+    assert loan.should_clear_margin_call(equity=44_000, current_debt=80_000) is False
+
+    # ratio 0.65 (52_000/80_000) → above 0.60, latch clears
+    assert loan.should_clear_margin_call(equity=52_000, current_debt=80_000) is True
+    # 0.65 is above threshold so no new margin call
+    assert loan.should_margin_call(equity=52_000, current_debt=80_000) is False
+
+
+def test_should_clear_margin_call_true_when_no_debt():
+    """No debt → nothing to call against → latch clears (moot)."""
+    loan = MarginLoan(principal=10_000, apr=0.08, start_date=START)
+    assert loan.should_clear_margin_call(equity=0, current_debt=0) is True
+
+
+def test_margin_call_recovery_buffer_negative_rejected():
+    """A negative recovery buffer is rejected at construction."""
+    with pytest.raises(InvalidParamsError, match="margin_call_recovery_buffer"):
+        MarginLoan(
+            principal=10_000, apr=0.08, start_date=START,
+            params={"margin_call_recovery_buffer": -0.05},
+        )
+
+
 # ===========================================================================
 # NoRecourseLoan
 # ===========================================================================

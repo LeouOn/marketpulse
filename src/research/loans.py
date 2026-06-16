@@ -23,6 +23,14 @@ This module deliberately avoids importing from ``src.research.backtest``
 or ``src.research.strategies`` to keep the dependency graph clean -- the
 engine imports *from* here, never the other way around. A local
 :class:`InvalidParamsError` is defined to avoid any cross-module coupling.
+
+NOTE: The backtest engine does NOT inject loan principal into cash. ``starting_equity``
+is the portfolio's own capital; the ``loan`` is a SEPARATE liability tracked
+alongside the portfolio. To model "I have $20k of my own BTC and borrow $80k
+on top", set ``starting_equity=20_000`` and ``loan=MarginLoan(principal=80_000, ...)``.
+The loan's debt is recorded in metrics (``debt_balance``, ``loan_to_equity_ratio``)
+but does not appear in ``cash`` until the loan actually disburses (which the
+current engine does not do — loans are book-entry for stress testing).
 """
 
 from __future__ import annotations
@@ -369,18 +377,40 @@ class MarginLoan(Loan):
     - Interest accrues daily at ``apr / 365.25`` (compound).
     - No scheduled payments: interest compounds into the debt.
     - If ``equity / debt`` drops below ``liquidation_threshold`` the
-      lender force-sells all collateral (100% liquidation).
+      lender force-sells all collateral (100% liquidation). This is a
+      one-shot event per breach: the :attr:`margin_call_active` latch
+      prevents the engine from re-force-selling every bar while the
+      strategy keeps re-buying BTC. The latch clears only when
+      ``equity / debt`` recovers to ``liquidation_threshold +
+      margin_call_recovery_buffer`` (hysteresis).
     - No fixed term.
+
+    The latch mirrors real broker behavior: a margin call fires once,
+    the borrower gets a notice, and the loan stays at reduced exposure
+    until either the ratio recovers or the borrower deposits more
+    collateral. Without it, a strategy that re-buys BTC every bar
+    (e.g. BuyAndHold after a force-sell) would cause a death spiral of
+    re-buys and re-force-sells.
     """
 
     name: ClassVar[str] = "MarginLoan"
     description: ClassVar[str] = (
         "Collateralized margin loan: compound-daily interest, no scheduled "
-        "payments, force-liquidation when equity/debt < liquidation_threshold."
+        "payments, force-liquidation when equity/debt < liquidation_threshold "
+        "(latched with hysteresis to prevent death-spiral re-selling)."
     )
     default_params: ClassVar[dict[str, Any]] = {
         "liquidation_threshold": 0.30,  # equity/debt must stay above this
+        # Hysteresis buffer: once a margin call fires the latch stays set
+        # until equity/debt recovers to threshold + buffer before clearing.
+        "margin_call_recovery_buffer": 0.10,
     }
+
+    # Latch: True between a margin call and its clearance. The engine
+    # reads this to decide whether to skip a would-be force-sell, and
+    # sets it immediately after force-selling. Mutated by the engine
+    # during the run; defaults to False on a fresh loan.
+    margin_call_active: bool = False
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if float(self.principal) <= 0:
@@ -391,6 +421,11 @@ class MarginLoan(Loan):
         if not (0 < threshold < 1):
             raise InvalidParamsError(
                 f"liquidation_threshold must be in (0, 1), got {threshold}"
+            )
+        buffer = float(params.get("margin_call_recovery_buffer", 0.10))
+        if buffer < 0:
+            raise InvalidParamsError(
+                f"margin_call_recovery_buffer must be >= 0, got {buffer}"
             )
 
     def _daily_rate(self) -> float:
@@ -429,6 +464,23 @@ class MarginLoan(Loan):
             return False
         ratio = float(equity) / float(current_debt)
         return ratio < float(self.params["liquidation_threshold"])
+
+    def should_clear_margin_call(self, equity: float, current_debt: float) -> bool:
+        """Return True when the margin-call latch should clear (hysteresis).
+
+        The latch clears once ``equity / current_debt`` has recovered to at
+        least ``liquidation_threshold + margin_call_recovery_buffer``. This
+        is intentionally stricter than :meth:`should_margin_call` so that a
+        ratio hovering right around the threshold cannot flap the latch on
+        and off every bar. Returns True when there is no debt (nothing to
+        call against, so the latch is moot).
+        """
+        if float(current_debt) <= 0:
+            return True
+        ratio = float(equity) / float(current_debt)
+        threshold = float(self.params["liquidation_threshold"])
+        buffer = float(self.params["margin_call_recovery_buffer"])
+        return ratio >= threshold + buffer
 
     def liquidation_price(self) -> float:
         """Equity level (USD) at which a margin call triggers.

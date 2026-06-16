@@ -796,6 +796,139 @@ def test_run_backtest_margin_loan_triggers_call():
     )
 
 
+def test_margin_call_latches_and_clears_with_hysteresis():
+    """Regression test for the margin-call death-spiral bug.
+
+    Before the ``margin_call_active`` latch was added, a MarginLoan +
+    BuyAndHold combo on a crashing-then-recovering price series would
+    fire a margin call EVERY bar (170+ calls in the 2022 crash
+    scenario) because BuyAndHold kept re-buying BTC after each
+    force-sell, and the engine kept re-force-selling it. With the
+    latch + hysteresis:
+
+    * exactly ONE margin call fires (the latch blocks re-fire),
+    * the latch clears once equity/debt recovers to
+      ``threshold + recovery_buffer``,
+    * a ``margin_call_cleared`` event is recorded for auditability,
+    * the loan does NOT default (the latch prevents the spiral).
+
+    Price series: start at 100, crash to 30 (70% drop), hold low, then
+    recover to 130. With principal=80k and starting_equity=100k the
+    initial equity/debt ratio is 1.25 (well above 0.50). At the bottom
+    equity drops with price so ratio < 0.50 → margin call fires once.
+    On recovery equity climbs back well past 0.60 → latch clears.
+    """
+    n_drop, n_hold, n_recover = 30, 20, 30
+    prices = (
+        list(np.linspace(100.0, 30.0, n_drop))
+        + [30.0] * n_hold
+        + list(np.linspace(30.0, 130.0, n_recover))
+    )
+    n = len(prices)
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
+            "open": prices,
+            "high": [p + 1.0 for p in prices],
+            "low": [max(p - 1.0, 0.0) for p in prices],
+            "close": prices,
+            "volume": 1.0,
+        }
+    )
+    loan = MarginLoan(
+        principal=80_000.0,
+        apr=0.05,
+        start_date=pd.Timestamp("2024-01-01"),
+        params={
+            "liquidation_threshold": 0.50,
+            "margin_call_recovery_buffer": 0.10,
+        },
+    )
+    result = run_backtest(
+        df, BuyAndHold(),
+        starting_equity=100_000.0,
+        fee_bps=0, slippage_bps=0,
+        loan=loan,
+    )
+    m = result.metrics
+    calls = [p for p in result.loan_payments if p.reason == "margin_call"]
+    clears = [p for p in result.loan_payments if p.reason == "margin_call_cleared"]
+
+    # Core regression: exactly ONE margin call, not 50+.
+    assert m["margin_call_count"] == 1, (
+        f"expected exactly 1 margin call (latch should prevent re-firing "
+        f"every bar), got {m['margin_call_count']}"
+    )
+    assert len(calls) == 1, (
+        f"one margin_call LoanPayment expected, got {len(calls)}"
+    )
+    # Latch must clear on recovery.
+    assert clears, "expected at least one margin_call_cleared event"
+    assert len(clears) == 1, (
+        f"expected exactly 1 margin_call_cleared event (one latch cycle), "
+        f"got {len(clears)}"
+    )
+    # Latch is clear at end of run.
+    assert loan.margin_call_active is False, (
+        "latch should be clear at end of the run (price recovered)"
+    )
+    # The latch prevents the death spiral; it must NOT trigger default.
+    assert m["loan_defaulted"] is False, (
+        "latch should prevent default (no death spiral)"
+    )
+
+
+def test_margin_call_latch_blocks_refire_while_below_recovery():
+    """While the latch is set, a second margin call must NOT fire even
+    if the price stays below the threshold for many bars.
+
+    Uses a monotonically falling series that stays below threshold for
+    the entire second half. Without the latch this would produce one
+    margin call per bar; with the latch it produces exactly one.
+    """
+    # Crash from 100 to 20 and stay there. ratio = equity/80k where
+    # equity tracks price from 100k starting capital. At price 20:
+    # equity ~ 20k, ratio ~ 0.25 << 0.50 → margin call on the way down,
+    # then the latch blocks every subsequent bar.
+    n = 80
+    prices = list(np.linspace(100.0, 20.0, n))
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
+            "open": prices,
+            "high": [p + 1.0 for p in prices],
+            "low": [max(p - 1.0, 0.0) for p in prices],
+            "close": prices,
+            "volume": 1.0,
+        }
+    )
+    loan = MarginLoan(
+        principal=80_000.0,
+        apr=0.05,
+        start_date=pd.Timestamp("2024-01-01"),
+        params={"liquidation_threshold": 0.50, "margin_call_recovery_buffer": 0.10},
+    )
+    result = run_backtest(
+        df, BuyAndHold(),
+        starting_equity=100_000.0,
+        fee_bps=0, slippage_bps=0,
+        loan=loan,
+    )
+    # Exactly one margin call despite many bars below threshold.
+    assert result.metrics["margin_call_count"] == 1, (
+        f"latch should block re-fire; expected 1 margin call, "
+        f"got {result.metrics['margin_call_count']}"
+    )
+    # Latch never clears (price never recovers) so no clear event.
+    clears = [p for p in result.loan_payments if p.reason == "margin_call_cleared"]
+    assert clears == [], (
+        "latch should NOT clear while price stays below recovery line"
+    )
+    assert loan.margin_call_active is True, (
+        "latch should still be set at end (price never recovered)"
+    )
+
+
 def test_run_backtest_no_loan_preserves_existing_behavior():
     """``loan=None`` (the default) must keep every loan-related metric
     at its zero / False sentinel so legacy callers see no loan noise.
