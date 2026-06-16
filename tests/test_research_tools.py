@@ -367,3 +367,45 @@ def test_run_backtest_tool_accepts_inflows(sample_daily, tmp_reports):
     assert r.success, r.error
     assert r.data["metrics"]["total_deposited"] > 0
     assert r.data["metrics"]["num_deposits"] > 0
+
+
+def test_run_backtest_tool_accepts_loan(sample_daily, tmp_reports):
+    """The run_backtest tool should accept an opaque loan object, pass it
+    through to run_backtest_from_names (so loan metrics appear in the
+    result), and persist loan metadata in the saved report."""
+    from src.research.loans import FixedRateLoan
+
+    loan = FixedRateLoan(
+        principal=5_000.0,
+        apr=0.08,
+        start_date=pd.Timestamp("2024-01-01"),
+    )
+    r = tool_run_backtest(
+        {
+            "strategy": "NoTrade",
+            "start": "2024-01-01",
+            "end": "2024-04-01",
+            "starting_equity": 10_000.0,
+            "fee_bps": 0,
+            "slippage_bps": 0,
+            "loan": loan,
+        }
+    )
+    assert r.success, r.error
+    # Loan metrics must flow through from the backtest engine.
+    metrics = r.data["metrics"]
+    assert "debt_balance" in metrics
+    assert "total_interest_paid" in metrics
+    assert "loan_to_equity_ratio" in metrics
+    assert metrics["total_interest_paid"] > 0.0
+    # FixedRateLoan is interest-only, so principal is unchanged.
+    assert metrics["debt_balance"] == pytest.approx(5_000.0, rel=1e-9)
+    # Loan metadata is also persisted in the saved report's params dict.
+    report_path = tmp_reports / "backtest" / f"{r.report_id}.json"
+    meta = json.loads(report_path.read_text())
+    loan_meta = meta["params"]["loan"]
+    assert loan_meta is not None
+    assert loan_meta["class"] == "FixedRateLoan"
+    assert loan_meta["name"] == "FixedRateLoan"
+    assert loan_meta["principal"] == 5_000.0
+    assert loan_meta["apr"] == 0.08

@@ -181,6 +181,23 @@ def tool_get_data_summary(args: dict) -> ToolResult:
     return ToolResult(success=True, data=data_mod.data_summary(df))
 
 
+def _loan_metadata(loan: object | None) -> dict | None:
+    """Reduce an opaque Loan object to a JSON-safe metadata dict.
+
+    The tool layer never constructs or imports Loan classes; it only forwards
+    caller-supplied instances. We persist a small metadata snapshot so reports
+    stay self-describing without coupling the tool layer to the loans module.
+    """
+    if loan is None:
+        return None
+    metadata: dict = {"class": type(loan).__name__}
+    for attr in ("name", "principal", "apr", "start_date"):
+        value = getattr(loan, attr, None)
+        if value is not None:
+            metadata[attr] = str(value) if attr == "start_date" else value
+    return metadata
+
+
 def tool_run_backtest(args: dict) -> ToolResult:
     strategy_name = args.get("strategy")
     if not strategy_name:
@@ -195,6 +212,7 @@ def tool_run_backtest(args: dict) -> ToolResult:
     slippage_bps = float(args.get("slippage_bps", 5.0))
     timeframe = args.get("timeframe", "daily")
     inflows = args.get("inflows")  # optional list of deposit schedules
+    loan = args.get("loan")  # optional Loan instance (opaque to the tool layer)
 
     try:
         if timeframe == "hourly":
@@ -218,6 +236,7 @@ def tool_run_backtest(args: dict) -> ToolResult:
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
             inflows=inflows,
+            loan=loan,
         )
     except KeyError as e:
         return ToolResult(success=False, error=f"Unknown strategy or scaling: {e}")
@@ -243,6 +262,7 @@ def tool_run_backtest(args: dict) -> ToolResult:
             "fee_bps": fee_bps,
             "slippage_bps": slippage_bps,
             "inflows": inflows,
+            "loan": _loan_metadata(loan),
         },
         metrics=result.metrics,
         artifacts=artifacts,
