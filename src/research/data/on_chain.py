@@ -185,6 +185,8 @@ def fetch_mvrv(force: bool = False) -> pd.DataFrame:
         logger.warning("MVRV: using synthetic fallback")
         df = _synthetic_mvrv()
         df["source"] = "synthetic"
+        # Cache the synthetic fallback so subsequent calls don't re-hit the API
+        _write_cache(df.drop(columns=["source"]), MVRV_CSV)
         return df
 
     # Parse Glassnode response — list of {t: unix_timestamp, v: value}
@@ -209,6 +211,8 @@ def fetch_mvrv(force: bool = False) -> pd.DataFrame:
             return stale
         df = _synthetic_mvrv()
         df["source"] = "synthetic"
+        # Cache the synthetic fallback so subsequent calls don't re-hit the API
+        _write_cache(df.drop(columns=["source"]), MVRV_CSV)
         return df
 
     if not rows:
@@ -219,6 +223,8 @@ def fetch_mvrv(force: bool = False) -> pd.DataFrame:
             return stale
         df = _synthetic_mvrv()
         df["source"] = "synthetic"
+        # Cache the synthetic fallback so subsequent calls don't re-hit the API
+        _write_cache(df.drop(columns=["source"]), MVRV_CSV)
         return df
 
     df = pd.DataFrame(rows)
@@ -268,6 +274,8 @@ def fetch_puell(force: bool = False) -> pd.DataFrame:
         logger.warning("Puell: using synthetic fallback")
         df = _synthetic_puell()
         df["source"] = "synthetic"
+        # Cache the synthetic fallback so subsequent calls don't re-hit the API
+        _write_cache(df.drop(columns=["source"]), PUELL_CSV)
         return df
 
     # Parse Glassnode response
@@ -292,6 +300,8 @@ def fetch_puell(force: bool = False) -> pd.DataFrame:
             return stale
         df = _synthetic_puell()
         df["source"] = "synthetic"
+        # Cache the synthetic fallback so subsequent calls don't re-hit the API
+        _write_cache(df.drop(columns=["source"]), PUELL_CSV)
         return df
 
     if not rows:
@@ -302,6 +312,8 @@ def fetch_puell(force: bool = False) -> pd.DataFrame:
             return stale
         df = _synthetic_puell()
         df["source"] = "synthetic"
+        # Cache the synthetic fallback so subsequent calls don't re-hit the API
+        _write_cache(df.drop(columns=["source"]), PUELL_CSV)
         return df
 
     df = pd.DataFrame(rows)

@@ -552,15 +552,24 @@ def run_backtest(
     years = (timestamps[-1] - timestamps[0]).days / 365.25 if len(timestamps) >= 2 else 0.0
     rets_series = equity_curve.pct_change().dropna()
     max_dd = max_drawdown_pct(equity_curve)
-    # When starting_equity <= 0 (inflows-funded portfolios), return-based
-    # metrics divide by zero / are undefined. Guard them to 0.0 rather than
-    # emitting RuntimeWarning("divide by zero") and producing inf/nan.
-    # cagr() and calmar_ratio() already guard start <= 0 internally, but we
-    # short-circuit all three here for clarity and to skip the division.
+    total_deposited = float(sum(d.amount_usd for d in deposits))
+    # Return-based metrics need a positive denominator. When starting_equity > 0
+    # we use it as the baseline (classic lump-sum case). When starting_equity <= 0
+    # (income DCA — funded entirely by recurring deposits) the meaningful baseline
+    # is the total cash deposited, not 0; without this branch CAGR/return/calmar
+    # would silently report 0.0% even on a profitable DCA portfolio. Only when
+    # there is also no deposited capital do we fall through to 0.0.
+    # cagr() and calmar_ratio() guard against non-positive inputs internally, so
+    # this short-circuits purely to pick the right denominator and skip div-by-zero.
     if starting_equity > 0 and len(equity_curve):
         total_return_pct = float((equity_curve.iloc[-1] / starting_equity - 1.0) * 100.0)
         cagr_pct = float(cagr(starting_equity, equity_curve.iloc[-1], years) * 100.0)
         calmar = float(calmar_ratio(starting_equity, equity_curve.iloc[-1], years, max_dd))
+    elif total_deposited > 0 and len(equity_curve):
+        # Income DCA: measure return against total cash invested.
+        total_return_pct = float((equity_curve.iloc[-1] / total_deposited - 1.0) * 100.0)
+        cagr_pct = float(cagr(total_deposited, equity_curve.iloc[-1], years) * 100.0)
+        calmar = float(calmar_ratio(total_deposited, equity_curve.iloc[-1], years, max_dd))
     else:
         total_return_pct = 0.0
         cagr_pct = 0.0
@@ -580,7 +589,7 @@ def run_backtest(
         "num_buys": int(sum(1 for t in trades if t.side == "buy")),
         "num_sells": int(sum(1 for t in trades if t.side == "sell")),
         "years": float(years),
-        "total_deposited": float(sum(d.amount_usd for d in deposits)),
+        "total_deposited": total_deposited,
         "num_deposits": int(len(deposits)),
     }
 

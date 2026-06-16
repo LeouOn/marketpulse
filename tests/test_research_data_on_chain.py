@@ -160,6 +160,56 @@ def test_fetch_puell_network_error_returns_synthetic(tmp_data_dir, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Synthetic fallback caching (regression: prevent repeated API hits)
+# ---------------------------------------------------------------------------
+
+
+def test_synthetic_mvrv_is_cached_on_first_call(tmp_data_dir, monkeypatch):
+    """After a network failure, the synthetic fallback should be written to disk
+    so the next call hits the cache instead of re-hitting the API."""
+    import requests
+    import src.research.data.on_chain as oc
+    monkeypatch.setattr(oc, "MVRV_CSV", tmp_data_dir / "mvrv.csv")
+    monkeypatch.setattr(
+        requests, "get",
+        MagicMock(side_effect=requests.ConnectionError("offline")),
+    )
+
+    # First call: network fails, synthetic returned AND cached
+    df1 = fetch_mvrv(force=True)
+    assert (tmp_data_dir / "mvrv.csv").exists()
+    # No `source` column in the persisted cache
+    cached_on_disk = pd.read_csv(tmp_data_dir / "mvrv.csv")
+    assert "source" not in cached_on_disk.columns
+    # The returned df has the source column
+    assert df1["source"].iloc[0] == "synthetic"
+
+    # Second call: cache should be returned (no further API call)
+    df2 = fetch_mvrv(force=False)
+    assert (df2["source"] == "cache").all()
+
+
+def test_synthetic_puell_is_cached_on_first_call(tmp_data_dir, monkeypatch):
+    """Same regression for Puell — synthetic fallback should be cached."""
+    import requests
+    import src.research.data.on_chain as oc
+    monkeypatch.setattr(oc, "PUELL_CSV", tmp_data_dir / "puell.csv")
+    monkeypatch.setattr(
+        requests, "get",
+        MagicMock(side_effect=requests.ConnectionError("offline")),
+    )
+
+    df1 = fetch_puell(force=True)
+    assert (tmp_data_dir / "puell.csv").exists()
+    cached_on_disk = pd.read_csv(tmp_data_dir / "puell.csv")
+    assert "source" not in cached_on_disk.columns
+    assert df1["source"].iloc[0] == "synthetic"
+
+    df2 = fetch_puell(force=False)
+    assert (df2["source"] == "cache").all()
+
+
+# ---------------------------------------------------------------------------
 # Corrupt cache recovery
 # ---------------------------------------------------------------------------
 

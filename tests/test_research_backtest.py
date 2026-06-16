@@ -547,6 +547,31 @@ def test_total_deposited_in_metrics():
     assert result.metrics["num_deposits"] == len(result.deposits)
 
 
+def test_cagr_positive_when_starting_equity_zero_with_inflows():
+    """Income DCA: with starting_equity=0 and recurring inflows on an uptrend,
+    CAGR/total_return must be computed against total_deposited (not 0.0).
+
+    Regression guard for the bug where starting_equity=0 short-circuited all
+    three return metrics to 0.0 even on a profitable DCA portfolio.
+    """
+    df = _growing(n=365, start=100.0, end=200.0)
+    result = run_backtest(
+        df, BuyAndHold(), starting_equity=0.0, fee_bps=0, slippage_bps=0,
+        inflows=[{"every_n_bars": 30, "amount_usd": 500.0}],
+    )
+    # Sanity: we deposited something and ended with equity.
+    assert result.metrics["total_deposited"] > 0
+    assert result.ending_equity > 0
+    # The fix: metrics are no longer silently 0.0 — DCA into an uptrend must
+    # produce a positive CAGR and total return measured against total invested.
+    assert result.metrics["cagr_pct"] > 0.0, (
+        f"cagr_pct should be > 0 for profitable DCA, got {result.metrics['cagr_pct']}"
+    )
+    assert result.metrics["total_return_pct"] > 0.0, (
+        f"total_return_pct should be > 0 for profitable DCA, got {result.metrics['total_return_pct']}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Wave 4: on-chain state wiring
 # ---------------------------------------------------------------------------
