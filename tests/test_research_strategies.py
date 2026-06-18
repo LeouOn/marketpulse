@@ -220,6 +220,9 @@ def test_list_strategies_returns_all_known():
         "RecurringFundingDCA",
         "HalvingCycleAccumulation",
         "CompositeAccumulation",
+        # W4 T16: gold's real-rate-cycle accumulator. The abstract
+        # CycleAccumulation base is intentionally NOT registered.
+        "RealRateCycleAccumulation",
     }
 
 

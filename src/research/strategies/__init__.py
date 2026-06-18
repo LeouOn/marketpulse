@@ -444,6 +444,10 @@ from src.research.strategies.LadderLimit import LadderLimit  # noqa: E402
 from src.research.strategies.RecurringFundingDCA import RecurringFundingDCA  # noqa: E402
 from src.research.strategies.HalvingCycleAccumulation import HalvingCycleAccumulation  # noqa: E402
 from src.research.strategies.CompositeAccumulation import CompositeAccumulation  # noqa: E402
+from src.research.strategies.cycle_base import CycleAccumulation  # noqa: E402
+from src.research.strategies.RealRateCycleAccumulation import (  # noqa: E402
+    RealRateCycleAccumulation,
+)
 
 _REGISTRY: dict[str, type[Strategy]] = {
     "BuyAndHold": BuyAndHold,
@@ -457,6 +461,10 @@ _REGISTRY: dict[str, type[Strategy]] = {
     "RecurringFundingDCA": RecurringFundingDCA,
     "HalvingCycleAccumulation": HalvingCycleAccumulation,
     "CompositeAccumulation": CompositeAccumulation,
+    # W4 T16: per-asset cycle hierarchy. CycleAccumulation itself is
+    # abstract so is intentionally NOT registered; only concrete
+    # subclasses appear here. T17/T18 add the others.
+    "RealRateCycleAccumulation": RealRateCycleAccumulation,
 }
 
 

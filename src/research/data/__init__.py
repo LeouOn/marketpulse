@@ -823,6 +823,14 @@ def _build_asset_registry() -> "dict[str, AssetConfig]":
     from src.research.data.alpaca import AlpacaProvider
     from src.research.data.btc import BtcProvider
     from src.research.data.fred import FredProvider
+    # Lazy import of the gold cycle strategy. Done inside the builder to
+    # preserve the cycle-safe ordering documented at the top of this
+    # section: data/__init__.py must finish loading before any
+    # strategies submodule imports it. By the time this function runs,
+    # both modules are fully initialized.
+    from src.research.strategies.RealRateCycleAccumulation import (
+        RealRateCycleAccumulation,
+    )
 
     return {
         "BTC": AssetConfig(
@@ -846,7 +854,7 @@ def _build_asset_registry() -> "dict[str, AssetConfig]":
             calendar="NYSE",
             trading_days_per_year=252,
             data_provider=FredProvider,
-            cycle_strategy=None,  # T16 wires RealRateCycleAccumulation
+            cycle_strategy=RealRateCycleAccumulation,  # W4 T16
             indicator_whitelist=("rsi", "mayer"),
             default_regime_multipliers={},
             publication_lag_days=0,
