@@ -336,6 +336,107 @@ class MeanReversionRSI(Strategy):
 
 
 # ---------------------------------------------------------------------------
+# MacroGateMixin (W3/T15)
+# ---------------------------------------------------------------------------
+
+
+from src.research.macro.regimes import Regime  # noqa: E402
+
+
+class MacroGateMixin:
+    """Mixin that scales a Strategy's signal by current macro regime.
+
+    GATES ONLY -- does NOT allocate across assets (Metis SC3 guardrail).
+    Compose: ``class GatedDCA(MacroGateMixin, DCAFixedAmount): ...``.
+
+    The mixin adds a single method, :meth:`generate_signals_gated`, which
+    calls the host strategy's ``generate_signals`` and multiplies the
+    result element-wise by a per-regime scalar.  It deliberately does NOT
+    override ``generate_signals`` -- the host strategy retains its
+    un-gated behaviour when called directly.
+
+    When ``regime_tape`` is ``None`` (no macro layer wired up) the method
+    is a no-op pass-through of the base signal.  When ``regime_tape``
+    contains NaN values (e.g. FRED outage / warmup gap) those rows fall
+    back to a neutral multiplier of 1.0 -- the strategy continues
+    accumulating (Metis G6).
+
+    Subclasses tune the gate by overriding ``regime_multipliers``;
+    default is all-1.0 (no gating).  Tuning happens per-asset in T16-T18.
+    """
+
+    #: Per-regime scalar multiplier applied to the base signal.  Default
+    #: is 1.0 across the board (no-op gate); subclasses override to add
+    #: real gating.  Values >1.0 amplify (capped at 1.5 post-clip),
+    #: values <1.0 attenuate, 0.0 fully suppresses.
+    regime_multipliers: dict[Regime, float] = {r: 1.0 for r in Regime}
+
+    def generate_signals_gated(
+        self,
+        df: pd.DataFrame,
+        regime_tape: pd.Series | None,
+    ) -> pd.Series:
+        """Multiply the base strategy signal by the per-regime multiplier.
+
+        Parameters
+        ----------
+        df
+            OHLCV DataFrame passed through to the host's
+            ``generate_signals``.
+        regime_tape
+            Series indexed like ``df`` whose values are either
+            :class:`Regime` enum members or their string values
+            (``"RISK_ON"`` etc. -- interop with T12's classifier output,
+            whose ``dominant_regime`` column is a string).  ``None``
+            disables the gate entirely.  NaN values map to the neutral
+            1.0 multiplier.
+
+        Returns
+        -------
+        pd.Series
+            Indexed like ``df``, values clipped to ``[0.0, 1.5]``.
+        """
+        base = self.generate_signals(df)
+
+        if regime_tape is None:
+            return base
+
+        multiplier = regime_tape.map(self._regime_to_multiplier).fillna(1.0)
+
+        # Reindex defensively: if regime_tape's index differs from base's
+        # we still want base * 1.0 (no info -> neutral) rather than NaNs.
+        multiplier = multiplier.reindex(base.index).fillna(1.0)
+
+        return (base * multiplier).clip(0.0, 1.5)
+
+    def _regime_to_multiplier(self, r: object) -> float:
+        """Resolve a regime value to its scalar multiplier.
+
+        Handles Regime enum members, their string values, NaN/None
+        (FRED outage / warmup gap), and unknown strings (defensive:
+        a bad regime label must never zero out the strategy).
+        """
+        if r is None or pd.isna(r):
+            return 1.0
+        # Direct dict hit.  Because ``Regime`` is a ``str, Enum``, a
+        # string value hashes identically to its enum member, so this
+        # branch covers both enum and string inputs in one shot.
+        try:
+            if r in self.regime_multipliers:
+                return float(self.regime_multipliers[r])
+        except TypeError:
+            # Unhashable input (defensive) -- fall through to default.
+            pass
+        # Last resort: try parsing as a Regime string, else neutral.
+        if isinstance(r, str):
+            try:
+                return float(self.regime_multipliers.get(Regime(r), 1.0))
+            except ValueError:
+                return 1.0
+        return 1.0
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
