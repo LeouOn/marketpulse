@@ -135,8 +135,14 @@ class AssetConfig:
     research_notes: str = ""
 
 
-# Empty in T2; T10 registers all 5 assets. Keys are ticker strings.
-AssetRegistry: dict[str, AssetConfig] = {}
+# AssetRegistry is populated at the BOTTOM of this module (T10) -- after the
+# BTC fetchers (``load_daily`` / ``load_hourly``) are defined. The deferral is
+# required because ``src.research.data.btc.BtcProvider`` imports those names
+# from us, so building the registry at module-load time would otherwise hit an
+# import cycle. See ``_build_asset_registry`` at end of file.
+#
+# Keys are the asset aliases used across the codebase: BTC, GOLD, OIL,
+# EQUITIES, HOUSING.
 
 
 # ---------------------------------------------------------------------------
@@ -783,3 +789,121 @@ def data_summary(df: pd.DataFrame, trading_days_per_year: float = 365.25) -> dic
         "worst_day_pct": float(rets.min() * 100.0) if len(rets) else 0.0,
         "sources": sorted(df["source"].unique().tolist()) if "source" in df.columns else [],
     }
+
+
+# ---------------------------------------------------------------------------
+# AssetRegistry population (T10)
+#
+# Deferred to end-of-module so all of BtcProvider / FredProvider /
+# AlpacaProvider and the local BTC fetchers (load_daily / load_hourly) are
+# fully defined. Building the registry at module top would hit an import
+# cycle: src.research.data.btc imports load_daily/load_hourly from us.
+#
+# Cycle-safe ordering:
+#   1. __init__.py finishes defining DataProvider, AssetConfig, load_daily,
+#      load_hourly, data_summary, etc.
+#   2. _build_asset_registry() is called.
+#   3. Inside it, ``from src.research.data.btc import BtcProvider`` runs.
+#      That module's top-level ``from src.research.data import DataProvider,
+#      load_daily, load_hourly`` re-binds this (already fully loaded) module
+#      without re-executing it -- so the cycle resolves cleanly.
+#
+# T16-T18 will later wire ``cycle_strategy`` to concrete Strategy subclasses;
+# until then the placeholder is ``None`` (the AssetConfig default).
+# ---------------------------------------------------------------------------
+
+
+def _build_asset_registry() -> "dict[str, AssetConfig]":
+    """Build the populated asset registry with deferred provider imports.
+
+    Returns the 5-entry registry used across the research lab. Kept as a
+    function (not a module-level literal) so the provider imports stay lazy
+    and break the ``data/__init__.py`` <-> ``data/btc.py`` cycle.
+    """
+    from src.research.data.alpaca import AlpacaProvider
+    from src.research.data.btc import BtcProvider
+    from src.research.data.fred import FredProvider
+
+    return {
+        "BTC": AssetConfig(
+            ticker="BTC-USD",
+            display_name="Bitcoin",
+            asset_class="crypto",
+            calendar="247",
+            trading_days_per_year=365.25,
+            data_provider=BtcProvider,
+            cycle_strategy=None,  # T16 wires HalvingCycleAccumulation
+            indicator_whitelist=("rsi", "mayer", "fgi", "mvrv"),
+            default_regime_multipliers={},  # tuned after W3 backrun validation
+            publication_lag_days=0,
+            tradeable=True,
+            research_notes="",
+        ),
+        "GOLD": AssetConfig(
+            ticker="GOLDAMGBD228NLBM",
+            display_name="Gold (LBMA AM fix)",
+            asset_class="commodity",
+            calendar="NYSE",
+            trading_days_per_year=252,
+            data_provider=FredProvider,
+            cycle_strategy=None,  # T16 wires RealRateCycleAccumulation
+            indicator_whitelist=("rsi", "mayer"),
+            default_regime_multipliers={},
+            publication_lag_days=0,
+            tradeable=True,
+            research_notes="",
+        ),
+        "OIL": AssetConfig(
+            ticker="DCOILWTICO",
+            display_name="WTI Crude Oil (spot)",
+            asset_class="commodity",
+            calendar="NYSE",
+            trading_days_per_year=252,
+            data_provider=FredProvider,
+            cycle_strategy=None,  # T17 wires OPECCycleAccumulation
+            indicator_whitelist=("rsi", "mayer"),
+            default_regime_multipliers={},
+            publication_lag_days=0,
+            tradeable=False,  # Metis EC3: spot index, not a tradeable instrument
+            research_notes=(
+                "Spot price index, not a tradeable instrument. "
+                "Use for accumulation-style analysis only. "
+                "Values can be negative (April 2020 -$37.63) -- pass through as-is."
+            ),
+        ),
+        "EQUITIES": AssetConfig(
+            ticker="SPY",
+            display_name="US Broad Equities (S&P 500 via SPY)",
+            asset_class="equity",
+            calendar="NYSE",
+            trading_days_per_year=252,
+            data_provider=AlpacaProvider,
+            cycle_strategy=None,  # T17 wires EarningsCycleAccumulation
+            indicator_whitelist=("rsi", "mayer"),
+            default_regime_multipliers={},
+            publication_lag_days=0,
+            tradeable=True,
+            research_notes="",
+        ),
+        "HOUSING": AssetConfig(
+            ticker="CSUSHPINSA",
+            display_name="US Housing (Case-Shiller National)",
+            asset_class="realestate",
+            calendar="MONTHLY",
+            trading_days_per_year=12,
+            data_provider=FredProvider,
+            cycle_strategy=None,  # T18 wires MortgageCycleAccumulation
+            indicator_whitelist=("rsi", "mayer"),
+            default_regime_multipliers={},
+            publication_lag_days=60,  # Metis: Case-Shiller ~2-month publication lag
+            tradeable=True,
+            research_notes=(
+                "Monthly cadence. NSA series (not seasonally adjusted) -- "
+                "seasonal patterns present."
+            ),
+        ),
+    }
+
+
+# Keys: "BTC", "GOLD", "OIL", "EQUITIES", "HOUSING". Built once at import.
+AssetRegistry: dict[str, AssetConfig] = _build_asset_registry()
