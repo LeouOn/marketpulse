@@ -188,30 +188,36 @@ def test_assetconfig_indicator_whitelist_is_a_tuple():
 # ---------------------------------------------------------------------------
 
 
-def test_assetregistry_is_a_dict_and_starts_empty():
-    """T2 ships an empty registry; T10 populates 5 asset entries."""
+def test_assetregistry_is_a_dict_and_populated():
+    """Registry is a dict. T2 shipped empty; T10 populated 5 entries."""
     assert isinstance(AssetRegistry, dict)
-    assert AssetRegistry == {}
+    # T10 populates BTC/GOLD/OIL/EQUITIES/HOUSING. Accept any non-empty state
+    # so this test stays valid as the registry evolves.
+    assert len(AssetRegistry) >= 5, f"expected >=5 entries, got {len(AssetRegistry)}"
 
 
 def test_assetregistry_accepts_assetconfig_entries():
-    """Sanity check that a frozen AssetConfig is storable in the registry."""
+    """Sanity check that a frozen AssetConfig is storable in a dict (registry pattern).
+
+    Uses a LOCAL dict -- never mutate the module-level ``AssetRegistry``.
+    T10 populates the global with 5 real entries; clearing it here would
+    break every other test that runs after this one (test isolation bug
+    fixed post-T10). The dict-storage semantics are identical whether the
+    dict is global or local, so this assertion is just as strong.
+    """
     cls = _make_dummy_provider_class()
     cfg = AssetConfig(
-        ticker="BTC",
-        display_name="Bitcoin",
+        ticker="TEST",
+        display_name="Test Asset",
         asset_class="crypto",
         calendar="247",
         trading_days_per_year=365.25,
         data_provider=cls,
     )
-    try:
-        AssetRegistry["BTC"] = cfg
-        assert AssetRegistry["BTC"] is cfg
-    finally:
-        AssetRegistry.clear()
-    # Restore the empty state regardless of test outcome.
-    assert AssetRegistry == {}
+    # LOCAL dict -- no global mutation, no clear() in finally.
+    local_registry: dict[str, AssetConfig] = {}
+    local_registry["TEST"] = cfg
+    assert local_registry["TEST"] is cfg
 
 
 # ---------------------------------------------------------------------------
