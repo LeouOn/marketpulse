@@ -1,7 +1,20 @@
 from datetime import datetime
 
 from loguru import logger
-from sqlalchemy import JSON, BigInteger, Boolean, Column, Date, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
 from sqlalchemy.sql import func
@@ -257,9 +270,9 @@ class Indicator(Base):
     timeframe = Column(String(10), nullable=False)
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
     indicator_type = Column(String(30), nullable=False)
-    params = Column(JSON, nullable=False)
+    params = Column(JSON().with_variant(postgresql.JSONB, "postgresql"), nullable=False)
     value = Column(Float)
-    values = Column(JSON)
+    values = Column(JSON().with_variant(postgresql.JSONB, "postgresql"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -286,7 +299,8 @@ class DatabaseManager:
 
         if is_sqlite:
             self.engine = create_engine(
-                self.database_url, poolclass=NullPool, connect_args={"check_same_thread": False}
+                self.database_url, poolclass=NullPool, connect_args={"check_same_thread": False},
+                execution_options={"schema_translate_map": {"market_data": None, "analysis": None}}
             )
         elif is_postgres:
             # Try to use asyncpg, fall back to sync if not available
@@ -335,7 +349,8 @@ class DatabaseManager:
 
         if is_sqlite:
             async_engine = create_async_engine(
-                self.database_url.replace("sqlite://", "sqlite+aiosqlite://"), poolclass=NullPool
+                self.database_url.replace("sqlite://", "sqlite+aiosqlite://"), poolclass=NullPool,
+                execution_options={"schema_translate_map": {"market_data": None, "analysis": None}}
             )
         else:
             async_url = self.database_url  # URL already has postgresql+psycopg

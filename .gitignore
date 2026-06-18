@@ -79,6 +79,7 @@ logs/
 test_results*.json
 *.tmp
 *.temp
+evaluation_results.json
 
 # Docker
 .omo/

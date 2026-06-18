@@ -7,9 +7,10 @@ import json
 import re
 from typing import Any
 
-from loguru import logger
-
-from .llm_client import LMStudioClient
+from loguru import logger
+
+from ..core.config import get_settings
+from .llm_client import LMStudioClient
 from .system_prompts import (
     build_enhanced_prompt,
     get_system_prompt,

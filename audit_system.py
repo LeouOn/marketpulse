@@ -62,12 +62,12 @@ async def main():
 
     print("\n--- DATA COLLECTOR ---")
     try:
-        from src.data.market_collector import MarketCollector
-        print("MarketCollector loaded successfully.")
+        from src.data.market_collector import MarketPulseCollector
+        print("MarketPulseCollector loaded successfully.")
     except ImportError as e:
-        print(f"MarketCollector module not found: {e}")
+        print(f"MarketPulseCollector module not found: {e}")
     except Exception as e:
-        print(f"MarketCollector initialization error: {e}")
+        print(f"MarketPulseCollector initialization error: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
