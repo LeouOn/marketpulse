@@ -79,13 +79,20 @@ def simulate_gbm(
     s0: float = 100.0,
     n_steps: int = 365,
     n_paths: int = 10_000,
-    dt: float = 1.0 / 365.25,
+    dt: float | None = None,
     seed: int | None = None,
+    trading_days_per_year: float = 365.25,
 ) -> SimulationResult:
     """Simulate ``n_paths`` GBM price paths of ``n_steps`` each.
 
     ``mu`` is the annualized drift, ``sigma`` is the annualized volatility.
+    ``dt`` is the per-step time increment (in years). If ``None`` (default),
+    it is derived as ``1.0 / trading_days_per_year``. Pass ``trading_days_per_year``
+    to scale ``dt`` for non-BTC cadences (e.g. 12 for monthly housing data,
+    252 for equities). Explicitly passing ``dt`` overrides ``trading_days_per_year``.
     """
+    if dt is None:
+        dt = 1.0 / trading_days_per_year
     if sigma < 0 or n_paths < 1 or n_steps < 1 or s0 <= 0:
         raise ValueError("Invalid GBM parameters: sigma>=0, n_paths>=1, n_steps>=1, s0>0")
     rng = np.random.default_rng(seed)

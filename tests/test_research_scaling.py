@@ -323,3 +323,77 @@ def test_validate_sentiment_modulated_rejects_bad_params():
 
     with pytest.raises(InvalidParamsError, match="base_buy_multiplier must be > 0"):
         SentimentModulated(params={"base_buy_multiplier": -1})
+
+
+# ---------------------------------------------------------------------------
+# trading_days_per_year parameterization (W1 T4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tdpy", [12, 252, 365.25])
+def test_volatility_targeted_accepts_trading_days_per_year(tdpy):
+    """VolatilityTargeted must accept trading_days_per_year in its params dict."""
+    s = VolatilityTargeted(
+        params={"target_annual_vol": 0.5, "lookback": 60, "trading_days_per_year": tdpy}
+    )
+    # The param is merged into the model's params (default_params + user overlay).
+    assert s.params["trading_days_per_year"] == tdpy
+    # Size call must not raise; returns non-negative tuple.
+    buy, sell = s.size(10_000, 0, 30_000, _returns(std=0.10, n=200))
+    assert buy >= 0
+    assert sell >= 0
+
+
+def test_volatility_targeted_size_scales_with_trading_days_per_year():
+    """Lower trading_days_per_year -> lower annualized vol -> LARGER size (inverse)."""
+    # Use std=0.10 so both 365.25 and 252 stay below the max_fraction cap.
+    r = _returns(mean=0.0, std=0.10, n=300, seed=7)
+    s_btc = VolatilityTargeted(params={"target_annual_vol": 0.5, "trading_days_per_year": 365.25})
+    s_eq = VolatilityTargeted(params={"target_annual_vol": 0.5, "trading_days_per_year": 252})
+    s_housing = VolatilityTargeted(params={"target_annual_vol": 0.5, "trading_days_per_year": 12})
+    buy_btc, _ = s_btc.size(10_000, 0, 30_000, r)
+    buy_eq, _ = s_eq.size(10_000, 0, 30_000, r)
+    buy_housing, _ = s_housing.size(10_000, 0, 30_000, r)
+    # Monotonic: fewer periods -> lower annualized vol -> larger size (until cap).
+    assert buy_btc < buy_eq <= buy_housing
+
+
+def test_volatility_targeted_default_preserves_btc_behavior():
+    """Default (no trading_days_per_year) must equal explicit 365.25."""
+    r = _returns(mean=0.0, std=0.10, n=200, seed=3)
+    s_default = VolatilityTargeted(params={"target_annual_vol": 0.5})
+    s_explicit = VolatilityTargeted(
+        params={"target_annual_vol": 0.5, "trading_days_per_year": 365.25}
+    )
+    assert s_default.size(10_000, 0, 30_000, r) == s_explicit.size(10_000, 0, 30_000, r)
+
+
+@pytest.mark.parametrize("tdpy", [12, 252, 365.25])
+def test_risk_parity_accepts_trading_days_per_year(tdpy):
+    """RiskParity must accept trading_days_per_year in its params dict."""
+    s = RiskParity(params={"trading_days_per_year": tdpy})
+    assert s.params["trading_days_per_year"] == tdpy
+    buy, sell = s.size(10_000, 0, 30_000, _returns(std=0.10, n=200))
+    assert buy >= 0
+    assert sell >= 0
+
+
+def test_risk_parity_size_scales_with_trading_days_per_year():
+    """Lower trading_days_per_year -> lower annualized vol -> LARGER fraction."""
+    # std=0.10 keeps BTC/equity uncapped (vol > 1.0); housing caps at fmax=1.0.
+    r = _returns(mean=0.0, std=0.10, n=300, seed=11)
+    s_btc = RiskParity(params={"trading_days_per_year": 365.25})
+    s_eq = RiskParity(params={"trading_days_per_year": 252})
+    s_housing = RiskParity(params={"trading_days_per_year": 12})
+    buy_btc, _ = s_btc.size(10_000, 0, 30_000, r)
+    buy_eq, _ = s_eq.size(10_000, 0, 30_000, r)
+    buy_housing, _ = s_housing.size(10_000, 0, 30_000, r)
+    assert buy_btc < buy_eq <= buy_housing
+
+
+def test_risk_parity_default_preserves_btc_behavior():
+    """Default (no trading_days_per_year) must equal explicit 365.25."""
+    r = _returns(mean=0.0, std=0.10, n=200, seed=3)
+    s_default = RiskParity()
+    s_explicit = RiskParity(params={"trading_days_per_year": 365.25})
+    assert s_default.size(10_000, 0, 30_000, r) == s_explicit.size(10_000, 0, 30_000, r)

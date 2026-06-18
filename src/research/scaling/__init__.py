@@ -231,6 +231,9 @@ class VolatilityTargeted(ScalingModel):
         "lookback": 60,
         "max_fraction": 1.0,
         "min_fraction": 0.0,
+        # Periods per year used to annualize per-bar vol (sqrt-N scaling).
+        # Default 365.25 = BTC daily cadence. Set to 12 for monthly housing, 252 for equities.
+        "trading_days_per_year": 365.25,
     }
 
     def validate_params(self, params: dict[str, Any]) -> None:
@@ -256,12 +259,13 @@ class VolatilityTargeted(ScalingModel):
         lookback = int(self.params["lookback"])
         fmax = float(self.params["max_fraction"])
         fmin = float(self.params["min_fraction"])
+        tdpy = float(self.params.get("trading_days_per_year", 365.25))
 
         if recent_returns is None or len(recent_returns) < 5:
             return equity * (target / 0.5), 0.0  # assume 50% vol fallback
 
         r = recent_returns.tail(lookback)
-        realized_vol_annual = float(r.std(ddof=0) * np.sqrt(365.25))
+        realized_vol_annual = float(r.std(ddof=0) * np.sqrt(tdpy))
         if realized_vol_annual <= 0 or not np.isfinite(realized_vol_annual):
             return equity * fmin, 0.0
 
@@ -288,7 +292,13 @@ class RiskParity(ScalingModel):
         "Risk parity: size inversely to realized vol so each unit of equity "
         "contributes equal risk. Single-asset version: fraction = 1 / vol_annual."
     )
-    default_params: ClassVar[dict[str, Any]] = {"lookback": 60, "max_fraction": 1.0}
+    default_params: ClassVar[dict[str, Any]] = {
+        "lookback": 60,
+        "max_fraction": 1.0,
+        # Periods per year used to annualize per-bar vol (sqrt-N scaling).
+        # Default 365.25 = BTC daily cadence. Set to 12 for monthly housing, 252 for equities.
+        "trading_days_per_year": 365.25,
+    }
 
     def validate_params(self, params: dict[str, Any]) -> None:
         mf = params.get("max_fraction", 1.0)
@@ -311,10 +321,11 @@ class RiskParity(ScalingModel):
     ) -> tuple[float, float]:
         lookback = int(self.params["lookback"])
         fmax = float(self.params["max_fraction"])
+        tdpy = float(self.params.get("trading_days_per_year", 365.25))
         if recent_returns is None or len(recent_returns) < 5:
             return 0.0, 0.0
         r = recent_returns.tail(lookback)
-        vol = float(r.std(ddof=0) * np.sqrt(365.25))
+        vol = float(r.std(ddof=0) * np.sqrt(tdpy))
         if vol <= 0 or not np.isfinite(vol):
             return 0.0, 0.0
         f = min(1.0 / vol, fmax)

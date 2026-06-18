@@ -20,9 +20,11 @@ from __future__ import annotations
 
 import csv
 import time
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
 import requests
@@ -34,6 +36,108 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential_jitter,
 )
+
+if TYPE_CHECKING:
+    # Forward reference only -- avoids an import cycle at runtime.
+    # Strategies (T16-T18) reference AssetConfig.cycle_strategy.
+    from src.research.strategies import Strategy
+
+
+# ---------------------------------------------------------------------------
+# Multi-asset foundation: DataProvider ABC + AssetConfig + AssetRegistry (T2)
+#
+# Asset-class-agnostic public API. Concrete providers land in T6-T10
+# (BTC, equities, gold, oil, housing). T10 populates ``AssetRegistry``.
+# Spec: .omo/plans/multi-asset-macro-research-lab.md L290-362.
+#
+# IMPORTANT: do NOT move the existing BTC fetcher functions below into a
+# ``btc`` submodule here -- T6 does that. This section is purely additive.
+# ---------------------------------------------------------------------------
+
+
+class DataProvider(ABC):
+    """Asset-class-agnostic OHLCV data provider.
+
+    DataFrame column contract (consumed by ``src.research.backtest``)::
+
+        ts (datetime64[ns, UTC]), open, high, low, close,
+        volume (NaN if unavailable), source (str)
+
+    Subclasses MUST implement :meth:`load_daily` and
+    :attr:`trading_days_per_year`. :meth:`load_monthly` and
+    :meth:`load_intraday` have working defaults.
+    """
+
+    @abstractmethod
+    def load_daily(self, start: date, end: date) -> pd.DataFrame:
+        """Return daily OHLCV rows for ``[start, end]`` inclusive."""
+        ...
+
+    def load_monthly(self, start: date, end: date) -> pd.DataFrame:
+        """Default: resample daily to month-end.
+
+        Override for native monthly sources (e.g. Case-Shiller). Uses the
+        pandas ``"ME"`` (month-end) anchor with standard OHLCV aggregation;
+        months with no close row are dropped.
+        """
+        daily = self.load_daily(start, end)
+        if daily.empty:
+            return daily
+        monthly = (
+            daily.resample("ME", on="ts")
+            .agg(
+                {
+                    "open": "first",
+                    "high": "max",
+                    "low": "min",
+                    "close": "last",
+                    "volume": "sum",
+                }
+            )
+            .dropna(subset=["close"])
+        )
+        return monthly.reset_index()
+
+    def load_intraday(self, start: date, end: date) -> pd.DataFrame | None:
+        """Optional. Return ``None`` if the asset has no intraday source."""
+        return None
+
+    @property
+    @abstractmethod
+    def trading_days_per_year(self) -> float:
+        """Annualisation factor (365.25 crypto / 252 NYSE / 12 monthly)."""
+        ...
+
+
+@dataclass(frozen=True)
+class AssetConfig:
+    """Static configuration for one tradeable asset (Metis spec, T2).
+
+    Frozen so registry entries are immutable at runtime. T10 populates
+    the 5 assets (BTC, SP500-equivalent, XAU, DCOILWTICO, Case-Shiller).
+
+    Field names are part of the public API -- downstream tasks read them
+    directly (e.g. ``cfg.indicator_whitelist`` in T5, ``cfg.publication_lag_days``
+    in T18, ``cfg.cycle_strategy`` in T16-T18, ``cfg.tradeable`` in T21).
+    """
+
+    ticker: str
+    display_name: str
+    asset_class: str  # "commodity" | "equity" | "realestate" | "crypto"
+    calendar: str  # "247" | "NYSE" | "MONTHLY"
+    trading_days_per_year: float  # 365.25 | 252 | 12
+    data_provider: type  # DataProvider subclass
+    cycle_strategy: type | None = None  # Strategy subclass; wired by T16-T18
+    indicator_whitelist: tuple[str, ...] = ()
+    default_regime_multipliers: dict = field(default_factory=dict)  # T10/T12
+    publication_lag_days: int = 0
+    tradeable: bool = True
+    research_notes: str = ""
+
+
+# Empty in T2; T10 registers all 5 assets. Keys are ticker strings.
+AssetRegistry: dict[str, AssetConfig] = {}
+
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -652,8 +756,12 @@ def _max_drawdown(close: pd.Series) -> float:
     return float(drawdown.min())
 
 
-def data_summary(df: pd.DataFrame) -> dict:
-    """Return a structured summary of a price dataframe (used by LLM tools)."""
+def data_summary(df: pd.DataFrame, trading_days_per_year: float = 365.25) -> dict:
+    """Return a structured summary of a price dataframe (used by LLM tools).
+
+    ``trading_days_per_year`` controls the sqrt-N annualization of per-bar vol.
+    Default 365.25 = BTC daily cadence. Use 12 for monthly housing, 252 for equities.
+    """
     if df.empty:
         return {"rows": 0}
     close = df["close"].astype(float)
@@ -667,7 +775,7 @@ def data_summary(df: pd.DataFrame) -> dict:
         "last_close": float(close.iloc[-1]),
         "total_return_pct": float((close.iloc[-1] / close.iloc[0] - 1.0) * 100.0),
         "cagr_pct": float(_cagr(close.iloc[0], close.iloc[-1], years) * 100.0),
-        "realized_vol_annual_pct": float(rets.std() * (365.25**0.5) * 100.0)
+        "realized_vol_annual_pct": float(rets.std() * (trading_days_per_year**0.5) * 100.0)
         if len(rets) > 1
         else 0.0,
         "max_drawdown_pct": float(_max_drawdown(close) * 100.0),

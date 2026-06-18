@@ -180,3 +180,67 @@ def test_simulate_strategy_unknown_method_raises():
     rets = pd.Series([0.01] * 100)
     with pytest.raises(ValueError):
         simulate_strategy(rets, lambda: BuyAndHold(), n_paths=2, method="bogus")
+
+
+# ---------------------------------------------------------------------------
+# trading_days_per_year parameterization (W1 T4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tdpy", [12, 252, 365.25])
+def test_gbm_accepts_trading_days_per_year(tdpy):
+    """simulate_gbm must accept trading_days_per_year; dt derived as 1/tdpy."""
+    r = simulate_gbm(
+        mu=0.5, sigma=0.4, s0=100.0, n_steps=50, n_paths=20, seed=0, trading_days_per_year=tdpy
+    )
+    assert r.paths.shape == (20, 51)
+    # dt stored in params should equal 1/tdpy
+    assert r.params["dt"] == pytest.approx(1.0 / tdpy, rel=1e-12)
+
+
+def test_gbm_trading_days_per_year_changes_paths():
+    """Different trading_days_per_year -> different dt -> different terminal values."""
+    r_btc = simulate_gbm(
+        mu=0.3, sigma=0.4, s0=100.0, n_steps=100, n_paths=200, seed=42, trading_days_per_year=365.25
+    )
+    r_housing = simulate_gbm(
+        mu=0.3, sigma=0.4, s0=100.0, n_steps=100, n_paths=200, seed=42, trading_days_per_year=12
+    )
+    # Same seed -> same random draws, but different dt scales drift/diffusion.
+    assert not np.allclose(r_btc.terminal_values, r_housing.terminal_values)
+
+
+def test_gbm_explicit_dt_overrides_trading_days_per_year():
+    """If dt is explicitly passed, it wins; trading_days_per_year is ignored."""
+    r_explicit = simulate_gbm(
+        mu=0.3, sigma=0.4, s0=100.0, n_steps=50, n_paths=20, seed=1, dt=0.01
+    )
+    r_with_tdpy = simulate_gbm(
+        mu=0.3,
+        sigma=0.4,
+        s0=100.0,
+        n_steps=50,
+        n_paths=20,
+        seed=1,
+        dt=0.01,
+        trading_days_per_year=12,  # should be ignored
+    )
+    assert np.allclose(r_explicit.paths, r_with_tdpy.paths)
+    assert r_explicit.params["dt"] == pytest.approx(0.01, rel=1e-12)
+
+
+def test_gbm_default_dt_preserves_btc_behavior():
+    """Default (no dt, no trading_days_per_year) must derive dt = 1/365.25."""
+    r_default = simulate_gbm(mu=0.3, sigma=0.4, s0=100.0, n_steps=50, n_paths=20, seed=2)
+    r_explicit_tdpy = simulate_gbm(
+        mu=0.3,
+        sigma=0.4,
+        s0=100.0,
+        n_steps=50,
+        n_paths=20,
+        seed=2,
+        trading_days_per_year=365.25,
+    )
+    # Identical paths because default tdpy == explicit 365.25.
+    assert np.allclose(r_default.paths, r_explicit_tdpy.paths)
+    assert r_default.params["dt"] == pytest.approx(1.0 / 365.25, rel=1e-12)

@@ -116,6 +116,29 @@ MarketPulse/
 - **Rithmic**: Real-time futures data (NQ)
 - **Coinbase**: Cryptocurrency data (BTC, ETH)
 - **Yahoo Finance**: Additional market data (VIX, etc.)
+- **FRED**: Federal Reserve Economic Data (Treasury yields, macro indicators)
+
+### Macro Data Setup (Multi-Asset Macro Research Lab)
+
+The multi-asset macro research lab uses **FRED** (Federal Reserve Economic Data) to pull
+Treasury yields, interest rates, and other macroeconomic indicators that drive
+cross-asset correlation analysis.
+
+A FRED API key is **required** for this lab. Registration is **free** and takes about
+2 minutes:
+
+1. Create a free account at https://fredaccount.stlouisfed.org/apikeys
+2. Request an API key (instant, no approval wait)
+3. Add it to your environment:
+   ```bash
+   # In .env
+   FRED_API_KEY=your_32_char_key_here
+   ```
+   Or in `config/credentials.yaml` under the `macro_data:` section.
+
+The free FRED tier allows **120 requests/minute**, which is more than enough for the
+scheduled fetches in this lab. The key is validated at provider startup — missing keys
+fail fast with a clear error pointing to the registration URL.
 
 ## LLM Integration
 

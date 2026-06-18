@@ -286,6 +286,7 @@ def run_backtest(
     slippage_bps: float = 5.0,
     inflows: list[dict] | None = None,
     loan: Loan | None = None,
+    trading_days_per_year: float = 365.25,
 ) -> BacktestResult:
     """Run an event-driven backtest.
 
@@ -309,6 +310,11 @@ def run_backtest(
             ``loan_to_equity_ratio``, ``margin_call_count``,
             ``liquidation_price`` (plus a boolean ``loan_defaulted``).
             ``loan=None`` (default) preserves the legacy loan-free behavior.
+        trading_days_per_year: periods per year used to annualize Sharpe/Sortino
+            (sqrt-N scaling). Default 365.25 = BTC daily cadence. Use 12 for
+            monthly housing, 252 for equities. NOTE: this only affects Sharpe/Sortino;
+            CAGR uses true calendar years (elapsed days / 365.25) and the scaling
+            model's own vol annualization is controlled by its params dict.
     """
     if df is None or df.empty:
         raise ValueError("df is empty")
@@ -766,8 +772,8 @@ def run_backtest(
         "end_equity": float(equity_curve.iloc[-1]) if len(equity_curve) else float(starting_equity),
         "total_return_pct": total_return_pct,
         "cagr_pct": cagr_pct,
-        "sharpe": float(sharpe_ratio(rets_series)),
-        "sortino": float(sortino_ratio(rets_series)),
+        "sharpe": float(sharpe_ratio(rets_series, periods_per_year=trading_days_per_year)),
+        "sortino": float(sortino_ratio(rets_series, periods_per_year=trading_days_per_year)),
         "calmar": calmar,
         "max_drawdown_pct": float(max_dd),
         "profit_factor": float(profit_factor(trades)) if trades else 0.0,
