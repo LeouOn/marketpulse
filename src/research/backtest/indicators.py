@@ -11,9 +11,17 @@ change here rather than surgery inside the hot loop.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
 from loguru import logger
+
+if TYPE_CHECKING:
+    # Forward reference only -- avoids an import cycle at runtime.
+    # AssetConfig lives in ``src.research.data`` which (transitively)
+    # imports strategies that import this module's siblings.
+    from src.research.data import AssetConfig
 
 
 def compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
@@ -50,17 +58,73 @@ def compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
 class IndicatorProvider:
     """Compute backtest indicators from an OHLCV DataFrame.
 
+    Asset-aware (W1 T5). The FGI and MVRV indicators are BTC-specific;
+    loading them for a non-BTC asset is wasteful (network calls, synthetic
+    data warnings). This class resolves ``enable_fgi`` / ``enable_mvrv``
+    from ``asset_config.indicator_whitelist`` when explicit flags are not
+    supplied.
+
     Parameters
     ----------
-    enable_fgi : bool
-        If *True* (default), attempt to load Fear & Greed Index data.
-        Failures are swallowed silently.
-    enable_mvrv : bool
-        If *True* (default), attempt to load MVRV Z-score data.
-        Failures are swallowed silently.
+    asset_config : AssetConfig | None
+        Static asset configuration. When provided, ``enable_fgi`` /
+        ``enable_mvrv`` default to whether ``"fgi"`` / ``"mvrv"`` appear
+        in ``asset_config.indicator_whitelist``. ``None`` (default) keeps
+        the historical BTC-legacy behaviour (both enabled).
+    enable_fgi : bool | None
+        If *True*, attempt to load Fear & Greed Index data. If *False*,
+        skip FGI entirely (no import, no network call). If *None*
+        (default), auto-resolve from ``asset_config`` (BTC legacy when
+        ``asset_config is None``).
+    enable_mvrv : bool | None
+        Same semantics as ``enable_fgi`` for the MVRV Z-score.
+
+    Notes
+    -----
+    Explicitly passing a flag that contradicts the whitelist-derived
+    value is honoured, but emits a ``logger.warning`` so the override is
+    visible in backtest logs.
     """
 
-    def __init__(self, enable_fgi: bool = True, enable_mvrv: bool = True) -> None:
+    def __init__(
+        self,
+        asset_config: "AssetConfig | None" = None,
+        enable_fgi: bool | None = None,
+        enable_mvrv: bool | None = None,
+    ) -> None:
+        self.asset_config = asset_config
+
+        # Auto-resolve from whitelist when no explicit flag is supplied.
+        if enable_fgi is None:
+            if asset_config is not None:
+                enable_fgi = "fgi" in asset_config.indicator_whitelist
+            else:
+                enable_fgi = True  # BTC legacy default
+        if enable_mvrv is None:
+            if asset_config is not None:
+                enable_mvrv = "mvrv" in asset_config.indicator_whitelist
+            else:
+                enable_mvrv = True  # BTC legacy default
+
+        # Warn on explicit override of the whitelist-derived default.
+        # (Only relevant when an asset_config is in play; bare BTC legacy
+        # construction has nothing to override.)
+        if asset_config is not None:
+            expected_fgi = "fgi" in asset_config.indicator_whitelist
+            expected_mvrv = "mvrv" in asset_config.indicator_whitelist
+            if enable_fgi != expected_fgi:
+                logger.warning(
+                    f"IndicatorProvider: enable_fgi={enable_fgi} overrides "
+                    f"asset_config whitelist for ticker={asset_config.ticker} "
+                    f"(whitelist would resolve to {expected_fgi})"
+                )
+            if enable_mvrv != expected_mvrv:
+                logger.warning(
+                    f"IndicatorProvider: enable_mvrv={enable_mvrv} overrides "
+                    f"asset_config whitelist for ticker={asset_config.ticker} "
+                    f"(whitelist would resolve to {expected_mvrv})"
+                )
+
         self.enable_fgi = enable_fgi
         self.enable_mvrv = enable_mvrv
 
