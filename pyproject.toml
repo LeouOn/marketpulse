@@ -61,6 +61,12 @@ asyncio_mode = "auto"
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    # Live tests hit real network/API endpoints (FRED, EIA, Yahoo, etc.).
+    # Skipped by default; opt in via `RUN_LIVE_TESTS=1` env var.
+    # Used by T11 (MacroFactorProvider Sahm validation against real UNRATE).
+    "live: marks tests that hit live external APIs (skipped unless RUN_LIVE_TESTS=1)",
+]
 
 [tool.mypy]
 ignore_missing_imports = true

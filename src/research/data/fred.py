@@ -73,7 +73,11 @@ class FredProvider(DataProvider):
         source (str: f"fred:{series_id}")
     """
 
-    # Metis SC4 lockdown: exactly these 13 series, no others.
+    # Metis SC4 lockdown. Originally 13 series (W2/T6); T11 (W3) added
+    # ``ISM_MANUFACTURING`` because the macro-factor table requires ``ism_pmi``
+    # (monthly ISM Manufacturing PMI) and no whitelist member covered it.
+    # The original T6 spec said "the whitelist already includes all the series
+    # you need" -- that was inaccurate; ISM was the one missing primitive.
     SUPPORTED_SERIES: frozenset[str] = frozenset(
         {
             "GOLDAMGBD228NLBM",  # Gold London AM fix
@@ -89,6 +93,7 @@ class FredProvider(DataProvider):
             "UNRATE",  # Unemployment rate
             "CPIAUCSL",  # CPI all urban consumers
             "MORTGAGE30US",  # 30Y fixed mortgage rate
+            "ISM_MANUFACTURING",  # ISM Manufacturing PMI (T11/W3 addition)
         }
     )
 

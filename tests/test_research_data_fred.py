@@ -349,7 +349,11 @@ class TestFredProviderContract:
 
 
 class TestFredProviderWhitelist:
-    """The SUPPORTED_SERIES frozenset is locked to the 13 approved IDs."""
+    """The SUPPORTED_SERIES frozenset is locked to the approved IDs.
+
+    Originally 13 series (W2/T6); T11 (W3) added ``ISM_MANUFACTURING``
+    because the macro-factor table requires an ``ism_pmi`` primitive.
+    """
 
     EXPECTED = frozenset(
         {
@@ -366,6 +370,7 @@ class TestFredProviderWhitelist:
             "UNRATE",
             "CPIAUCSL",
             "MORTGAGE30US",
+            "ISM_MANUFACTURING",  # T11/W3 addition (ism_pmi factor)
         }
     )
 
