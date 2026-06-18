@@ -46,13 +46,13 @@ from ..strategies import Strategy, BuyAndHold, NoTrade
 class Trade:
     ts: pd.Timestamp
     side: str  # "buy" | "sell"
-    btc_amount: float
+    units: float
     price: float
     notional_usd: float
     fee_usd: float
     slippage_usd: float
     cash_after: float
-    btc_after: float
+    units_after: float
     equity_after: float
     reason: str = ""
 
@@ -142,20 +142,20 @@ def _realized_pnl_per_closed_trade(trades: list[Trade]) -> list[float]:
     Positive values are winning trades, negative are losing trades.
     """
     pnls: list[float] = []
-    btc_pos = 0.0
+    units_pos = 0.0
     avg_cost = 0.0
     for t in trades:
         if t.side == "buy":
-            btc_pos += t.btc_amount
-            total_cost = avg_cost * (btc_pos - t.btc_amount) + t.notional_usd + t.fee_usd + t.slippage_usd
-            avg_cost = total_cost / btc_pos if btc_pos > 0 else 0.0
+            units_pos += t.units
+            total_cost = avg_cost * (units_pos - t.units) + t.notional_usd + t.fee_usd + t.slippage_usd
+            avg_cost = total_cost / units_pos if units_pos > 0 else 0.0
         else:  # sell closes a (partial) position
-            cost_basis = avg_cost * t.btc_amount
+            cost_basis = avg_cost * t.units
             realized = t.notional_usd - t.fee_usd - t.slippage_usd - cost_basis
             pnls.append(realized)
-            btc_pos -= t.btc_amount
-            if btc_pos <= 1e-12:
-                btc_pos = 0.0
+            units_pos -= t.units
+            if units_pos <= 1e-12:
+                units_pos = 0.0
                 avg_cost = 0.0
     return pnls
 
@@ -337,7 +337,7 @@ def run_backtest(
     slip_rate = slippage_bps / 10_000.0
 
     cash = starting_equity
-    btc = 0.0
+    units_held = 0.0
     avg_cost = 0.0
     peak_equity = starting_equity
     state: dict[str, Any] = {
@@ -396,7 +396,7 @@ def run_backtest(
         price = float(closes[i])
         if price <= 0:
             # Skip degenerate bars — preserve BTC equity at last valid price
-            equity = cash + btc * last_valid_price
+            equity = cash + units_held * last_valid_price
             equity_values.append(equity)
             drawdown_values.append(0.0)
             timestamps.append(ts)
@@ -405,7 +405,7 @@ def run_backtest(
         last_valid_price = price
 
         # Mark-to-market equity
-        equity = cash + btc * price
+        equity = cash + units_held * price
         if equity > peak_equity:
             peak_equity = equity
         state["peak_equity"] = peak_equity
@@ -465,7 +465,7 @@ def run_backtest(
             target_frac_value = 1.0
 
         target_position_value = equity * target_frac_value
-        current_position_value = btc * price
+        current_position_value = units_held * price
         diff_usd = target_position_value - current_position_value
 
         # Ask the scaling model for a buy/sell size hint
@@ -512,47 +512,47 @@ def run_backtest(
         # Execute
         if buy_usd > 1e-9:
             buy_price = price * (1.0 + slip_rate)
-            btc_bought = buy_usd / buy_price
+            units_bought = buy_usd / buy_price
             fee = buy_usd * fee_rate
             cash -= buy_usd + fee
-            btc += btc_bought
+            units_held += units_bought
             # update avg cost (in cost basis, include fee)
-            total_cost = avg_cost * (btc - btc_bought) + buy_usd + fee
-            avg_cost = total_cost / btc if btc > 0 else 0.0
+            total_cost = avg_cost * (units_held - units_bought) + buy_usd + fee
+            avg_cost = total_cost / units_held if units_held > 0 else 0.0
             trades.append(
                 Trade(
                     ts=ts,
                     side="buy",
-                    btc_amount=btc_bought,
+                    units=units_bought,
                     price=buy_price,
                     notional_usd=buy_usd,
                     fee_usd=fee,
                     slippage_usd=buy_usd * slip_rate,
                     cash_after=cash,
-                    btc_after=btc,
-                    equity_after=cash + btc * price,
+                    units_after=units_held,
+                    equity_after=cash + units_held * price,
                     reason="strategy_target",
                 )
             )
 
         if sell_usd > 1e-9:
             sell_price = price * (1.0 - slip_rate)
-            btc_sold = sell_usd / sell_price
+            units_sold = sell_usd / sell_price
             fee = sell_usd * fee_rate
             cash += sell_usd - fee
-            btc -= btc_sold
+            units_held -= units_sold
             trades.append(
                 Trade(
                     ts=ts,
                     side="sell",
-                    btc_amount=btc_sold,
+                    units=units_sold,
                     price=sell_price,
                     notional_usd=sell_usd,
                     fee_usd=fee,
                     slippage_usd=sell_usd * slip_rate,
                     cash_after=cash,
-                    btc_after=btc,
-                    equity_after=cash + btc * price,
+                    units_after=units_held,
+                    equity_after=cash + units_held * price,
                     reason="strategy_target",
                 )
             )
@@ -587,11 +587,11 @@ def run_backtest(
                 if (
                     not loan.margin_call_active
                     and loan.should_margin_call(equity, current_debt)
-                    and btc > 0
+                    and units_held > 0
                 ):
-                    sell_usd_loan = btc * price
+                    sell_usd_loan = units_held * price
                     cash += sell_usd_loan
-                    btc = 0.0
+                    units_held = 0.0
                     margin_call_count += 1
                     loan.margin_call_active = True
                     loan_payments.append(
@@ -653,12 +653,12 @@ def run_backtest(
             if loan.is_matured(ts):
                 balloon = loan.remaining_debt(ts)
                 # NoRecourseLoan: liquidate BTC collateral first
-                if cash < balloon and isinstance(loan, NoRecourseLoan) and btc > 0:
+                if cash < balloon and isinstance(loan, NoRecourseLoan) and units_held > 0:
                     shortfall = balloon - cash
-                    btc_to_sell = min(btc, shortfall / price)
-                    proceeds = btc_to_sell * price
+                    units_to_sell = min(units_held, shortfall / price)
+                    proceeds = units_to_sell * price
                     cash += proceeds
-                    btc -= btc_to_sell
+                    units_held -= units_to_sell
                     loan_payments.append(
                         LoanPayment(
                             ts=ts,
@@ -727,7 +727,7 @@ def run_backtest(
                     )
 
         # Recompute equity and store
-        equity = cash + btc * price
+        equity = cash + units_held * price
         if equity > peak_equity:
             peak_equity = equity
         state["peak_equity"] = peak_equity
