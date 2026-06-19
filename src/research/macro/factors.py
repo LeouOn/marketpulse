@@ -109,7 +109,7 @@ _FRED_DIRECT: dict[str, str] = {
     "dxy": "DTWEXBGS",
     "vix": "VIXCLS",
     "fed_funds": "DFF",
-    "ism_pmi": "ISM_MANUFACTURING",
+    "ism_pmi": "IPMAN",  # Industrial Production Manufacturing (ISM PMI proxy — ISM removed from FRED 2016)
     "unemployment": "UNRATE",
     "mortgage_30y": "MORTGAGE30US",
 }

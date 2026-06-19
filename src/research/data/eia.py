@@ -52,12 +52,15 @@ _CONTRACT_COLUMNS = ["ts", "open", "high", "low", "close", "volume", "source"]
 # ``petroleum/pri/spt`` route at daily frequency; weekly inventories live
 # under ``petroleum/stoc/wstk`` at weekly frequency. The route+frequency are
 # looked up at fetch time so the URL matches the series being requested.
-_SERIES_ROUTE: dict[str, tuple[str, str]] = {
-    "PET.RWTC.D": ("petroleum/pri/spt/data", "daily"),  # WTI spot daily
-    "PET.RBRTE.D": ("petroleum/pri/spt/data", "daily"),  # Brent spot daily
-    "PET.WGFUPUS2.W": ("petroleum/stoc/wstk/data", "weekly"),  # Weekly crude inventory
-    "PET.WPULEUS3.W": ("petroleum/stoc/wstk/data", "weekly"),  # Weekly gasoline inventory
-    "PET.WPUP_NUS-Z1_2.W": ("petroleum/stoc/wstk/data", "weekly"),  # Weekly distillate inventory
+# Each public (v1-style) series ID maps to (route, frequency, v2_facet_code).
+# CRITICAL: v2 API facets[series][] expects SHORT codes (e.g. RWTC), not
+# legacy dotted IDs. Filtering by dotted ID silently returns 0 rows.
+_SERIES_ROUTE: dict[str, tuple[str, str, str]] = {
+    "PET.RWTC.D":          ("petroleum/pri/spt/data",   "daily",  "RWTC"),
+    "PET.RBRTE.D":         ("petroleum/pri/spt/data",   "daily",  "RBRTE"),
+    "PET.WGFUPUS2.W":      ("petroleum/stoc/wstk/data", "weekly", "WCRSTUS1"),
+    "PET.WPULEUS3.W":      ("petroleum/stoc/wstk/data", "weekly", "WGTSTUS1"),
+    "PET.WPUP_NUS-Z1_2.W": ("petroleum/stoc/wstk/data", "weekly", "WDISTUS1"),
 }
 
 
@@ -176,13 +179,13 @@ class EiaProvider(DataProvider):
 
     def _build_url(self, series_id: str, start: date, end: date) -> str:
         """Build the EIA v2 GET URL for one series over a date range."""
-        route, frequency = _SERIES_ROUTE[series_id]
+        route, frequency, facet = _SERIES_ROUTE[series_id]
         return (
             f"{EIA_V2_BASE}/{route}"
             f"?api_key={self.api_key}"
             f"&frequency={frequency}"
             f"&data[0]=value"
-            f"&facets[series][]={series_id}"
+            f"&facets[series][]={facet}"
             f"&start={start.isoformat()}"
             f"&end={end.isoformat()}"
         )

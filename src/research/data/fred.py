@@ -80,20 +80,18 @@ class FredProvider(DataProvider):
     # you need" -- that was inaccurate; ISM was the one missing primitive.
     SUPPORTED_SERIES: frozenset[str] = frozenset(
         {
-            "GOLDAMGBD228NLBM",  # Gold London AM fix
-            "GOLDPMGBD228NLBM",  # Gold London PM fix
             "DCOILWTICO",  # WTI spot
-            "CSUSHPINSA",  # Case-Shiller National NSA
+            "CSUSHPINSA",  # Case-Shiller National NSA (monthly)
             "DFII10",  # 10Y real yield
             "DGS10",  # 10Y nominal yield
             "T10YIE",  # 10Y breakeven inflation
             "DTWEXBGS",  # Trade-weighted USD index
             "VIXCLS",  # VIX
             "DFF",  # Fed Funds effective rate
-            "UNRATE",  # Unemployment rate
-            "CPIAUCSL",  # CPI all urban consumers
-            "MORTGAGE30US",  # 30Y fixed mortgage rate
-            "ISM_MANUFACTURING",  # ISM Manufacturing PMI (T11/W3 addition)
+            "UNRATE",  # Unemployment rate (monthly)
+            "CPIAUCSL",  # CPI all urban consumers (monthly)
+            "MORTGAGE30US",  # 30Y fixed mortgage rate (weekly)
+            "IPMAN",  # Industrial Production Manufacturing (monthly; ISM PMI proxy — ISM removed from FRED 2016)
         }
     )
 
@@ -109,7 +107,7 @@ class FredProvider(DataProvider):
         api_key: str | None = None,
         cache_dir: Path = Path("data/macro"),
         max_staleness_days: int = 60,
-        series_id: str = "GOLDAMGBD228NLBM",
+        series_id: str = "DFF",  # default to a working series (gold LBMA removed from FRED)
     ) -> None:
         # Resolve the API key first so a missing key fails fast before any
         # filesystem work (T1 fail-fast helper).
@@ -338,25 +336,40 @@ class FredProvider(DataProvider):
     # Staleness guard
     # ------------------------------------------------------------------
 
+    # Monthly series publish with ~2-month lag (e.g. Case-Shiller March data
+    # lands late May). Their latest observation is routinely 60-110 days old
+    # even when perfectly fresh. Give them a larger staleness allowance.
+    _MONTHLY_SERIES: frozenset[str] = frozenset({
+        "CSUSHPINSA", "UNRATE", "CPIAUCSL", "IPMAN",
+    })
+
+    def _staleness_limit(self, series_id: str) -> int:
+        """Cadence-aware staleness threshold in days."""
+        if series_id in self._MONTHLY_SERIES:
+            return max(self.max_staleness_days, 120)
+        return self.max_staleness_days
+
     def _check_staleness(
         self, df: pd.DataFrame, series_id: str, query_end: date
     ) -> None:
         """Raise :class:`DataPipelineError` if source data is too stale.
 
         Only enforced for *current* queries -- i.e. ``query_end`` is within
-        ``max_staleness_days`` of today. Historical backtests fetch old data
-        on purpose and must not trip this guard.
+        the staleness window of today. Historical backtests fetch old data
+        on purpose and must not trip this guard. Monthly-lagged series get
+        a larger allowance (120d) to account for publication lag.
         """
         today = date.today()
-        if query_end < today - timedelta(days=self.max_staleness_days):
+        limit = self._staleness_limit(series_id)
+        if query_end < today - timedelta(days=limit):
             return  # historical query -- staleness does not apply
         if df.empty:
             return
         last_ts = df["ts"].max()
         last_date = last_ts.date() if hasattr(last_ts, "date") else pd.Timestamp(last_ts).date()
         age_days = (today - last_date).days
-        if age_days > self.max_staleness_days:
+        if age_days > limit:
             raise DataPipelineError(
                 f"FRED series {series_id} is stale: last update {last_date}, "
-                f"max staleness {self.max_staleness_days}d"
+                f"max staleness {limit}d"
             )

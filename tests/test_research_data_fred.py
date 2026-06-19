@@ -331,7 +331,7 @@ class TestFredProviderContract:
 
         df = provider.load_daily(date(2020, 1, 1), date(2020, 1, 3))
 
-        assert (df["source"] == "fred:GOLDAMGBD228NLBM").all()  # default series
+        assert (df["source"] == "fred:DFF").all()  # default series (was GOLDAMGBD228NLBM, removed from FRED)
 
     def test_load_daily_uses_configured_series(self, tmp_path: Path):
         fake = _make_series([100.0] * 3, start="2020-01-01")
@@ -357,8 +357,6 @@ class TestFredProviderWhitelist:
 
     EXPECTED = frozenset(
         {
-            "GOLDAMGBD228NLBM",
-            "GOLDPMGBD228NLBM",
             "DCOILWTICO",
             "CSUSHPINSA",
             "DFII10",
@@ -370,7 +368,7 @@ class TestFredProviderWhitelist:
             "UNRATE",
             "CPIAUCSL",
             "MORTGAGE30US",
-            "ISM_MANUFACTURING",  # T11/W3 addition (ism_pmi factor)
+            "IPMAN",  # Industrial Production Manufacturing (ISM PMI proxy — ISM removed from FRED 2016)
         }
     )
 
