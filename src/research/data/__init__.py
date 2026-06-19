@@ -814,6 +814,7 @@ def _build_asset_registry() -> dict[str, AssetConfig]:
     from src.research.data.alpaca import AlpacaProvider
     from src.research.data.btc import BtcProvider
     from src.research.data.fred import FredProvider
+    from src.research.data.yahoo import YahooProvider
 
     # Lazy import of the gold cycle strategy. Done inside the builder to
     # preserve the cycle-safe ordering documented at the top of this
@@ -849,18 +850,18 @@ def _build_asset_registry() -> dict[str, AssetConfig]:
             research_notes="",
         ),
         "GOLD": AssetConfig(
-            ticker="GOLDAMGBD228NLBM",
-            display_name="Gold (LBMA AM fix)",
+            ticker="GLD",
+            display_name="Gold (GLD ETF proxy)",
             asset_class="commodity",
             calendar="NYSE",
             trading_days_per_year=252,
-            data_provider=FredProvider,
+            data_provider=YahooProvider,
             cycle_strategy=RealRateCycleAccumulation,  # W4 T16
             indicator_whitelist=("rsi", "mayer"),
             default_regime_multipliers={},
             publication_lag_days=0,
             tradeable=True,
-            research_notes="",
+            research_notes="Uses GLD ETF as proxy for spot gold (LBMA fix unavailable on FRED free tier).",
         ),
         "OIL": AssetConfig(
             ticker="DCOILWTICO",
