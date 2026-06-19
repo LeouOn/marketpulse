@@ -88,7 +88,7 @@ class IndicatorProvider:
 
     def __init__(
         self,
-        asset_config: "AssetConfig | None" = None,
+        asset_config: AssetConfig | None = None,
         enable_fgi: bool | None = None,
         enable_mvrv: bool | None = None,
     ) -> None:

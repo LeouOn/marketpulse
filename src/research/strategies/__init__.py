@@ -17,7 +17,6 @@ from typing import Any, ClassVar
 import numpy as np
 import pandas as pd
 
-
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
@@ -440,23 +439,22 @@ class MacroGateMixin:
 # Registry
 # ---------------------------------------------------------------------------
 
-from src.research.strategies.LadderLimit import LadderLimit  # noqa: E402
-from src.research.strategies.RecurringFundingDCA import RecurringFundingDCA  # noqa: E402
-from src.research.strategies.HalvingCycleAccumulation import HalvingCycleAccumulation  # noqa: E402
 from src.research.strategies.CompositeAccumulation import CompositeAccumulation  # noqa: E402
-from src.research.strategies.cycle_base import CycleAccumulation  # noqa: E402
-from src.research.strategies.RealRateCycleAccumulation import (  # noqa: E402
-    RealRateCycleAccumulation,
-)
 from src.research.strategies.EarningsCycleAccumulation import (  # noqa: E402
     EarningsCycleAccumulation,
+)
+from src.research.strategies.HalvingCycleAccumulation import HalvingCycleAccumulation  # noqa: E402
+from src.research.strategies.LadderLimit import LadderLimit  # noqa: E402
+from src.research.strategies.MortgageCycleAccumulation import (  # noqa: E402
+    MortgageCycleAccumulation,
 )
 from src.research.strategies.OPECCycleAccumulation import (  # noqa: E402
     OPECCycleAccumulation,
 )
-from src.research.strategies.MortgageCycleAccumulation import (  # noqa: E402
-    MortgageCycleAccumulation,
+from src.research.strategies.RealRateCycleAccumulation import (  # noqa: E402
+    RealRateCycleAccumulation,
 )
+from src.research.strategies.RecurringFundingDCA import RecurringFundingDCA  # noqa: E402
 
 _REGISTRY: dict[str, type[Strategy]] = {
     "BuyAndHold": BuyAndHold,

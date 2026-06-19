@@ -64,7 +64,6 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-
 # ---------------------------------------------------------------------------
 # Regime enum (canonical -- T13 LLMJudgeNarrator imports this)
 # ---------------------------------------------------------------------------

@@ -44,7 +44,6 @@ import argparse
 import json
 import sys
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -54,9 +53,8 @@ from . import tools as research_tools
 from .backtest import run_backtest
 from .data import AssetConfig, AssetRegistry, DataProvider
 from .montecarlo import simulate_block_bootstrap, simulate_gbm, simulate_regime_switching
-from .scaling import describe_scaling, list_scaling_models, get_scaling
-from .strategies import describe_strategy, get_strategy, list_strategies, MacroGateMixin
-
+from .scaling import get_scaling, list_scaling_models
+from .strategies import MacroGateMixin, get_strategy, list_strategies
 
 # ---------------------------------------------------------------------------
 # Asset-agnostic helpers

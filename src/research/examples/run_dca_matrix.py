@@ -6,16 +6,12 @@ from __future__ import annotations
 import json
 import pathlib
 import sys
-import time
-from datetime import datetime, timezone
-
-import pandas as pd
+from datetime import UTC, datetime
 
 sys.path.insert(0, ".")
 
 from src.research.backtest import run_backtest_from_names
 from src.research.data import load_daily
-from src.research.tools import _save_report, _equity_curve_png, _drawdown_png
 
 OUT = pathlib.Path("docs/superpowers/analysis/empirical_results.json")
 
@@ -56,7 +52,7 @@ def main() -> None:
         "starting_equity": starting_equity,
         "fee_bps": 10,
         "slippage_bps": 5,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "matrix": [],
     }
 
@@ -115,7 +111,7 @@ def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(results, indent=2, default=str))
     print(f"Wrote {OUT}")
-    print(f"Best endings by strategy:")
+    print("Best endings by strategy:")
     for s, r in best_by_strategy.items():
         print(f"  {s:25s} -> ${r['ending_equity']:>15,.2f}  (CAGR {r['cagr_pct']:>6.2f}%, Sharpe {r['sharpe']:>5.2f}, MaxDD {r['max_drawdown_pct']:>5.2f}%)")
 

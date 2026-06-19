@@ -59,7 +59,6 @@ from loguru import logger
 from src.research.data.fred import FredProvider
 from src.research.data.yahoo import YahooProvider
 
-
 # ---------------------------------------------------------------------------
 # Provider Protocols -- structural typing so unit-test stubs work without
 # inheriting from FredProvider / YahooProvider (whose constructors reach

@@ -3,21 +3,17 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
 from src.research import tools as t
 from src.research.tools import (
-    REPORTS_DIR,
-    ToolResult,
     execute,
     list_tools,
-    tool_descriptions,
     tool_describe_scaling_model,
     tool_describe_strategy,
+    tool_descriptions,
     tool_explain_metric,
     tool_get_data_summary,
     tool_list_scaling_models,
@@ -77,6 +73,8 @@ def test_list_tools_returns_all_known():
         "run_montecarlo",
         "compare_strategies",
         "explain_metric",
+        # W4 T20: multi-asset cross-comparison tool.
+        "compare_assets",
     }
     assert set(names) == expected
 

@@ -23,20 +23,20 @@ import io
 import json
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
 
 from . import data as data_mod
 from .backtest import run_backtest_from_names
-from .data import AssetRegistry, AssetConfig
+from .data import AssetConfig, AssetRegistry
 from .montecarlo import simulate_block_bootstrap, simulate_gbm, simulate_regime_switching
 from .scaling import describe_scaling, list_scaling_models
 from .strategies import describe_strategy, list_strategies
-
 
 # ---------------------------------------------------------------------------
 # Report persistence

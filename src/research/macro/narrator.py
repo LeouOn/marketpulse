@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -306,10 +306,10 @@ Now try again. Respond with the JSON object ONLY.
             If the LLM fails to produce valid output after one retry.
             The caller (T14) catches this and falls back to rules-only.
         """
-        ts = timestamp or datetime.now(timezone.utc)
+        ts = timestamp or datetime.now(UTC)
         # Normalise tz: compare everything in UTC for cache TTL arithmetic.
         if ts.tzinfo is not None:
-            ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+            ts = ts.astimezone(UTC).replace(tzinfo=None)
 
         # 1. Cache lookup (returns None on miss / stale / corrupt).
         cached = self._read_cache(ts.date(), asset_config.ticker)
@@ -526,7 +526,7 @@ Now try again. Respond with the JSON object ONLY.
         if getattr(cached_at, "tzinfo", None) is not None:
             cached_at = cached_at.tz_convert("UTC").tz_localize(None)
 
-        age = datetime.now(timezone.utc).replace(tzinfo=None) - cached_at.to_pydatetime()
+        age = datetime.now(UTC).replace(tzinfo=None) - cached_at.to_pydatetime()
         if age > _CACHE_TTL:
             logger.debug(
                 f"narrator: cache stale for {ticker} @ {cache_date} "

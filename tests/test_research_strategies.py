@@ -6,11 +6,11 @@ properties. The tests check that the signal matches expectations.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 import pandas as pd
 import pytest
-
-from typing import ClassVar
 
 from src.research.strategies import (
     BuyAndHold,
@@ -27,7 +27,6 @@ from src.research.strategies import (
     get_strategy,
     list_strategies,
 )
-
 
 # ---------------------------------------------------------------------------
 # Synthetic series helpers
@@ -223,6 +222,10 @@ def test_list_strategies_returns_all_known():
         # W4 T16: gold's real-rate-cycle accumulator. The abstract
         # CycleAccumulation base is intentionally NOT registered.
         "RealRateCycleAccumulation",
+        # W4 T17+T18: equity/oil/housing cycle accumulators + mortgage amortizer.
+        "MortgageCycleAccumulation",
+        "OPECCycleAccumulation",
+        "EarningsCycleAccumulation",
     }
 
 

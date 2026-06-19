@@ -33,9 +33,8 @@ import numpy as np
 import pandas as pd
 
 from ..loans import Loan, LoanPayment, MarginLoan, NoRecourseLoan
-from ..scaling import ScalingModel, FixedDollar
-from ..strategies import Strategy, BuyAndHold, NoTrade
-
+from ..scaling import ScalingModel
+from ..strategies import BuyAndHold, Strategy
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -363,7 +362,6 @@ def run_backtest(
     loan_settled = False  # balloon paid — stop further loan processing
 
     closes = df["close"].astype(float).to_numpy()
-    rets = pd.Series(closes).pct_change().fillna(0.0)
     recent_returns: list[float] = []  # rolling window for scaling model
     last_valid_price: float = 0.0  # used to preserve BTC equity on zero-price bars
 
@@ -854,8 +852,8 @@ def run_backtest_from_names(
     loan: Loan | None = None,
 ) -> BacktestResult:
     """Convenience wrapper that looks up strategy and scaling by name."""
-    from ..strategies import get_strategy as _gs
     from ..scaling import get_scaling as _gc
+    from ..strategies import get_strategy as _gs
 
     strategy = _gs(strategy_name, strategy_params)
     scaling = _gc(scaling_name, scaling_params) if scaling_name else None

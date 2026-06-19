@@ -587,12 +587,13 @@ export function ThreeColumnDashboard() {
                 {/* Commodities & Crypto */}
                 {macroData && (() => {
                   const commoditiesAndCrypto = Object.fromEntries(
-                    Object.entries(macroData).filter(([key]) =>
+                    Object.entries(macroData).filter(([key, value]) =>
                       ['DXY', 'TNX', 'CL', 'CLF', 'GC', 'BTC', 'ETH', 'SOL', 'XRP'].includes(key)
+                      && value != null
                     )
-                  );
+                  ) as Record<string, MarketData>;
                   return Object.keys(commoditiesAndCrypto).length > 0
-                    ? renderDataTable('Commodities & Crypto', <Globe className="w-5 h-5 text-yellow-400" />, commoditiesAndCrypto as any, macroLabels)
+                    ? renderDataTable('Commodities & Crypto', <Globe className="w-5 h-5 text-yellow-400" />, commoditiesAndCrypto, macroLabels)
                     : null;
                 })()}
 

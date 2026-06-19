@@ -141,7 +141,7 @@ class MortgageCycleAccumulation(CycleAccumulation):
 
     def _create_mortgage(
         self, current_rate: float, purchase_price: float
-    ) -> "Any":
+    ) -> Any:
         """Build a :class:`FixedRateLoan` as a 30Y mortgage interest-only proxy.
 
         Convenience helper for downstream engine integration (e.g. T21

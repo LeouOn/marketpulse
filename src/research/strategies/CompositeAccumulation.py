@@ -84,7 +84,6 @@ class CompositeAccumulation(Strategy):
         cons = float(p["conservative_frac"])
 
         close = df["close"]
-        n = len(df)
 
         # --- FGI score (0 = extreme fear → bullish → score 1.0) ---
         if "fgi_value" in df.columns:

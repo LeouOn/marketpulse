@@ -24,7 +24,6 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-
 # ---------------------------------------------------------------------------
 # Result envelope
 # ---------------------------------------------------------------------------
@@ -348,7 +347,6 @@ def simulate_strategy(
         raise ValueError(f"Unknown method '{method}' for strategy simulation")
 
     sim = method_fn()
-    rng = np.random.default_rng(seed)
     equity_paths = np.zeros((n_paths, n_steps + 1))
     metrics_list: list[dict[str, float]] = []
 

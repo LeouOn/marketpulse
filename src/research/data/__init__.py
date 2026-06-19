@@ -22,9 +22,8 @@ import csv
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pandas as pd
 import requests
@@ -36,12 +35,6 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential_jitter,
 )
-
-if TYPE_CHECKING:
-    # Forward reference only -- avoids an import cycle at runtime.
-    # Strategies (T16-T18) reference AssetConfig.cycle_strategy.
-    from src.research.strategies import Strategy
-
 
 # ---------------------------------------------------------------------------
 # Multi-asset foundation: DataProvider ABC + AssetConfig + AssetRegistry (T2)
@@ -223,9 +216,7 @@ def _is_retryable(exc: BaseException) -> bool:
     """Return True for transient errors we should retry."""
     if isinstance(exc, requests.HTTPError):
         return exc.response is not None and exc.response.status_code in (408, 429, 500, 502, 503, 504)
-    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
-        return True
-    return False
+    return isinstance(exc, (requests.Timeout, requests.ConnectionError))
 
 
 @retry(
@@ -382,13 +373,13 @@ def fetch_hourly_cryptocompare(
     if end_ts is None:
         end_ts = int(time.time())
     if start_ts is None:
-        start_ts = int(datetime(2010, 7, 17, tzinfo=timezone.utc).timestamp())
+        start_ts = int(datetime(2010, 7, 17, tzinfo=UTC).timestamp())
 
     rows: list[dict] = []
     cursor = end_ts
     pages = 0
     logger.info(
-        f"[T2] Fetching hourly BTC-USD from CryptoCompare (>= {datetime.fromtimestamp(start_ts, tz=timezone.utc).date()})"
+        f"[T2] Fetching hourly BTC-USD from CryptoCompare (>= {datetime.fromtimestamp(start_ts, tz=UTC).date()})"
     )
     headers = {}
     if CRYPTOCOMPARE_API_KEY:
@@ -422,7 +413,7 @@ def fetch_hourly_cryptocompare(
         pages += 1
 
     if not rows:
-        logger.info(f"[T2] CryptoCompare returned 0 hourly bars (no data or auth required)")
+        logger.info("[T2] CryptoCompare returned 0 hourly bars (no data or auth required)")
         return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "source"])
     df = pd.DataFrame(rows).drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
     logger.info(f"[T2] CryptoCompare returned {len(df)} hourly bars across {pages} pages")
@@ -454,7 +445,7 @@ def fetch_hourly_kraken(
         start_ts = int(BINANCE_BTC_START.tz_localize("UTC").timestamp())
 
     logger.info(
-        f"[T3] Fetching hourly XBT-USD from Kraken (requesting >= {datetime.fromtimestamp(start_ts, tz=timezone.utc).date()})"
+        f"[T3] Fetching hourly XBT-USD from Kraken (requesting >= {datetime.fromtimestamp(start_ts, tz=UTC).date()})"
     )
     try:
         payload = _http_get_json(
@@ -813,7 +804,7 @@ def data_summary(df: pd.DataFrame, trading_days_per_year: float = 365.25) -> dic
 # ---------------------------------------------------------------------------
 
 
-def _build_asset_registry() -> "dict[str, AssetConfig]":
+def _build_asset_registry() -> dict[str, AssetConfig]:
     """Build the populated asset registry with deferred provider imports.
 
     Returns the 5-entry registry used across the research lab. Kept as a
@@ -823,6 +814,7 @@ def _build_asset_registry() -> "dict[str, AssetConfig]":
     from src.research.data.alpaca import AlpacaProvider
     from src.research.data.btc import BtcProvider
     from src.research.data.fred import FredProvider
+
     # Lazy import of the gold cycle strategy. Done inside the builder to
     # preserve the cycle-safe ordering documented at the top of this
     # section: data/__init__.py must finish loading before any
@@ -831,11 +823,11 @@ def _build_asset_registry() -> "dict[str, AssetConfig]":
     from src.research.strategies.EarningsCycleAccumulation import (
         EarningsCycleAccumulation,
     )
-    from src.research.strategies.OPECCycleAccumulation import (
-        OPECCycleAccumulation,
-    )
     from src.research.strategies.MortgageCycleAccumulation import (
         MortgageCycleAccumulation,
+    )
+    from src.research.strategies.OPECCycleAccumulation import (
+        OPECCycleAccumulation,
     )
     from src.research.strategies.RealRateCycleAccumulation import (
         RealRateCycleAccumulation,
