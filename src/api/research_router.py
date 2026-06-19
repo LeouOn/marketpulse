@@ -1,19 +1,32 @@
-"""Research lab router (B7).
+"""Research lab router (B7 + W4 T20 multi-asset).
 
-Exposes the BTC research tools over HTTP:
+Exposes the multi-asset research tools over HTTP:
 
 - ``GET  /api/research/strategies``          : list strategies
 - ``GET  /api/research/strategies/{name}``   : describe a strategy
 - ``GET  /api/research/scaling``             : list scaling models
 - ``GET  /api/research/scaling/{name}``      : describe a scaling model
-- ``POST /api/research/backtest``            : run a single backtest
-- ``POST /api/research/montecarlo``          : run a Monte Carlo
-- ``POST /api/research/compare``             : compare strategies
+- ``POST /api/research/backtest``            : run a single backtest (BTC default)
+- ``POST /api/research/montecarlo``          : run a Monte Carlo (BTC default)
+- ``POST /api/research/compare``             : compare strategies OR assets
 - ``POST /api/research/explain-metric``      : explain a metric
-- ``POST /api/research/chat``                : full agentic chat loop (NDJSON stream)
+- ``POST /api/research/chat``                : full agentic chat loop (BTC default)
 - ``GET  /api/research/reports``             : list saved reports
 - ``GET  /api/research/reports/{id}``        : fetch one report
 - ``GET  /api/research/data/summary``        : summarize data in a range
+
+Multi-asset routes (W4 T20):
+
+- ``GET  /api/research/assets``              : list AssetRegistry keys
+- ``GET  /api/research/{asset}/data``        : cached OHLCV for an asset
+- ``POST /api/research/{asset}/backtest``    : backtest with asset context
+- ``POST /api/research/{asset}/montecarlo``  : MC with asset context
+- ``GET  /api/research/{asset}/regime``      : current regime + narrative
+- ``GET  /api/research/regimes``             : regime tape over a date range
+- ``POST /api/research/chat/{asset}``        : asset-scoped chat
+
+Existing BTC routes are preserved verbatim -- the multi-asset routes default
+to ``asset='BTC'`` so legacy callers see no change.
 
 The chat endpoint streams NDJSON events: ``{type, ...}`` where ``type`` is one
 of ``token`` (LLM output), ``tool_call``, ``tool_result``, ``final``,
@@ -29,12 +42,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
 from pydantic import BaseModel, Field
 
 from ..research import tools as research_tools
+from ..research.data import AssetRegistry, AssetConfig
+from ..research.strategies import _REGISTRY
 
 router = APIRouter(prefix="/api/research", tags=["research"])
 
@@ -55,6 +71,10 @@ class BacktestRequest(BaseModel):
     starting_equity: float = 10_000.0
     fee_bps: float = 10.0
     slippage_bps: float = 5.0
+    # W4 T20: multi-asset + regime gating hooks.
+    asset: str = "BTC"
+    regime_gating: bool = False
+    regime_alpha: float = 1.0
 
 
 class MonteCarloRequest(BaseModel):
@@ -69,15 +89,42 @@ class MonteCarloRequest(BaseModel):
     end: str | None = None
     timeframe: str = "daily"
     seed: int = 42
+    # W4 T20: asset context for bootstrap methods.
+    asset: str = "BTC"
 
 
 class CompareRequest(BaseModel):
-    strategies: list[Any]  # list of names or {name, params}
+    """Polymorphic compare: pass ``strategies`` for legacy single-asset
+    strategy comparison, OR pass ``assets`` + ``strategy`` for multi-asset
+    comparison (Metis SC2: normalized total return only).
+
+    The router dispatches based on which field is set.
+    """
+
+    # Legacy strategies-comparison mode (back-compat).
+    strategies: list[Any] | None = None  # list of names or {name, params}
     scaling: str | None = None
-    start: str | None = None
-    end: str | None = None
     timeframe: str = "daily"
     starting_equity: float = 10_000.0
+    # New multi-asset mode (W4 T20).
+    assets: list[str] | None = None
+    strategy: str | None = None
+    # Common.
+    start: str | None = None
+    end: str | None = None
+
+
+class MultiAssetCompareRequest(BaseModel):
+    """Explicit multi-asset compare body (Metis SC2).
+
+    Mirrors the ``assets`` / ``strategy`` branch of :class:`CompareRequest`
+    but as its own model for callers that prefer an unambiguous schema.
+    """
+
+    assets: list[str]
+    strategy: str
+    start: str | None = None
+    end: str | None = None
 
 
 class ExplainMetricRequest(BaseModel):
@@ -95,6 +142,28 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     max_tool_calls: int = 5
     model: str | None = None  # if None, use default (MiniMax-M3 via ModelRouter)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _require_asset(asset: str) -> AssetConfig:
+    """Resolve ``asset`` against the :data:`AssetRegistry` or HTTP 404.
+
+    Used by every ``/{asset}/...`` route so the validation is in one place.
+    """
+    cfg = AssetRegistry.get(asset)
+    if cfg is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Unknown asset: {asset}. "
+                f"Supported: {sorted(AssetRegistry)}"
+            ),
+        )
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +207,10 @@ async def data_summary(start: str | None = None, end: str | None = None, timefra
 
 @router.post("/backtest")
 async def backtest(req: BacktestRequest):
-    r = research_tools.tool_run_backtest(req.model_dump(exclude_none=True))
+    """Legacy single-asset backtest. ``asset`` defaults to BTC (back-compat)."""
+    r = research_tools.tool_run_backtest(
+        req.model_dump(exclude_none=True), asset=req.asset
+    )
     if not r.success:
         raise HTTPException(status_code=400, detail=r.error)
     return r.to_dict()
@@ -146,7 +218,10 @@ async def backtest(req: BacktestRequest):
 
 @router.post("/montecarlo")
 async def montecarlo(req: MonteCarloRequest):
-    r = research_tools.tool_run_montecarlo(req.model_dump(exclude_none=True))
+    """Legacy Monte Carlo. ``asset`` defaults to BTC (back-compat)."""
+    r = research_tools.tool_run_montecarlo(
+        req.model_dump(exclude_none=True), asset=req.asset
+    )
     if not r.success:
         raise HTTPException(status_code=400, detail=r.error)
     return r.to_dict()
@@ -154,7 +229,43 @@ async def montecarlo(req: MonteCarloRequest):
 
 @router.post("/compare")
 async def compare(req: CompareRequest):
-    r = research_tools.execute("compare_strategies", req.model_dump(exclude_none=True))
+    """Polymorphic compare: strategies (legacy) OR assets (multi-asset).
+
+    The presence of ``assets`` in the body selects the multi-asset path;
+    otherwise we fall through to the legacy strategies-comparison path so
+    existing callers see no change.
+    """
+    if req.assets:
+        # Multi-asset compare (Metis SC2: normalized total return only).
+        if not req.strategy:
+            raise HTTPException(
+                status_code=400,
+                detail="'strategy' is required when 'assets' is provided",
+            )
+        # Validate every asset up front so a typo 404s before any work.
+        for a in req.assets:
+            _require_asset(a)
+        r = research_tools.tool_compare_assets(
+            {
+                "assets": req.assets,
+                "strategy": req.strategy,
+                "start": req.start,
+                "end": req.end,
+            }
+        )
+        if not r.success:
+            raise HTTPException(status_code=400, detail=r.error)
+        return r.to_dict()
+
+    # Legacy strategies-comparison path.
+    if not req.strategies:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either 'strategies' (legacy) or 'assets' + 'strategy' (multi-asset)",
+        )
+    r = research_tools.execute(
+        "compare_strategies", req.model_dump(exclude_none=True)
+    )
     if not r.success:
         raise HTTPException(status_code=400, detail=r.error)
     return r.to_dict()
@@ -256,12 +367,41 @@ async def get_report_image(report_id: str, kind: str):
 # ---------------------------------------------------------------------------
 
 
-_SYSTEM_PROMPT = """You are a Bitcoin long-term research analyst. You help the user explore \
-strategies, position-sizing models, and Monte Carlo outcomes for BTC over multi-year horizons.
+def system_prompt(asset: str = "BTC") -> str:
+    """Asset-parameterized system prompt for research chat.
+
+    Metis MUST NOT (W4): the prompt must NOT be a module-level constant for
+    multi-asset use -- it must be a function parameterized by ``asset`` so
+    the chat agent's identity, calendar, and available strategies reflect
+    the asset the user is researching.
+
+    Unknown assets fall back gracefully: the literal asset key is interpolated
+    into the prompt (no exception) so an operator typo doesn't crash the chat.
+
+    The prompt body (tools list, "Always:" rules, risk caveat) is preserved
+    verbatim from the original BTC-only prompt; only the asset-specific
+    opening sentences are parameterized.
+    """
+    cfg = AssetRegistry.get(asset)
+    if cfg is not None:
+        asset_name = cfg.display_name
+        asset_class = cfg.asset_class
+        calendar = cfg.calendar
+    else:
+        # Graceful fallback for unknown assets -- don't crash the chat.
+        asset_name = asset
+        asset_class = "unknown"
+        calendar = "unknown"
+
+    return f"""You are a {asset_name} long-term research analyst. You help the user explore \
+strategies, position-sizing models, and Monte Carlo outcomes for {asset_name} over multi-year horizons.
+
+Asset context: asset_class={asset_class}, calendar={calendar}. \
+Strategies available: {sorted(_REGISTRY.keys()) if _REGISTRY else 'loading...'}.
 
 You have tools to:
 - List and describe strategies and scaling models
-- Get a summary of the BTC price series
+- Get a summary of the {asset_name} price series
 - Run backtests and compare strategies
 - Run Monte Carlo simulations
 - Explain finance metrics
@@ -274,11 +414,22 @@ Always:
 financial advice.
 
 When you call a tool, the result is appended to the conversation. Use it to inform your next \
-step. Aim to answer the user's question in <= {max_tool_calls} tool calls."""
+step. Aim to answer the user's question in <= {{max_tool_calls}} tool calls."""
 
 
-async def _stream_ndjson(req: ChatRequest):
-    """Yield NDJSON events for the chat endpoint."""
+# Back-compat: any code that imported the legacy ``_SYSTEM_PROMPT`` constant
+# gets the BTC default. New code should call ``system_prompt(asset)`` directly.
+# (Metis MUST NOT was about NOT using a constant for multi-asset -- keeping a
+# BTC-only alias for back-compat is explicitly allowed by the task spec.)
+_SYSTEM_PROMPT: str = system_prompt("BTC")
+
+
+async def _stream_ndjson(req: ChatRequest, asset: str = "BTC"):
+    """Yield NDJSON events for the chat endpoint.
+
+    ``asset`` selects the AssetRegistry entry whose context is injected into
+    the system prompt; defaults to BTC for back-compat with ``/chat``.
+    """
     try:
         from ..llm.model_router import ModelRouter
     except ImportError:
@@ -287,16 +438,13 @@ async def _stream_ndjson(req: ChatRequest):
             {"type": "error", "error": "LLM runtime not available. Install llm dependencies."}
         )
         return
-        # Fall back: just return an error
-        yield _ndjson(
-            {"type": "error", "error": "LLM runtime not available. Install llm dependencies."}
-        )
-        return
 
     # 1. Build the system prompt + tool list
     tools = research_tools.tool_descriptions()
-    system_prompt = _SYSTEM_PROMPT.format(max_tool_calls=req.max_tool_calls)
-    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    # Note: system_prompt() returns a template with {max_tool_calls} placeholder.
+    prompt_template = system_prompt(asset)
+    system_content = prompt_template.format(max_tool_calls=req.max_tool_calls)
+    messages: list[dict] = [{"role": "system", "content": system_content}]
     for m in req.messages:
         messages.append({"role": m.role, "content": m.content})
 
@@ -424,8 +572,272 @@ def _ndjson(obj: dict) -> str:
 
 @router.post("/chat")
 async def chat(req: ChatRequest):
-    """Stream an agentic chat loop as NDJSON."""
+    """Stream an agentic chat loop as NDJSON. BTC default (back-compat)."""
     return StreamingResponse(
-        _stream_ndjson(req),
+        _stream_ndjson(req, asset="BTC"),
+        media_type="application/x-ndjson",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Multi-asset routes (W4 T20)
+# ---------------------------------------------------------------------------
+#
+# These routes expose the AssetRegistry-backed multi-asset surface. Each
+# ``/{asset}/...`` route validates the asset up front via :func:`_require_asset`
+# (404 on unknown alias) before delegating to the underlying tool. Existing
+# BTC routes (``/backtest``, ``/chat``, ...) keep working unchanged -- they
+# dispatch with ``asset='BTC'`` implicitly.
+#
+# Route ordering note: literal routes (``/assets``, ``/regimes``) are declared
+# before the ``/{asset}/...`` patterns so FastAPI matches them first. The
+# 2-segment ``/{asset}/data`` cannot shadow the 2-segment ``/data/summary``
+# because the second literal segment differs.
+
+
+@router.get("/assets")
+async def list_assets():
+    """List every asset in the :data:`AssetRegistry` with its display name."""
+    assets = [
+        {
+            "key": key,
+            "display_name": cfg.display_name,
+            "asset_class": cfg.asset_class,
+            "calendar": cfg.calendar,
+            "ticker": cfg.ticker,
+            "tradeable": cfg.tradeable,
+        }
+        for key, cfg in AssetRegistry.items()
+    ]
+    return {
+        "success": True,
+        "data": {
+            "assets": assets,
+            "count": len(assets),
+        },
+    }
+
+
+@router.get("/regimes")
+async def regimes_tape(start: str | None = None, end: str | None = None):
+    """Return the regime tape (dominant regime per day) over a date range.
+
+    Backed by the rules-based classifier (deterministic). If the macro factor
+    frame cannot be loaded (e.g. FRED key missing in dev), returns HTTP 503
+    with a clear message rather than crashing.
+    """
+    try:
+        from src.research.macro.factors import MacroFactorProvider
+        from src.research.macro.regimes import RulesBasedClassifier, generate_regime_tape
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Macro layer unavailable: {e}",
+        )
+
+    try:
+        provider = MacroFactorProvider()
+        factor_df = provider.load_frame(start=start, end=end)
+    except Exception as e:
+        logger.warning(f"regimes tape: factor load failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Macro factor data unavailable: {e}",
+        )
+
+    if factor_df is None or factor_df.empty:
+        raise HTTPException(
+            status_code=503,
+            detail="No macro factor data in the requested range.",
+        )
+
+    tape = generate_regime_tape(factor_df, classifier=RulesBasedClassifier())
+    # Serialize: index -> iso date, dominant_regime column + regime probs.
+    records = []
+    for ts, row in tape.iterrows():
+        if isinstance(ts, pd.Timestamp):
+            date_str = ts.date().isoformat()
+        else:
+            date_str = str(ts)
+        rec = {"date": date_str, "dominant_regime": row["dominant_regime"]}
+        for col in ("RISK_ON", "DEFLATION_SCARE", "INFLATION_ACCEL", "REAL_YIELD_SHOCK", "RECESSION"):
+            if col in row:
+                rec[col] = float(row[col])
+        records.append(rec)
+    return {
+        "success": True,
+        "data": {
+            "regimes": records,
+            "count": len(records),
+            "start": records[0]["date"] if records else None,
+            "end": records[-1]["date"] if records else None,
+        },
+    }
+
+
+def pd_timestamp_to_date(ts: Any) -> Any:
+    """Coerce a pandas Timestamp to a date string; tolerate plain dates.
+
+    Kept for back-compat with any external callers; the ``/regimes`` route
+    above now inlines this logic to avoid an extra function call in the loop.
+    """
+    if isinstance(ts, pd.Timestamp):
+        return ts.date().isoformat()
+    return str(ts)
+
+
+@router.get("/{asset}/data")
+async def get_asset_data(
+    asset: str,
+    start: str | None = None,
+    end: str | None = None,
+    timeframe: str = "daily",
+    limit: int = 1000,
+):
+    """Return cached OHLCV for ``asset`` as JSON."""
+    _require_asset(asset)
+    r = research_tools.tool_get_data_summary(
+        {"start": start, "end": end, "timeframe": timeframe}, asset=asset
+    )
+    if not r.success:
+        raise HTTPException(status_code=400, detail=r.error)
+    # Also return the raw OHLCV rows (capped at ``limit``) for charting.
+    try:
+        df = research_tools._load_asset_df(asset, start, end, timeframe)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"{asset} data load failed: {e}")
+
+    if df.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No {timeframe} {asset} data in range [{start}, {end}]",
+        )
+
+    # Cap rows: if more than ``limit``, take evenly-spaced samples for chart fidelity.
+    if len(df) > limit:
+        step = max(1, len(df) // limit)
+        df_sampled = df.iloc[::step].head(limit)
+    else:
+        df_sampled = df
+
+    ohlcv_rows = []
+    for _, row in df_sampled.iterrows():
+        ohlcv_rows.append(
+            {
+                "ts": str(row["ts"]),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": float(row.get("volume", 0.0)) if "volume" in row else None,
+            }
+        )
+
+    return {
+        "success": True,
+        "data": {
+            "asset": asset,
+            "timeframe": timeframe,
+            "rows": int(len(df)),
+            "returned": len(ohlcv_rows),
+            "start": str(df["ts"].min()),
+            "end": str(df["ts"].max()),
+            "summary": r.data,
+            "ohlcv": ohlcv_rows,
+        },
+    }
+
+
+@router.post("/{asset}/backtest")
+async def asset_backtest(asset: str, req: BacktestRequest):
+    """Run a backtest scoped to ``asset`` (overrides any ``asset`` in the body)."""
+    _require_asset(asset)
+    payload = req.model_dump(exclude_none=True)
+    payload["asset"] = asset  # path param wins
+    r = research_tools.tool_run_backtest(payload, asset=asset)
+    if not r.success:
+        raise HTTPException(status_code=400, detail=r.error)
+    return r.to_dict()
+
+
+@router.post("/{asset}/montecarlo")
+async def asset_montecarlo(asset: str, req: MonteCarloRequest):
+    """Run a Monte Carlo scoped to ``asset`` (overrides any ``asset`` in the body)."""
+    _require_asset(asset)
+    payload = req.model_dump(exclude_none=True)
+    payload["asset"] = asset
+    r = research_tools.tool_run_montecarlo(payload, asset=asset)
+    if not r.success:
+        raise HTTPException(status_code=400, detail=r.error)
+    return r.to_dict()
+
+
+@router.get("/{asset}/regime")
+async def asset_regime(asset: str, date: str | None = None):
+    """Current (or as-of ``date``) macro regime + narrative for ``asset``.
+
+    Rules-only by default (deterministic, backtest-safe). Returns HTTP 503
+    if the macro factor frame cannot be loaded.
+    """
+    _require_asset(asset)
+    try:
+        from src.research.macro.factors import MacroFactorProvider
+        from src.research.macro.model import MacroRegimeModel
+        from src.research.macro.regimes import RulesBasedClassifier
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Macro layer unavailable: {e}",
+        )
+
+    try:
+        provider = MacroFactorProvider()
+        factor_df = provider.load_frame()
+    except Exception as e:
+        logger.warning(f"asset_regime: factor load failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Macro factor data unavailable: {e}",
+        )
+
+    if factor_df is None or factor_df.empty:
+        raise HTTPException(
+            status_code=503,
+            detail="No macro factor data available.",
+        )
+
+    model = MacroRegimeModel(rules=RulesBasedClassifier(), judge=None)
+    asof = datetime.fromisoformat(date) if date else None
+    try:
+        result = await model.classify(
+            factor_df=factor_df,
+            alpha=1.0,  # rules-only
+            use_llm=False,
+            timestamp=asof,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "success": True,
+        "data": {
+            "asset": asset,
+            "regime": result.regime.value,
+            "probs": {r.value: float(p) for r, p in result.probs.items()},
+            "source": result.source,
+            "narrative": result.narrative,
+            "timestamp": str(result.timestamp) if result.timestamp else None,
+        },
+    }
+
+
+@router.post("/chat/{asset}")
+async def chat_asset(asset: str, req: ChatRequest):
+    """Asset-scoped agentic chat. Threads ``asset`` into the system prompt."""
+    _require_asset(asset)
+    return StreamingResponse(
+        _stream_ndjson(req, asset=asset),
         media_type="application/x-ndjson",
     )

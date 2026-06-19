@@ -98,17 +98,24 @@ def test_cli_backtest_with_strategy_params(seeded_data, capsys):
 
 
 def test_cli_compare(seeded_data, capsys):
+    # W4 T21: compare is now multi-ASSET (was multi-strategy). The
+    # seeded_data fixture only seeds BTC, so we compare BTC against BTC
+    # here purely to exercise the new --assets parsing + JSON shape.
+    # Cross-asset compare is covered by test_research_cli_multiasset.py.
     rc = research_cli.main(
         [
             "compare",
-            "--strategies", "BuyAndHold", "DCAFixedAmount",
+            "--assets", "BTC",
+            "--strategy", "BuyAndHold",
             "--start", "2024-01-15",
             "--end", "2024-04-01",
         ]
     )
     assert rc == 0
     parsed = json.loads(capsys.readouterr().out)
-    assert len(parsed["results"]) == 2
+    assert "series" in parsed
+    assert "BTC" in parsed["series"]
+    assert parsed["series"]["BTC"][0]["normalized_return"] == 100.0
 
 
 def test_cli_montecarlo_gbm(seeded_data, capsys):

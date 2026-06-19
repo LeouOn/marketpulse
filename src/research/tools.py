@@ -1,14 +1,19 @@
-"""LLM-callable tool registry for the BTC research lab.
+"""LLM-callable tool registry for the multi-asset research lab.
 
 Each tool is a thin Python function that the LLM can call during a chat. The
 registry exposes tools in OpenAI function-calling format and provides a simple
-``execute(name, arguments)`` dispatch.
+``execute(name, arguments, asset)`` dispatch.
 
 This is the *agent's surface area* for research. New tools should:
 - be registered in ``_TOOLS`` below
 - have a clear docstring (used as the LLM tool description)
 - return a structured ``ToolResult`` (success/data/error/report_id)
 - be fast (<5s) and side-effect free (backtests and MC are pure-compute)
+- accept an ``asset: str = "BTC"`` parameter that resolves to an
+  :data:`src.research.data.AssetRegistry` entry (W4 T20)
+
+Back-compat: ``asset`` defaults to ``"BTC"`` so existing callers
+(``execute(name, args)`` with no asset context) keep working unchanged.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ import json
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
@@ -26,6 +32,7 @@ import pandas as pd
 
 from . import data as data_mod
 from .backtest import run_backtest_from_names
+from .data import AssetRegistry, AssetConfig
 from .montecarlo import simulate_block_bootstrap, simulate_gbm, simulate_regime_switching
 from .scaling import describe_scaling, list_scaling_models
 from .strategies import describe_strategy, list_strategies
@@ -53,6 +60,61 @@ class ToolResult:
         if self.artifacts:
             out["artifacts"] = list(self.artifacts.keys())
         return out
+
+
+# ---------------------------------------------------------------------------
+# Asset resolution helpers (W4 T20)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_asset(asset: str) -> AssetConfig:
+    """Resolve an asset alias to its :class:`AssetConfig`.
+
+    Raises ``ValueError`` (not ``KeyError``) when the alias is unknown so
+    callers can surface the supported set in a friendly error message.
+    The router layer turns this into an HTTP 404.
+    """
+    cfg = AssetRegistry.get(asset)
+    if cfg is None:
+        raise ValueError(
+            f"Unknown asset: {asset}. Supported: {sorted(AssetRegistry)}"
+        )
+    return cfg
+
+
+def _parse_iso_date(value: str | None, default: date) -> date:
+    """Parse an ISO date string; return ``default`` for ``None``/empty."""
+    if not value:
+        return default
+    try:
+        return pd.Timestamp(value).date()
+    except (ValueError, TypeError):
+        return default
+
+
+def _load_asset_df(
+    asset: str,
+    start: str | None,
+    end: str | None,
+    timeframe: str = "daily",
+) -> pd.DataFrame:
+    """Load OHLCV data for ``asset`` via its registered provider.
+
+    Uses ``cfg.data_provider().load_daily(start, end)`` (the multi-asset
+    contract) for all assets, including BTC -- ``BtcProvider`` delegates
+    back to the legacy :func:`src.research.data.load_daily` so the existing
+    BTC CSV cache and test fixtures keep working unchanged.
+    """
+    cfg = _resolve_asset(asset)
+    provider = cfg.data_provider()
+    start_d = _parse_iso_date(start, date(1990, 1, 1))
+    end_d = _parse_iso_date(end, date.today())
+    if timeframe == "hourly":
+        df = provider.load_intraday(start_d, end_d)
+        if df is None:
+            return pd.DataFrame()
+        return df
+    return provider.load_daily(start_d, end_d)
 
 
 def _save_report(kind: str, params: dict, metrics: dict, artifacts: dict[str, bytes]) -> str:
@@ -137,11 +199,11 @@ def _placeholder_png() -> bytes:
 # ---------------------------------------------------------------------------
 
 
-def tool_list_strategies(args: dict) -> ToolResult:
+def tool_list_strategies(args: dict, asset: str = "BTC") -> ToolResult:
     return ToolResult(success=True, data=list_strategies())
 
 
-def tool_describe_strategy(args: dict) -> ToolResult:
+def tool_describe_strategy(args: dict, asset: str = "BTC") -> ToolResult:
     name = args.get("name", "")
     if not name:
         return ToolResult(success=False, error="Missing 'name'")
@@ -151,11 +213,11 @@ def tool_describe_strategy(args: dict) -> ToolResult:
         return ToolResult(success=False, error=str(e))
 
 
-def tool_list_scaling_models(args: dict) -> ToolResult:
+def tool_list_scaling_models(args: dict, asset: str = "BTC") -> ToolResult:
     return ToolResult(success=True, data=list_scaling_models())
 
 
-def tool_describe_scaling_model(args: dict) -> ToolResult:
+def tool_describe_scaling_model(args: dict, asset: str = "BTC") -> ToolResult:
     name = args.get("name", "")
     if not name:
         return ToolResult(success=False, error="Missing 'name'")
@@ -165,20 +227,27 @@ def tool_describe_scaling_model(args: dict) -> ToolResult:
         return ToolResult(success=False, error=str(e))
 
 
-def tool_get_data_summary(args: dict) -> ToolResult:
+def tool_get_data_summary(args: dict, asset: str = "BTC") -> ToolResult:
     start = args.get("start")
     end = args.get("end")
     timeframe = args.get("timeframe", "daily")
     try:
-        if timeframe == "hourly":
-            df = data_mod.load_hourly(start=start, end=end)
-        else:
-            df = data_mod.load_daily(start=start, end=end)
+        cfg = _resolve_asset(asset)
+    except ValueError as e:
+        return ToolResult(success=False, error=str(e))
+    try:
+        df = _load_asset_df(asset, start, end, timeframe)
     except Exception as e:
-        return ToolResult(success=False, error=f"Failed to load data: {e}")
+        return ToolResult(success=False, error=f"Failed to load {asset} data: {e}")
     if df.empty:
-        return ToolResult(success=False, error="No data in range")
-    return ToolResult(success=True, data=data_mod.data_summary(df))
+        return ToolResult(
+            success=False,
+            error=f"No {timeframe} {asset} data in range [{start}, {end}]",
+        )
+    return ToolResult(
+        success=True,
+        data=data_mod.data_summary(df, trading_days_per_year=cfg.trading_days_per_year),
+    )
 
 
 def _loan_metadata(loan: object | None) -> dict | None:
@@ -198,7 +267,7 @@ def _loan_metadata(loan: object | None) -> dict | None:
     return metadata
 
 
-def tool_run_backtest(args: dict) -> ToolResult:
+def tool_run_backtest(args: dict, asset: str = "BTC") -> ToolResult:
     strategy_name = args.get("strategy")
     if not strategy_name:
         return ToolResult(success=False, error="Missing 'strategy'")
@@ -215,15 +284,20 @@ def tool_run_backtest(args: dict) -> ToolResult:
     loan = args.get("loan")  # optional Loan instance (opaque to the tool layer)
 
     try:
-        if timeframe == "hourly":
-            df = data_mod.load_hourly(start=start, end=end)
-        else:
-            df = data_mod.load_daily(start=start, end=end)
+        cfg = _resolve_asset(asset)
+    except ValueError as e:
+        return ToolResult(success=False, error=str(e))
+
+    try:
+        df = _load_asset_df(asset, start, end, timeframe)
     except Exception as e:
-        return ToolResult(success=False, error=f"Data load failed: {e}")
+        return ToolResult(success=False, error=f"{asset} data load failed: {e}")
 
     if df.empty:
-        return ToolResult(success=False, error=f"No {timeframe} BTC data in range [{start}, {end}]")
+        return ToolResult(
+            success=False,
+            error=f"No {timeframe} {asset} data in range [{start}, {end}]",
+        )
 
     try:
         result = run_backtest_from_names(
@@ -251,6 +325,8 @@ def tool_run_backtest(args: dict) -> ToolResult:
     report_id = _save_report(
         kind="backtest",
         params={
+            "asset": asset,
+            "asset_class": cfg.asset_class,
             "strategy": strategy_name,
             "strategy_params": strategy_params,
             "scaling": scaling_name,
@@ -271,6 +347,7 @@ def tool_run_backtest(args: dict) -> ToolResult:
     return ToolResult(
         success=True,
         data={
+            "asset": asset,
             "metrics": result.metrics,
             "strategy": strategy_name,
             "scaling": scaling_name or "None",
@@ -285,7 +362,7 @@ def tool_run_backtest(args: dict) -> ToolResult:
     )
 
 
-def tool_run_montecarlo(args: dict) -> ToolResult:
+def tool_run_montecarlo(args: dict, asset: str = "BTC") -> ToolResult:
     method = args.get("method", "gbm")
     n_paths = int(args.get("n_paths", 5_000))
     n_steps = int(args.get("n_steps", 365))
@@ -308,12 +385,19 @@ def tool_run_montecarlo(args: dict) -> ToolResult:
             start = args.get("start")
             end = args.get("end")
             timeframe = args.get("timeframe", "daily")
-            if timeframe == "hourly":
-                df = data_mod.load_hourly(start=start, end=end)
-            else:
-                df = data_mod.load_daily(start=start, end=end)
+            try:
+                df = _load_asset_df(asset, start, end, timeframe)
+            except ValueError as e:
+                return ToolResult(success=False, error=str(e))
+            except Exception as e:
+                return ToolResult(
+                    success=False, error=f"{asset} data load failed: {e}"
+                )
             if df.empty:
-                return ToolResult(success=False, error=f"No {timeframe} data in range")
+                return ToolResult(
+                    success=False,
+                    error=f"No {timeframe} {asset} data in range [{start}, {end}]",
+                )
             returns = df["close"].pct_change().dropna()
             if method == "block_bootstrap":
                 block_size = int(args.get("block_size", 21))
@@ -340,18 +424,24 @@ def tool_run_montecarlo(args: dict) -> ToolResult:
 
     report_id = _save_report(
         kind="montecarlo",
-        params={"method": method, "n_paths": n_paths, "n_steps": n_steps, **sim.params},
+        params={
+            "asset": asset,
+            "method": method,
+            "n_paths": n_paths,
+            "n_steps": n_steps,
+            **sim.params,
+        },
         metrics=sim.summary,
         artifacts={},  # paths are large; skip PNG for MC in v1
     )
     return ToolResult(
         success=True,
-        data=sim.summary,
+        data={"asset": asset, **sim.summary},
         report_id=report_id,
     )
 
 
-def tool_compare_strategies(args: dict) -> ToolResult:
+def tool_compare_strategies(args: dict, asset: str = "BTC") -> ToolResult:
     strategies = args.get("strategies", [])
     scaling = args.get("scaling")
     start = args.get("start")
@@ -363,14 +453,16 @@ def tool_compare_strategies(args: dict) -> ToolResult:
         return ToolResult(success=False, error="'strategies' must be a non-empty list")
 
     try:
-        if timeframe == "hourly":
-            df = data_mod.load_hourly(start=start, end=end)
-        else:
-            df = data_mod.load_daily(start=start, end=end)
+        df = _load_asset_df(asset, start, end, timeframe)
+    except ValueError as e:
+        return ToolResult(success=False, error=str(e))
     except Exception as e:
-        return ToolResult(success=False, error=f"Data load failed: {e}")
+        return ToolResult(success=False, error=f"{asset} data load failed: {e}")
     if df.empty:
-        return ToolResult(success=False, error=f"No {timeframe} data in range")
+        return ToolResult(
+            success=False,
+            error=f"No {timeframe} {asset} data in range [{start}, {end}]",
+        )
 
     results = []
     for strat_spec in strategies:
@@ -389,6 +481,7 @@ def tool_compare_strategies(args: dict) -> ToolResult:
             )
             results.append(
                 {
+                    "asset": asset,
                     "strategy": name,
                     "params": params,
                     "scaling": scaling,
@@ -397,14 +490,23 @@ def tool_compare_strategies(args: dict) -> ToolResult:
                 }
             )
         except Exception as e:
-            results.append({"strategy": name, "error": str(e)})
+            results.append({"asset": asset, "strategy": name, "error": str(e)})
 
     return ToolResult(success=True, data={"results": results, "count": len(results)})
 
 
-def tool_explain_metric(args: dict) -> ToolResult:
-    """Return a one-paragraph explanation of a metric."""
+def tool_explain_metric(args: dict, asset: str = "BTC") -> ToolResult:
+    """Return a one-paragraph explanation of a metric.
+
+    Volatility text is asset-aware: the legacy ``"For BTC, 50-100% is typical."``
+    line is replaced with an asset-specific pointer so non-BTC assets don't
+    get a misleading numerical range (Metis finding).
+    """
     name = (args.get("name") or "").lower()
+    vol_text = (
+        f"Annualized volatility: standard deviation of returns * sqrt(trading_days_per_year). "
+        f"For {asset}, see asset_config for typical ranges."
+    )
     explanations = {
         "cagr": "Compound Annual Growth Rate: the smoothed annual return that would take you from start to end equity. (end/start)^(1/years) - 1.",
         "sharpe": "Sharpe ratio: mean excess return / vol. Annualized. Higher is better; >1 is good, >2 is great.",
@@ -413,7 +515,7 @@ def tool_explain_metric(args: dict) -> ToolResult:
         "max_drawdown": "Max drawdown: largest peak-to-trough decline. Returned as a negative percentage (e.g. -83%).",
         "profit_factor": "Profit factor: gross wins / gross losses. >1.5 is good, >2 is great.",
         "hit_rate": "Hit rate: fraction of closed trades that were profitable. Doesn't tell you about magnitude.",
-        "volatility": "Annualized volatility: standard deviation of returns * sqrt(365). For BTC, 50-100% is typical.",
+        "volatility": vol_text,
     }
     text = explanations.get(name)
     if text is None:
@@ -425,10 +527,84 @@ def tool_explain_metric(args: dict) -> ToolResult:
 
 
 # ---------------------------------------------------------------------------
+# Multi-asset comparison (W4 T20, Metis SC2)
+# ---------------------------------------------------------------------------
+
+
+def tool_compare_assets(args: dict, asset: str = "BTC") -> ToolResult:
+    """Compare one strategy across multiple assets on a normalized basis.
+
+    Per Metis SC2: returns per-asset **normalized total return series only** --
+    no correlation matrix, no risk-adjusted metrics. Each asset's close series
+    is rebased to 1.0 at the first timestamp so cross-asset magnitude is
+    directly comparable regardless of asset scale (BTC at $40k vs GOLD at $2k).
+
+    The ``asset`` parameter is accepted for signature symmetry with the other
+    tools but ignored -- the assets under comparison come from ``args['assets']``.
+    """
+    assets = args.get("assets") or []
+    strategy_name = args.get("strategy")
+    start = args.get("start")
+    end = args.get("end")
+
+    if not assets or not isinstance(assets, list):
+        return ToolResult(success=False, error="'assets' must be a non-empty list")
+    if not strategy_name:
+        return ToolResult(success=False, error="Missing 'strategy'")
+
+    per_asset: dict[str, dict] = {}
+    for a in assets:
+        try:
+            df = _load_asset_df(a, start, end, timeframe="daily")
+        except ValueError as e:
+            per_asset[a] = {"error": str(e)}
+            continue
+        except Exception as e:
+            per_asset[a] = {"error": f"{a} data load failed: {e}"}
+            continue
+        if df.empty:
+            per_asset[a] = {"error": f"No {a} data in range [{start}, {end}]"}
+            continue
+        try:
+            r = run_backtest_from_names(
+                df,
+                strategy_name=strategy_name,
+                strategy_params={},
+                starting_equity=10_000.0,
+            )
+            # Normalize equity curve so first value == 1.0; return as
+            # total_return series (cumulative return fraction from start).
+            eq = r.equity_curve.astype(float)
+            if eq.empty or eq.iloc[0] == 0:
+                normalized = eq.tolist()
+            else:
+                normalized = (eq / eq.iloc[0]).tolist()
+            per_asset[a] = {
+                "normalized_total_return": normalized,
+                "index": [str(t) for t in eq.index.tolist()],
+                "total_return_pct": float(
+                    (eq.iloc[-1] / eq.iloc[0] - 1.0) * 100.0 if eq.iloc[0] else 0.0
+                ),
+            }
+        except Exception as e:
+            per_asset[a] = {"error": f"{a} backtest failed: {e}"}
+
+    return ToolResult(
+        success=True,
+        data={
+            "strategy": strategy_name,
+            "start": start,
+            "end": end,
+            "assets": per_asset,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
-_TOOLS: dict[str, Callable[[dict], ToolResult]] = {
+_TOOLS: dict[str, Callable[..., ToolResult]] = {
     "list_strategies": tool_list_strategies,
     "describe_strategy": tool_describe_strategy,
     "list_scaling_models": tool_list_scaling_models,
@@ -437,6 +613,7 @@ _TOOLS: dict[str, Callable[[dict], ToolResult]] = {
     "run_backtest": tool_run_backtest,
     "run_montecarlo": tool_run_montecarlo,
     "compare_strategies": tool_compare_strategies,
+    "compare_assets": tool_compare_assets,
     "explain_metric": tool_explain_metric,
 }
 
@@ -448,7 +625,7 @@ def tool_descriptions() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "list_strategies",
-                "description": "List all available buy/sell strategies for BTC research.",
+                "description": "List all available buy/sell strategies for the multi-asset research lab.",
                 "parameters": {"type": "object", "properties": {}, "required": []},
             },
         },
@@ -489,9 +666,10 @@ def tool_descriptions() -> list[dict]:
             "function": {
                 "name": "get_data_summary",
                 "description": (
-                    "Summarize the BTC price series in a date range: rows, first/last close, "
+                    "Summarize the price series for an asset in a date range: rows, first/last close, "
                     "total return, CAGR, realized vol, max drawdown, best/worst day. Use to "
-                    "characterize the data before designing a study."
+                    "characterize the data before designing a study. Pass 'asset' to pick the "
+                    "AssetRegistry entry (BTC, GOLD, OIL, EQUITIES, HOUSING); defaults to BTC."
                 ),
                 "parameters": {
                     "type": "object",
@@ -499,6 +677,11 @@ def tool_descriptions() -> list[dict]:
                         "start": {"type": "string", "description": "ISO date (e.g. 2018-01-01)"},
                         "end": {"type": "string", "description": "ISO date (e.g. 2024-12-31)"},
                         "timeframe": {"type": "string", "enum": ["daily", "hourly"]},
+                        "asset": {
+                            "type": "string",
+                            "description": "Asset alias (BTC, GOLD, OIL, EQUITIES, HOUSING)",
+                            "default": "BTC",
+                        },
                     },
                 },
             },
@@ -508,9 +691,10 @@ def tool_descriptions() -> list[dict]:
             "function": {
                 "name": "run_backtest",
                 "description": (
-                    "Run a backtest of a strategy (+ optional scaling model) on BTC-USD over a "
+                    "Run a backtest of a strategy (+ optional scaling model) on an asset over a "
                     "date range. Returns metrics, equity curve, drawdown, and a report_id. "
-                    "The agent can chain multiple backtests to compare strategies."
+                    "The agent can chain multiple backtests to compare strategies. Pass 'asset' "
+                    "to pick the AssetRegistry entry; defaults to BTC."
                 ),
                 "parameters": {
                     "type": "object",
@@ -525,6 +709,11 @@ def tool_descriptions() -> list[dict]:
                         "starting_equity": {"type": "number", "default": 10000.0},
                         "fee_bps": {"type": "number", "default": 10.0},
                         "slippage_bps": {"type": "number", "default": 5.0},
+                        "asset": {
+                            "type": "string",
+                            "description": "Asset alias (BTC, GOLD, OIL, EQUITIES, HOUSING)",
+                            "default": "BTC",
+                        },
                     },
                     "required": ["strategy"],
                 },
@@ -604,15 +793,54 @@ def tool_descriptions() -> list[dict]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "compare_assets",
+                "description": (
+                    "Compare one strategy across multiple assets on a normalized basis "
+                    "(each asset's equity curve rebased to 1.0 at the start). Returns "
+                    "per-asset normalized total return series only -- no correlation "
+                    "matrix or risk-adjusted metrics."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "assets": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Asset aliases (e.g. [\"BTC\", \"GOLD\", \"EQUITIES\"])",
+                        },
+                        "strategy": {"type": "string"},
+                        "start": {"type": "string"},
+                        "end": {"type": "string"},
+                    },
+                    "required": ["assets", "strategy"],
+                },
+            },
+        },
     ]
 
 
-def execute(name: str, arguments: dict | None = None) -> ToolResult:
-    """Dispatch a tool call by name. Returns a ``ToolResult``."""
+def execute(
+    name: str, arguments: dict | None = None, asset: str = "BTC"
+) -> ToolResult:
+    """Dispatch a tool call by name. Returns a ``ToolResult``.
+
+    The ``asset`` argument threads the AssetRegistry context into tools that
+    need it (``run_backtest``, ``get_data_summary``, ...). It defaults to
+    ``"BTC"`` so legacy callers (``execute(name, args)``) keep working.
+    """
     if name not in _TOOLS:
         return ToolResult(success=False, error=f"Unknown tool '{name}'")
     try:
-        return _TOOLS[name](arguments or {})
+        return _TOOLS[name](arguments or {}, asset=asset)
+    except TypeError:
+        # Tool doesn't accept ``asset`` -- fall back to the legacy signature.
+        try:
+            return _TOOLS[name](arguments or {})
+        except Exception as e:  # last-resort safety net
+            return ToolResult(success=False, error=f"Tool '{name}' crashed: {e}")
     except Exception as e:  # last-resort safety net
         return ToolResult(success=False, error=f"Tool '{name}' crashed: {e}")
 
