@@ -8,6 +8,7 @@ import RiskManagerTab from './RiskManagerTab';
 import BacktestTab from './BacktestTab';
 import OptionsFlowTab from './OptionsFlowTab';
 import StrategyTab from './StrategyTab';
+import MacroDashboard from './MacroDashboard';
 import { apiFetch } from '../lib/api';
 import {
   RefreshCw, Activity, TrendingUp, TrendingDown, Clock, Globe,
@@ -262,7 +263,8 @@ export function ThreeColumnDashboard() {
     { id: 'backtest', label: 'Backtests', icon: BarChart2 },
     { id: 'risk', label: 'Risk Manager', icon: Target },
     { id: 'options', label: 'Options', icon: TrendingUp },
-    { id: 'strategy', label: 'Strategy', icon: Settings }
+    { id: 'strategy', label: 'Strategy', icon: Settings },
+    { id: 'macro', label: 'Macro', icon: Globe }
   ];
 
   if (loading) {
@@ -606,6 +608,8 @@ export function ThreeColumnDashboard() {
             {activeTab === 'options' && <OptionsFlowTab />}
 
             {activeTab === 'strategy' && <StrategyTab />}
+
+            {activeTab === 'macro' && <MacroDashboard />}
           </div>
         </div>
 

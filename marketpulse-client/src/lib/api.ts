@@ -217,13 +217,44 @@ class MarketPulseAPIClient {
   /**
    * Stream the research chat. Returns the raw Response so the caller can
    * read NDJSON line by line.
+   *
+   * When ``asset`` is provided (the Multi-Asset Research Lab path, W5 T22),
+   * the request hits the asset-scoped route ``POST /research/chat/{asset}``
+   * from T20 so the backend can thread asset context into the system prompt.
+   * When omitted, falls back to the legacy ``POST /research/chat`` route
+   * (BTC by default) for back-compat with any older callers.
    */
-  async streamResearchChat(messages: Array<{ role: string; content: string }>): Promise<Response> {
-    return fetch(`${API_BASE}/research/chat`, {
+  async streamResearchChat(
+    messages: Array<{ role: string; content: string }>,
+    asset?: string,
+  ): Promise<Response> {
+    const endpoint = asset
+      ? `/research/chat/${encodeURIComponent(asset)}`
+      : '/research/chat';
+    return fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, max_tool_calls: 5 }),
     });
+  }
+
+  /**
+   * List all assets in the registry (W5 T20: ``GET /research/assets``).
+   * Returns the raw ``{ assets, count }`` payload — callers map to
+   * ``AssetOption`` for the picker.
+   */
+  async listResearchAssets(): Promise<{
+    assets: Array<{
+      key: string;
+      display_name: string;
+      asset_class?: string;
+      calendar?: string;
+      ticker?: string;
+      tradeable?: boolean;
+    }>;
+    count: number;
+  }> {
+    return this.fetchAPI('/research/assets');
   }
 }
 
