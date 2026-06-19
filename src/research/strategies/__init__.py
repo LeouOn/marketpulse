@@ -448,6 +448,15 @@ from src.research.strategies.cycle_base import CycleAccumulation  # noqa: E402
 from src.research.strategies.RealRateCycleAccumulation import (  # noqa: E402
     RealRateCycleAccumulation,
 )
+from src.research.strategies.EarningsCycleAccumulation import (  # noqa: E402
+    EarningsCycleAccumulation,
+)
+from src.research.strategies.OPECCycleAccumulation import (  # noqa: E402
+    OPECCycleAccumulation,
+)
+from src.research.strategies.MortgageCycleAccumulation import (  # noqa: E402
+    MortgageCycleAccumulation,
+)
 
 _REGISTRY: dict[str, type[Strategy]] = {
     "BuyAndHold": BuyAndHold,
@@ -465,6 +474,9 @@ _REGISTRY: dict[str, type[Strategy]] = {
     # abstract so is intentionally NOT registered; only concrete
     # subclasses appear here. T17/T18 add the others.
     "RealRateCycleAccumulation": RealRateCycleAccumulation,
+    "EarningsCycleAccumulation": EarningsCycleAccumulation,
+    "OPECCycleAccumulation": OPECCycleAccumulation,
+    "MortgageCycleAccumulation": MortgageCycleAccumulation,
 }
 
 

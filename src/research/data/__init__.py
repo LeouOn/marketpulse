@@ -828,6 +828,15 @@ def _build_asset_registry() -> "dict[str, AssetConfig]":
     # section: data/__init__.py must finish loading before any
     # strategies submodule imports it. By the time this function runs,
     # both modules are fully initialized.
+    from src.research.strategies.EarningsCycleAccumulation import (
+        EarningsCycleAccumulation,
+    )
+    from src.research.strategies.OPECCycleAccumulation import (
+        OPECCycleAccumulation,
+    )
+    from src.research.strategies.MortgageCycleAccumulation import (
+        MortgageCycleAccumulation,
+    )
     from src.research.strategies.RealRateCycleAccumulation import (
         RealRateCycleAccumulation,
     )
@@ -868,7 +877,7 @@ def _build_asset_registry() -> "dict[str, AssetConfig]":
             calendar="NYSE",
             trading_days_per_year=252,
             data_provider=FredProvider,
-            cycle_strategy=None,  # T17 wires OPECCycleAccumulation
+            cycle_strategy=OPECCycleAccumulation,  # W4 T17
             indicator_whitelist=("rsi", "mayer"),
             default_regime_multipliers={},
             publication_lag_days=0,
@@ -886,7 +895,7 @@ def _build_asset_registry() -> "dict[str, AssetConfig]":
             calendar="NYSE",
             trading_days_per_year=252,
             data_provider=AlpacaProvider,
-            cycle_strategy=None,  # T17 wires EarningsCycleAccumulation
+            cycle_strategy=EarningsCycleAccumulation,  # W4 T17
             indicator_whitelist=("rsi", "mayer"),
             default_regime_multipliers={},
             publication_lag_days=0,
@@ -900,7 +909,7 @@ def _build_asset_registry() -> "dict[str, AssetConfig]":
             calendar="MONTHLY",
             trading_days_per_year=12,
             data_provider=FredProvider,
-            cycle_strategy=None,  # T18 wires MortgageCycleAccumulation
+            cycle_strategy=MortgageCycleAccumulation,  # W4 T18
             indicator_whitelist=("rsi", "mayer"),
             default_regime_multipliers={},
             publication_lag_days=60,  # Metis: Case-Shiller ~2-month publication lag
