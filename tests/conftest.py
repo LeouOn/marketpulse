@@ -1,6 +1,53 @@
+import os
 from unittest.mock import Mock
 
 import pytest
+
+# ---------------------------------------------------------------------------
+# E2E smoke-test opt-in (W5 T25, Metis SC6)
+# ---------------------------------------------------------------------------
+#
+# E2E tests require BOTH the FastAPI backend (default http://localhost:8000)
+# AND the Next.js frontend (default http://localhost:3000) to be running.
+# They are skipped by default; opt in via EITHER:
+#   - CLI flag:   `pytest --run-e2e`
+#   - Env var:    `RUN_E2E=1 pytest ...`
+#
+# The hook below attaches a skip marker to every `@pytest.mark.e2e` test
+# unless one of those opt-ins is active. Non-e2e tests are untouched.
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-e2e",
+        action="store_true",
+        default=False,
+        help="Run end-to-end smoke tests (requires API + frontend servers running)",
+    )
+
+
+def _e2e_enabled(config) -> bool:
+    """True iff the user opted into e2e via --run-e2e flag OR RUN_E2E=1 env."""
+    if config.getoption("--run-e2e", default=False):
+        return True
+    return os.getenv("RUN_E2E", "") == "1"
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip `@pytest.mark.e2e` tests unless --run-e2e or RUN_E2E=1."""
+    if _e2e_enabled(config):
+        return
+    skip_e2e = pytest.mark.skip(
+        reason="End-to-end smoke test; run with --run-e2e or RUN_E2E=1 (requires API + frontend servers running)",
+    )
+    for item in items:
+        if "e2e" in item.keywords:
+            item.add_marker(skip_e2e)
+
+
+# ---------------------------------------------------------------------------
+# Existing fixtures (preserved verbatim)
+# ---------------------------------------------------------------------------
 
 
 class MockSettings:

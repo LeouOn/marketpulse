@@ -66,6 +66,11 @@ markers = [
     # Skipped by default; opt in via `RUN_LIVE_TESTS=1` env var.
     # Used by T11 (MacroFactorProvider Sahm validation against real UNRATE).
     "live: marks tests that hit live external APIs (skipped unless RUN_LIVE_TESTS=1)",
+    # E2E smoke tests require BOTH the FastAPI backend (port 8000) AND the
+    # Next.js frontend (port 3000) to be running. Skipped by default; opt in
+    # via `pytest --run-e2e` OR `RUN_E2E=1 pytest ...`.
+    # Used by T25 (Metis SC6: 12 multi-asset smoke tests).
+    "e2e: marks tests as end-to-end smoke (requires running API + frontend servers; opt in via --run-e2e or RUN_E2E=1)",
 ]
 
 [tool.mypy]
