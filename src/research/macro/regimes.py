@@ -343,31 +343,27 @@ class RulesBasedClassifier:
 
     @staticmethod
     def _compute_zscores(factor_df: pd.DataFrame) -> pd.DataFrame:
-        """5-year trailing z-score per column.
+        """5-year trailing z-score per NUMERIC column.
 
-        Replicates :meth:`MacroFactorProvider.compute_zscores` so this
-        module is self-contained (instantiating a MacroFactorProvider
-        would try to build a live FredProvider, which we don't need
-        for pure z-score math).  Zero-std columns -> NaN (matches
-        T11's contract: "no information = NaN, not 0").
-
-        Args:
-            factor_df: daily-indexed frame of macro factors.
+        Non-numeric columns (e.g. ``sahm_recession`` boolean) are passed
+        through unchanged — they're used directly as flags, not z-scored.
 
         Returns:
-            Same shape / index / columns as the input.  Each cell is
-            ``(value - rolling_mean) / rolling_std`` over the trailing
-            ``ZSCORE_WINDOW_DAYS`` window.  Cells with insufficient
-            history (warmup) or zero rolling std are NaN.
+            Same shape / index / columns as the input. Numeric cells are
+            z-scored; non-numeric columns keep their raw values.
         """
         window = f"{RulesBasedClassifier.ZSCORE_WINDOW_DAYS}D"
-        rolling = factor_df.rolling(window=window, min_periods=2)
-        mean = rolling.mean()
-        std = rolling.std()
-        # ddof=1 (pandas default); replace 0-std with NaN to avoid
-        # divide-by-zero on constant columns.
-        std_safe = std.where(std > 0, other=pd.NA)
-        return (factor_df - mean) / std_safe
+        numeric_cols = factor_df.select_dtypes(include=[np.number]).columns.tolist()
+
+        z_df = factor_df.copy()
+        if numeric_cols:
+            rolling = factor_df[numeric_cols].rolling(window=window, min_periods=2)
+            mean = rolling.mean()
+            std = rolling.std()
+            std_safe = std.where(std > 0, other=pd.NA)
+            z_df[numeric_cols] = (factor_df[numeric_cols] - mean) / std_safe
+
+        return z_df
 
     @staticmethod
     def _safe_z(
@@ -375,18 +371,9 @@ class RulesBasedClassifier:
         col: str,
         index: pd.Index,
     ) -> pd.Series:
-        """Return ``z_df[col]`` or an all-NaN Series if absent.
-
-        Missing-factor handling: when a factor column is absent
-        entirely (e.g. VIX pre-1990), the z-score frame doesn't have
-        that column.  We return an all-NaN Series so the downstream
-        sigmoid produces NaN -> ``.fillna(0)`` -> logit 0 (Metis EC1).
-        """
+        """Return ``z_df[col]`` as float or all-NaN if absent/non-numeric."""
         if col in z_df.columns:
-            return z_df[col]
-        logger.debug(
-            f"regimes: factor '{col}' absent -> dependent regime logit will be 0"
-        )
+            return pd.to_numeric(z_df[col], errors='coerce').astype(float)
         return pd.Series(np.nan, index=index, dtype=float)
 
     @staticmethod

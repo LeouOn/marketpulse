@@ -380,9 +380,10 @@ class MacroFactorProvider:
         factor_df = pd.DataFrame(index=daily_index)
         for col in FACTOR_COLUMNS:
             if col in raw:
-                s = raw[col]
-                # boolean dtype (Sahm) -> cast to object to allow NaN
-                # placeholders on days before the first publication.
+                s = raw[col].copy()
+                # Normalize series index to naive to match daily_index
+                if hasattr(s.index, 'tz') and s.index.tz is not None:
+                    s.index = s.index.tz_convert("UTC").tz_localize(None)
                 factor_df[col] = s.reindex(daily_index, method="ffill")
             else:
                 factor_df[col] = pd.NA

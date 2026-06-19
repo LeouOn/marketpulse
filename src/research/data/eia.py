@@ -125,8 +125,8 @@ class EiaProvider(DataProvider):
 
         Args:
             series_id: Must be in :data:`SUPPORTED_SERIES`.
-            start: Inclusive start date.
-            end: Inclusive end date.
+            start: Inclusive start date (date object or ISO string).
+            end: Inclusive end date (date object or ISO string).
 
         Returns:
             DataFrame with the Metis column contract.
@@ -136,6 +136,11 @@ class EiaProvider(DataProvider):
             DataPipelineError: If the cache is stale/missing AND the EIA
                 fetch fails (after retries).
         """
+        # Accept both date objects and ISO date strings
+        if isinstance(start, str):
+            start = date.fromisoformat(start)
+        if isinstance(end, str):
+            end = date.fromisoformat(end)
         if series_id not in self.SUPPORTED_SERIES:
             raise ValueError(
                 f"Unsupported EIA series: {series_id!r}. "

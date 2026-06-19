@@ -158,8 +158,8 @@ class FredProvider(DataProvider):
 
         Args:
             series_id: must be in :attr:`SUPPORTED_SERIES`.
-            start: inclusive start date.
-            end: inclusive end date.
+            start: inclusive start date (date object or ISO string).
+            end: inclusive end date (date object or ISO string).
 
         Returns:
             DataFrame with columns ``ts, open, high, low, close, volume, source``.
@@ -171,6 +171,11 @@ class FredProvider(DataProvider):
             DataPipelineError: fresh fetch returned data older than
                 ``max_staleness_days`` for a current query.
         """
+        # Accept both date objects and ISO date strings
+        if isinstance(start, str):
+            start = date.fromisoformat(start)
+        if isinstance(end, str):
+            end = date.fromisoformat(end)
         if series_id not in self.SUPPORTED_SERIES:
             raise ValueError(
                 f"Unsupported FRED series: {series_id}. "
