@@ -1,6 +1,12 @@
 """FRED API key helper. Fail-fast if not configured."""
 import os
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 def get_fred_api_key() -> str:
     key = os.environ.get("FRED_API_KEY")
