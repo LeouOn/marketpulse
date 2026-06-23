@@ -9,7 +9,9 @@ from sqlalchemy import (
     Date,
     DateTime,
     Float,
+    ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -277,6 +279,60 @@ class Indicator(Base):
 
     def __repr__(self):
         return f"<Indicator(symbol='{self.symbol}', type='{self.indicator_type}', timeframe='{self.timeframe}')>"
+
+
+class YieldCurveSnapshot(Base):
+    """Daily Treasury yield curve snapshot."""
+    __tablename__ = "yield_curve_snapshots"
+    __table_args__ = ({"schema": "market_data"},)
+
+    date = Column(Date, primary_key=True)
+    dgs3mo = Column(Numeric(6, 4))
+    dgs1 = Column(Numeric(6, 4))
+    dgs2 = Column(Numeric(6, 4))
+    dgs5 = Column(Numeric(6, 4))
+    dgs7 = Column(Numeric(6, 4))
+    dgs10 = Column(Numeric(6, 4))
+    dgs20 = Column(Numeric(6, 4))
+    dgs30 = Column(Numeric(6, 4))
+    spread_2s10s = Column(Numeric(8, 4))
+    spread_3m10y = Column(Numeric(8, 4))
+    spread_5s30s = Column(Numeric(8, 4))
+    spread_2s30s = Column(Numeric(8, 4))
+    shape = Column(String(16), nullable=False)
+    shape_trend = Column(String(16), nullable=False)
+    recession_prob_nyfed = Column(Numeric(5, 4))
+    spread_2s10s_delta_5d = Column(Numeric(8, 4))
+    spread_2s10s_delta_30d = Column(Numeric(8, 4))
+    zscore_2s10s_90d = Column(Numeric(6, 4))
+    source = Column(String(20), default="fred")
+    fetched_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<YieldCurveSnapshot(date={self.date}, shape={self.shape}, 2s10s={self.spread_2s10s})>"
+
+
+class YieldCurveAlert(Base):
+    """Persisted yield-curve alert (audit log)."""
+    __tablename__ = "yield_curve_alerts"
+    __table_args__ = ({"schema": "market_data"},)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    triggered_at = Column(DateTime(timezone=True), server_default=func.now())
+    rule_name = Column(String(64), nullable=False, index=True)
+    priority = Column(String(16), nullable=False)
+    snapshot_date = Column(Date, ForeignKey("market_data.yield_curve_snapshots.date"), nullable=False)
+    trigger_value = Column(Numeric(10, 4))
+    prior_value = Column(Numeric(10, 4))
+    delta = Column(Numeric(10, 4))
+    zscore = Column(Numeric(6, 4))
+    message = Column(Text, nullable=False)
+    channels_attempted = Column(JSON)
+    channels_succeeded = Column(JSON)
+
+    def __repr__(self):
+        return f"<YieldCurveAlert(rule={self.rule_name}, priority={self.priority}, at={self.triggered_at})>"
 
 
 class DatabaseManager:
