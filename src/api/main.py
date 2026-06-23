@@ -2345,6 +2345,16 @@ except Exception as e:
     logger.warning(f"Could not load backtest endpoints: {e}")
 
 
+# ==================== YIELD CURVE MONITOR ====================
+# REST endpoints at /api/yield-curve/* for the daily Treasury pipeline.
+try:
+    from .routers.yield_curve import router as yield_curve_router
+    app.include_router(yield_curve_router)
+    logger.info("Yield curve endpoints loaded successfully")
+except Exception as e:
+    logger.warning(f"Could not load yield curve endpoints: {e}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
