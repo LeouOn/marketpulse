@@ -161,3 +161,58 @@ export interface OHLCVBar {
   close: number;
   volume: number;
 }
+
+// --- Yield curve monitor (Task 11) ----------------------------------------
+
+export type CurveShape = 'NORMAL' | 'FLAT' | 'INVERTED' | 'HUMPED' | 'INVERTED_HUMPED';
+export type CurveTrend = 'STEEPENING' | 'FLATTENING' | 'STABLE';
+
+export interface YieldCurveSnapshot {
+  date: string;
+  curve: Record<string, number>;
+  spreads: Record<string, number | null>;
+  shape: CurveShape;
+  shape_trend: CurveTrend;
+  recession_prob_nyfed: number | null;
+  deltas: {
+    spread_2s10s_delta_5d: number | null;
+    spread_2s10s_delta_30d: number | null;
+  };
+  zscore_2s10s_90d: number | null;
+  stale: boolean;
+  days_since_update: number;
+}
+
+export interface YieldCurveHistoryPoint {
+  date: string;
+  spread_2s10s: number | null;
+  shape: CurveShape;
+  shape_trend: CurveTrend;
+  recession_prob_nyfed: number | null;
+  deltas: {
+    spread_2s10s_delta_5d: number | null;
+    spread_2s10s_delta_30d: number | null;
+  };
+}
+
+export interface YieldCurveAlert {
+  triggered_at: string;
+  rule_name: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  message: string;
+  trigger_value: number | null;
+  prior_value: number | null;
+  delta: number | null;
+  zscore: number | null;
+}
+
+export interface YieldCurveConfig {
+  thresholds: {
+    steepen_bps_5d: number;
+    flatten_bps_5d: number;
+    recession_prob_high: number;
+    recession_prob_low: number;
+    antispam_hours: number;
+    stale_days: number;
+  };
+}
