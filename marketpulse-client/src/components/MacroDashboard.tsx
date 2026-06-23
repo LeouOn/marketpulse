@@ -22,6 +22,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import { YieldCurvePanel } from './YieldCurvePanel';
 
 // ---------------------------------------------------------------------------
 // Design tokens -- 3 of 5 align with globals.css CSS vars
@@ -282,6 +283,7 @@ export default function MacroDashboard() {
 
   return (
     <div className="space-y-6">
+      <YieldCurvePanel />
       {friendlyError && (
         <ErrorBanner
           message={friendlyError}
