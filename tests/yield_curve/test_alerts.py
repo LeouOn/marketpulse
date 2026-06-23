@@ -118,8 +118,8 @@ async def test_antispam_suppresses_recent_same_rule(monkeypatch):
     alerts = YieldCurveAlerts(session, cfg)
 
     # Pretend inversion_2s10s_start fired 1 hour ago.
-    from datetime import datetime, timedelta
-    recent = datetime.utcnow() - timedelta(hours=1)
+    from datetime import datetime, timedelta, timezone
+    recent = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
     alerts._last_fired = lambda rule_name: recent if rule_name == "inversion_2s10s_start" else None
 
     today = _snap(date(2026, 6, 23), s2s10s=-5.0)

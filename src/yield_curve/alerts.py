@@ -7,7 +7,7 @@ Anti-spam: same rule_name suppressed within antispam_hours.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from loguru import logger
@@ -145,7 +145,7 @@ class YieldCurveAlerts:
         if last is None:
             return False
         try:
-            return (datetime.utcnow() - last) < timedelta(hours=self.cfg.antispam_hours)
+            return (datetime.now(timezone.utc).replace(tzinfo=None) - last) < timedelta(hours=self.cfg.antispam_hours)
         except TypeError:
             # last was not a real datetime (e.g. mock in tests or unparseable row).
             # Fail open — allow firing.
