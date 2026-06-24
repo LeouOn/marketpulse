@@ -84,5 +84,11 @@ test_results*.json
 *.temp
 evaluation_results.json
 
+# Generated data caches (FRED parquet, Yahoo cache, EIA cache, etc.)
+data/macro/yield_curve/
+data/macro/*.parquet
+data/yahoo_cache/
+data/eia_cache/
+
 # Docker
 .omo/
