@@ -16,3 +16,4 @@ python-dateutil==2.9.0.post0
 pytz==2024.2
 websockets==10.4
 yfinance>=0.2.31
+streamlit>=1.45.0
