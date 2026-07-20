@@ -36,14 +36,14 @@ def test_rmp_reduces_short_end_yields():
     assert effects["3mo"] < effects.get("2y", 0)  # bigger effect on shorter tenors
 
 
-def test_qt_increases_long_end_yields():
-    """QT sells/lets mature Treasuries — should increase 10Y, 30Y."""
+def test_qt_increases_yields():
+    """QT sells/lets mature Treasuries — should increase yields across curve."""
     tools = get_all_tools()
     qt = next(t for t in tools if t.name == ToolName.QT_PACE)
     effects = apply_tool_effect(qt, qt.current_value)
     assert "10y" in effects
     assert effects["10y"] > 0  # positive = yield increase
-    assert effects["10y"] > effects.get("2y", 0)  # bigger effect on longer tenors
+    assert effects["2y"] > 0   # all yields rise with QT
 
 
 def test_tool_effect_scales_linearly():

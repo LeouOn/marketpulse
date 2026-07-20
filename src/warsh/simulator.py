@@ -83,18 +83,22 @@ class CurveSimulator:
             ToolName.BANK_REGULATION: bank_regulation,
         }
 
-        # Calculate cumulative effect on each tenor
         tool_effects: dict[str, dict[str, float]] = {}
         cumulative_bps: dict[str, float] = {t: 0.0 for t in ALL_TENORS}
 
         for tool_name, override_value in overrides.items():
             tool = self.tools[tool_name]
             value = override_value if override_value is not None else tool.current_value
-            effects = apply_tool_effect(tool, value)
 
-            tool_effects[tool_name.value] = dict(effects)
+            baseline_eff = apply_tool_effect(tool, tool.current_value)
+            proposed_eff = apply_tool_effect(tool, value)
+            delta_eff: dict[str, float] = {}
+            for tenor in ALL_TENORS:
+                delta_eff[tenor] = proposed_eff.get(tenor, 0.0) - baseline_eff.get(tenor, 0.0)
 
-            for tenor, bps in effects.items():
+            tool_effects[tool_name.value] = delta_eff
+
+            for tenor, bps in delta_eff.items():
                 cumulative_bps[tenor] = cumulative_bps.get(tenor, 0.0) + bps
 
         # Apply cumulative effects to baseline yields
@@ -134,7 +138,7 @@ class CurveSimulator:
             "qt_pace": 80,       # aggressive QT
             "srf": 500,          # unchanged
             "mbs_sales": 20,     # active MBS selling
-            "forward_guidance": 1,  # keep guidance (hawkish commitment)
+            "forward_guidance": 0,  # Warsh removes guidance (his stated goal)
             "bank_regulation": 0.2,  # mostly strict
         },
         "pantomime": {
@@ -152,7 +156,7 @@ class CurveSimulator:
             "qt_pace": 0,        # stop QT entirely
             "srf": 1000,         # expanded SRF
             "mbs_sales": 0,      # no selling
-            "forward_guidance": 0,  # remove guidance
+            "forward_guidance": 1,  # keep guidance — dovish Fed guides toward low rates
             "bank_regulation": 0.8,  # significantly relaxed
         },
         "current": {

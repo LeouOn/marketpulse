@@ -100,14 +100,8 @@ _RMP_EFFECTS = {
 }
 
 _QT_EFFECTS = {
-    # QT lets Treasuries/MBS roll off — upward pressure on yields
-    # Per $10B/month: 10Y rises ~1.5bps, 30Y rises ~2bps, 5Y rises ~0.8bps
-    "2y": 0.03,     # minimal effect on short end
-    "5y": 0.08,
-    "7y": 0.12,
-    "10y": 0.15,    # +1.5bps per $10B
-    "20y": 0.18,
-    "30y": 0.20,    # +2bps per $10B
+    "3mo": 0.08, "1y": 0.10, "2y": 0.12, "5y": 0.10,
+    "7y": 0.08, "10y": 0.06, "20y": 0.04, "30y": 0.03,
 }
 
 _SRF_EFFECTS = {
@@ -212,7 +206,7 @@ def get_all_tools() -> list[FedTool]:
             max_value=1,
             current_value=1,
             unit="on/off (1=active, 0=removed)",
-            curve_effects={},  # handled specially in apply_tool_effect
+            curve_effects={"2y": 0.0},  # placeholder; handled specially in apply_tool_effect
             political_cover="Market-based rate discovery",
             is_boolean=True,
         ),
