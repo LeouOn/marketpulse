@@ -147,7 +147,7 @@ class CurveSimulator:
             "qt_pace": 20,       # minimal QT
             "srf": 1000,         # expanded SRF
             "mbs_sales": 0,      # no active selling
-            "forward_guidance": 0,  # remove guidance (let market price)
+            "forward_guidance": 1,  # keep hawkish guidance as cover while shadow easing
             "bank_regulation": 0.5,  # moderate relaxation
         },
         "dovish": {
