@@ -86,6 +86,23 @@ class ModelSelectionRequest(BaseModel):
     provider: str = "lm_studio"
 
 
+class EnhancedAnalysisRequest(BaseModel):
+    query: str
+    market_data: dict[str, Any] | None = None
+    prompt_type: str = "trading_analyst"
+    max_tokens: int = 400
+
+
+class TestHypothesisRequest(BaseModel):
+    hypothesis_name: str
+    market_data: dict[str, Any] | None = None
+
+
+class RetrieveContextRequest(BaseModel):
+    query: str
+    max_results: int = 5
+
+
 def get_current_timestamp() -> str:
     return datetime.now().isoformat()
 

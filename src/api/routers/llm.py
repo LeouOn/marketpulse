@@ -8,14 +8,20 @@ from datetime import datetime
 from fastapi import APIRouter
 from loguru import logger
 
+from src.llm.enhanced_llm_client import EnhancedLLMClient
+from src.llm.trading_knowledge_rag import get_trading_rag
+
 from . import deps as _deps
 from .deps import (
     ChartAnalysisRequest,
     ChatRequest,
+    EnhancedAnalysisRequest,
     LMStudioClient,
     MarketResponse,
     ModelSelectionRequest,
     RefinedAnalysisRequest,
+    RetrieveContextRequest,
+    TestHypothesisRequest,
     UserComment,
     model_cache,
     settings,
@@ -740,3 +746,83 @@ async def get_feedback_stats():
     except Exception as e:
         logger.error(f"Feedback stats error: {e}")
         return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
+
+
+# ---------------------------------------------------------------------------
+# RAG endpoints -- EnhancedLLMClient + TradingKnowledgeRAG
+# ---------------------------------------------------------------------------
+
+
+async def _get_enhanced_client() -> EnhancedLLMClient:
+    """Enhanced (RAG-backed) client on the shared ModelRouter."""
+    router = await _get_router()
+    return EnhancedLLMClient(settings=settings, router=router)
+
+
+@router.post("/enhanced-analysis", response_model=MarketResponse)
+async def enhanced_analysis(request: EnhancedAnalysisRequest):
+    """Knowledge-enhanced analysis via RAG + routed LLM."""
+    try:
+        client = await _get_enhanced_client()
+        analysis = await client.analyze_with_knowledge(
+            query=request.query,
+            market_data=request.market_data,
+            prompt_type=request.prompt_type,
+            max_tokens=request.max_tokens,
+        )
+        if analysis is None:
+            return MarketResponse(success=False, error="LLM unavailable", timestamp=datetime.now().isoformat())
+        chunks = client.get_related_knowledge(request.query, max_results=3)
+        return MarketResponse(
+            success=True,
+            data={"analysis": analysis, "knowledge_used": [c.get("title") or c.get("term") for c in chunks]},
+            timestamp=datetime.now().isoformat(),
+        )
+    except Exception as e:
+        logger.error(f"enhanced-analysis error: {e}")
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
+
+
+@router.post("/test-hypothesis", response_model=MarketResponse)
+async def test_hypothesis_endpoint(request: TestHypothesisRequest):
+    """Test a trading hypothesis from trading_knowledge/hypotheses/."""
+    try:
+        client = await _get_enhanced_client()
+        result = await client.test_hypothesis(request.hypothesis_name, request.market_data)
+        if result is None:
+            return MarketResponse(
+                success=False,
+                error="Hypothesis not found or LLM unavailable",
+                timestamp=datetime.now().isoformat(),
+            )
+        return MarketResponse(success=True, data=result, timestamp=datetime.now().isoformat())
+    except Exception as e:
+        logger.error(f"test-hypothesis error: {e}")
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
+
+
+@router.get("/knowledge/{term}", response_model=MarketResponse)
+async def knowledge_term(term: str):
+    """Glossary definition + related terms."""
+    rag = get_trading_rag()
+    definition = rag.get_glossary_term(term)
+    if definition is None:
+        return MarketResponse(success=False, error=f"Unknown term: {term}", timestamp=datetime.now().isoformat())
+    return MarketResponse(
+        success=True,
+        data={"term": term, "definition": definition, "related": rag.get_related_terms(term)},
+        timestamp=datetime.now().isoformat(),
+    )
+
+
+@router.post("/retrieve-context", response_model=MarketResponse)
+async def retrieve_context_endpoint(request: RetrieveContextRequest):
+    """Raw RAG retrieval (debug/UX: shows what context the LLM would see)."""
+    rag = get_trading_rag()
+    chunks = rag.retrieve_context(request.query, request.max_results)
+    mode = chunks[0].get("retrieval", "keyword") if chunks else "none"
+    return MarketResponse(
+        success=True,
+        data={"query": request.query, "chunks": chunks, "retrieval_mode": mode},
+        timestamp=datetime.now().isoformat(),
+    )
