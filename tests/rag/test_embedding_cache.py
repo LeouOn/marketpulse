@@ -49,7 +49,10 @@ def test_second_instance_uses_cache(tmp_path, fake_st):
 
     rag2 = EmbeddingRAG(str(kb), cache_dir=str(cache))
     chunks2 = rag2.retrieve_context("gaps", top_k=2)
-    assert fake_st.encode_calls == calls_after_first, "unchanged docs must not be re-embedded"
+    assert fake_st.encode_calls <= calls_after_first + 1, (
+        f"second instance should reuse doc cache "
+        f"(only query re-encode expected), got delta={fake_st.encode_calls - calls_after_first}"
+    )
     assert [c["content"] for c in chunks1] == [c["content"] for c in chunks2]
 
 
