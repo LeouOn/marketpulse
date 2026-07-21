@@ -89,6 +89,7 @@ data/macro/yield_curve/
 data/macro/*.parquet
 data/yahoo_cache/
 data/eia_cache/
+data/rag_cache/
 
 # Docker
 .omo/
