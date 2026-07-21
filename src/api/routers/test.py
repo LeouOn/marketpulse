@@ -6,11 +6,8 @@ from typing import Any
 from fastapi import APIRouter
 from loguru import logger
 
-from .deps import (
-    MarketPulseCollector,
-    collector,
-    ohlc_analyzer,
-)
+from . import deps
+from .deps import MarketPulseCollector
 
 router = APIRouter(prefix="/api/test", tags=["test"])
 
@@ -19,9 +16,9 @@ router = APIRouter(prefix="/api/test", tags=["test"])
 async def test_status():
     """Test endpoint to check global variables"""
     return {
-        "collector_status": collector is not None,
-        "collector_type": str(type(collector)) if collector else None,
-        "ohlc_analyzer_status": ohlc_analyzer is not None,
+        "collector_status": deps.collector is not None,
+        "collector_type": str(type(deps.collector)) if deps.collector else None,
+        "ohlc_analyzer_status": deps.ohlc_analyzer is not None,
         "timestamp": datetime.now().isoformat(),
     }
 

@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from datetime import time as dtime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from loguru import logger
 
@@ -79,6 +80,17 @@ class MarketScheduler:
             id='fetch_breadth_data',
             name='Fetch Breadth Data',
             max_instances=1,
+        )
+
+        # Yield curve daily pipeline — 16:30 ET, after FRED publishes.
+        from src.scheduler.yield_curve_job import run_yield_curve_pipeline
+        self._scheduler.add_job(
+            run_yield_curve_pipeline,
+            CronTrigger(hour=16, minute=30, timezone="US/Eastern"),
+            id="yield_curve_daily",
+            name="Fetch + evaluate Treasury yield curve",
+            max_instances=1,
+            replace_existing=True,
         )
 
     async def _fetch_realtime_quotes(self):

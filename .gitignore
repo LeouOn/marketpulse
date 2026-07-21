@@ -70,6 +70,9 @@ coverage.xml
 *.sqlite
 *.sqlite3
 
+# Generated data caches (FRED parquet, etc.)
+data/macro/yield_curve/
+
 # Logs
 *.log
 logs/
@@ -80,6 +83,13 @@ test_results*.json
 *.tmp
 *.temp
 evaluation_results.json
+
+# Generated data caches (FRED parquet, Yahoo cache, EIA cache, etc.)
+data/macro/yield_curve/
+data/macro/*.parquet
+data/yahoo_cache/
+data/eia_cache/
+data/rag_cache/
 
 # Docker
 .omo/

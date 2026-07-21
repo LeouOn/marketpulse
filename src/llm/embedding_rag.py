@@ -12,6 +12,7 @@ Usage::
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -31,14 +32,20 @@ class EmbeddingRAG:
         self,
         knowledge_dir: str = "trading_knowledge",
         model_name: str = "all-MiniLM-L6-v2",
+        cache_dir: str = "data/rag_cache",
     ):
         self.knowledge_dir = Path(knowledge_dir)
         self.model_name = model_name
+        self.cache_dir = Path(cache_dir)
         self._model = None
         self._embeddings: np.ndarray | None = None
         self._chunks: list[dict[str, Any]] = []
         self._initialized = False
         self._kg = None  # KnowledgeGraph — lazy-loaded
+
+    @staticmethod
+    def _chunk_id(chunk: dict) -> str:
+        return hashlib.sha256((chunk["title"] + "\x00" + chunk["content"]).encode("utf-8")).hexdigest()[:16]
 
     # -- lazy init ---------------------------------------------------------
 
@@ -69,15 +76,56 @@ class EmbeddingRAG:
             self._initialized = True
             return
 
-        # Embed them
-        texts = [c["content"] for c in self._chunks]
-        logger.info(f"EmbeddingRAG: embedding {len(texts)} documents ...")
-        self._embeddings = self._model.encode(texts, show_progress_bar=False)
-        logger.info(
-            f"EmbeddingRAG: {len(self._chunks)} docs embedded "
-            f"({self._embeddings.shape[1]}d vectors)"
-        )
+        self._embeddings = self._load_or_build_embeddings()
         self._initialized = True
+
+    def _load_or_build_embeddings(self) -> np.ndarray | None:
+        """Return embedding matrix aligned with self._chunks, using the disk cache."""
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = self.cache_dir / "manifest.json"
+        vectors_path = self.cache_dir / "embeddings.npz"
+
+        manifest: dict = {}
+        vectors: dict[str, np.ndarray] = {}
+        if manifest_path.exists() and vectors_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                vectors = dict(np.load(vectors_path))
+            except Exception as e:
+                logger.warning(f"EmbeddingRAG cache unreadable, rebuilding: {e}")
+                manifest, vectors = {}, {}
+
+        dim = self._model.get_sentence_embedding_dimension()
+        out = np.zeros((len(self._chunks), dim), dtype=np.float32)
+        new_manifest: dict = {}
+        to_embed: list[int] = []
+
+        for i, chunk in enumerate(self._chunks):
+            cid = self._chunk_id(chunk)
+            new_manifest[cid] = {
+                "title": chunk["title"],
+                "type": chunk["type"],
+                "content": chunk["content"],
+            }
+            if cid in vectors and cid in manifest:
+                out[i] = vectors[cid]
+            else:
+                to_embed.append(i)
+
+        if to_embed:
+            texts = [self._chunks[i]["content"] for i in to_embed]
+            logger.info(f"EmbeddingRAG: embedding {len(texts)} new/changed chunks (cache had {len(vectors)})")
+            fresh = self._model.encode(texts, show_progress_bar=False)
+            for pos, i in enumerate(to_embed):
+                out[i] = fresh[pos]
+
+        try:
+            np.savez(vectors_path, **{cid: out[i] for i, cid in enumerate(new_manifest)})
+            manifest_path.write_text(json.dumps(new_manifest), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"EmbeddingRAG: could not persist cache: {e}")
+
+        return out
 
     # -- document collection -----------------------------------------------
 
@@ -88,7 +136,7 @@ class EmbeddingRAG:
         # Concept docs
         concepts_dir = self.knowledge_dir / "core_concepts"
         if concepts_dir.exists():
-            for md_file in concepts_dir.glob("*.md"):
+            for md_file in sorted(concepts_dir.glob("*.md")):
                 try:
                     content = md_file.read_text(encoding="utf-8")
                     # Split long docs into smaller chunks for better retrieval
@@ -100,12 +148,10 @@ class EmbeddingRAG:
         for status_dir_name in ("active", "tested"):
             hy_dir = self.knowledge_dir / "hypotheses" / status_dir_name
             if hy_dir.exists():
-                for md_file in hy_dir.glob("*.md"):
+                for md_file in sorted(hy_dir.glob("*.md")):
                     try:
                         content = md_file.read_text(encoding="utf-8")
-                        chunks.extend(
-                            self._chunk_document(content, md_file.stem, f"{status_dir_name}_hypothesis")
-                        )
+                        chunks.extend(self._chunk_document(content, md_file.stem, f"{status_dir_name}_hypothesis"))
                     except Exception as e:
                         logger.warning(f"Failed to read {md_file}: {e}")
 
@@ -115,20 +161,20 @@ class EmbeddingRAG:
             try:
                 glossary = json.loads(glossary_path.read_text(encoding="utf-8"))
                 for term, definition in glossary.items():
-                    chunks.append({
-                        "title": term,
-                        "type": "glossary",
-                        "content": f"{term}: {definition}",
-                    })
+                    chunks.append(
+                        {
+                            "title": term,
+                            "type": "glossary",
+                            "content": f"{term}: {definition}",
+                        }
+                    )
             except Exception as e:
                 logger.warning(f"Failed to load glossary: {e}")
 
         return chunks
 
     @staticmethod
-    def _chunk_document(
-        content: str, title: str, doc_type: str, max_chunk_chars: int = 600
-    ) -> list[dict[str, Any]]:
+    def _chunk_document(content: str, title: str, doc_type: str, max_chunk_chars: int = 600) -> list[dict[str, Any]]:
         """Split a long document into overlapping chunks for fine-grained retrieval."""
         if len(content) <= max_chunk_chars:
             return [{"title": title, "type": doc_type, "content": content}]
@@ -151,9 +197,7 @@ class EmbeddingRAG:
 
     # -- retrieval ---------------------------------------------------------
 
-    def retrieve_context(
-        self, query: str, top_k: int = 5
-    ) -> list[dict[str, Any]]:
+    def retrieve_context(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """Return top-K most semantically relevant chunks for a query.
 
         Falls back to empty list if the model isn't loaded.
@@ -205,14 +249,13 @@ class EmbeddingRAG:
             return
         try:
             from .knowledge_graph import KnowledgeGraph
+
             self._kg = KnowledgeGraph(self.knowledge_dir)
         except Exception as e:
             logger.warning(f"KnowledgeGraph unavailable: {e}")
             self._kg = False  # type: ignore
 
-    def _graph_neighbor_chunks(
-        self, query: str, semantic_results: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    def _graph_neighbor_chunks(self, query: str, semantic_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Return chunks for graph neighbors of top semantic hits."""
         if self._kg is None or self._kg is False:
             return []
@@ -251,8 +294,6 @@ class EmbeddingRAG:
                 return content
         return None
 
-    def search(
-        self, query: str, top_k: int = 5
-    ) -> list[dict[str, Any]]:
+    def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """Alias for retrieve_context."""
         return self.retrieve_context(query, top_k)

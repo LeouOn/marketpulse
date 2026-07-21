@@ -1,4 +1,4 @@
-import type { ScreenerResult, SymbolProfile, SymbolStats, FiftyTwoWeekRange, OHLCVBar, DashboardData, MarketSymbolData, MacroData } from '@/types/market';
+import type { ScreenerResult, SymbolProfile, SymbolStats, FiftyTwoWeekRange, OHLCVBar, DashboardData, MarketSymbolData, MacroData, YieldCurveSnapshot, YieldCurveHistoryPoint, YieldCurveAlert, YieldCurveConfig } from '@/types/market';
 
 const API_BASE = '/api';
 
@@ -119,6 +119,36 @@ class MarketPulseAPIClient {
 
   async getHistoricalFromDB(symbol: string, timeframe: string = '1d', period: string = '1mo'): Promise<{symbol: string, data: OHLCVBar[]}> {
     return this.fetchAPI(`/market/historical/${encodeURIComponent(symbol)}?timeframe=${timeframe}&period=${period}`);
+  }
+
+  // ----------------------- Yield Curve Monitor (Task 11) -----------------------
+
+  async getYieldCurve(): Promise<YieldCurveSnapshot | null> {
+    const r = await fetch(`${this.baseUrl}/api/yield-curve/current`);
+    if (!r.ok) return null;
+    const body = await r.json();
+    return body.success ? body.data : null;
+  }
+
+  async getYieldCurveHistory(days = 90): Promise<YieldCurveHistoryPoint[]> {
+    const r = await fetch(`${this.baseUrl}/api/yield-curve/history?days=${days}`);
+    if (!r.ok) return [];
+    const body = await r.json();
+    return body.success ? (body.data.snapshots ?? []) : [];
+  }
+
+  async getYieldCurveAlerts(days = 30): Promise<YieldCurveAlert[]> {
+    const r = await fetch(`${this.baseUrl}/api/yield-curve/alerts?days=${days}`);
+    if (!r.ok) return [];
+    const body = await r.json();
+    return body.success ? (body.data.alerts ?? []) : [];
+  }
+
+  async getYieldCurveConfig(): Promise<YieldCurveConfig | null> {
+    const r = await fetch(`${this.baseUrl}/api/yield-curve/config`);
+    if (!r.ok) return null;
+    const body = await r.json();
+    return body.success ? body.data : null;
   }
 
   // ----------------------- BTC Research Lab (B7) -----------------------

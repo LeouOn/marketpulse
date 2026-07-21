@@ -1,0 +1,105 @@
+{
+  "last_updated": "2026-07-15",
+  "curve_2s10s": 40.0,
+  "curve_3m10y": 74.0,
+  "curve_shape": "NORMAL",
+  "recession_prob": 0.018,
+  "hypotheses": [
+    {
+      "key": "A",
+      "name": "Genuine Hawk",
+      "description": "Warsh truly believes in fighting inflation and the 2% target. His rhetoric is not theater. Balance sheet shrinks aggressively. QT continues. Rates stay higher for longer.",
+      "probability": 0.35,
+      "confirming_signals": [
+        "Balance sheet panel recommends aggressive QT with explicit size targets",
+        "Warsh raises rates or holds firm despite political pressure",
+        "Reserves management purchases remain minimal/temporary",
+        "Powell (as governor) votes against easing",
+        "Warsh maintains pure hawkish stance for 12+ months"
+      ],
+      "denying_signals": [
+        "Warsh pivots to 'ample reserves' language without targets",
+        "QT slows or pauses before balance sheet reaches targets",
+        "Any rate cut within 6 months despite hawkish rhetoric",
+        "Reserves management purchases expand significantly"
+      ],
+      "curve_implication": "2s10s stays flat at +30-50bps for 12-18 months",
+      "timeline": "Value rotation delayed 12-18+ months"
+    },
+    {
+      "key": "B",
+      "name": "Pantomime (Hawkish Talk, Dovish Action)",
+      "description": "Warsh was appointed to SOUND hawkish while DOING dovish. Shadow easing through reserves management, expanded repo, slowed QT. The hawkish rhetoric provides political cover.",
+      "probability": 0.2,
+      "confirming_signals": [
+        "Balance sheet panel recommends 'ample reserves' without targets",
+        "Reserves management purchases expand and become permanent",
+        "QT slows dramatically or pauses",
+        "Standing repo facility expanded significantly",
+        "Warsh's language shifts from 'fighting inflation' to 'sustaining expansion'"
+      ],
+      "denying_signals": [
+        "Warsh raises rates or tightens policy materially",
+        "Balance sheet shrinks toward $5T",
+        "Inflation drops below 2.5% AND Warsh still holds rates"
+      ],
+      "curve_implication": "2s10s steepens to +60-80bps within 3-6 months",
+      "timeline": "Value rotation begins in 3-6 months"
+    },
+    {
+      "key": "C",
+      "name": "Transition (Hawkish Now, Dovish Later)",
+      "description": "Warsh starts hawkish to establish credibility and independence. Over 6-12 months, fiscal reality + political pressure + AI capex needs force a pragmatic pivot. The 2% target becomes fiction. Inflation drifts to 3-3.5% through tolerance.",
+      "probability": 0.45,
+      "confirming_signals": [
+        "Balance sheet panel recommends gradual QT with 'flexible' framework",
+        "Warsh's language gradually softens over 3-6 months",
+        "Reserves management purchases start small but grow",
+        "Warsh begins emphasizing 'growth' alongside 'inflation'",
+        "Rate hold language shifts from 'higher for longer' to 'patient'"
+      ],
+      "denying_signals": [
+        "Warsh maintains pure hawkish stance for 12+ months",
+        "Balance sheet shrinks aggressively toward $5T",
+        "No expansion of reserves management purchases",
+        "Warsh explicitly rules out any form of QE or easing"
+      ],
+      "curve_implication": "2s10s flat at +30-50 for 3-6mo, then steepens to +60-100",
+      "timeline": "Value rotation begins mid-to-late 2027"
+    }
+  ],
+  "signals": [
+    {
+      "date": "2026-07-14",
+      "description": "Warsh's first congressional testimony: defended 2% target, criticized past Chairs, pledged 'regime change'. Markets initially rallied day after appointment (calling bluff) but Warsh doubled down.",
+      "hypothesis": "A",
+      "direction": "confirm",
+      "weight": 0.1,
+      "source": "CNN, CNBC, Fed.gov testimony"
+    },
+    {
+      "date": "2026-07-14",
+      "description": "Warsh assembled balance sheet review panel \u2014 provides institutional cover for eventual policy pivot. Deliberately ambiguous 'regime change' language could mean tighter OR restructured.",
+      "hypothesis": "C",
+      "direction": "confirm",
+      "weight": 0.08,
+      "source": "Bloomberg, Yahoo Finance"
+    },
+    {
+      "date": "2026-07-08",
+      "description": "Trump's DOJ investigation of Powell for not cutting rates shows Trump demands dovish policy. Warsh was appointed to replace the non-compliant Chair.",
+      "hypothesis": "B",
+      "direction": "confirm",
+      "weight": 0.05,
+      "source": "Multiple news sources"
+    },
+    {
+      "date": "2026-07-15",
+      "description": "Curve stable at 2s10s +40bps over 30 days. Bond market has NOT priced in any scenario shift. All yields rose 13bps in parallel (inflation expectations up) but shape unchanged.",
+      "hypothesis": "A",
+      "direction": "confirm",
+      "weight": 0.05,
+      "source": "FRED DGS2/DGS10, yield curve monitor"
+    }
+  ]
+}
