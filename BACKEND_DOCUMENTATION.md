@@ -239,6 +239,44 @@ Backend Architecture
 - [ ] Add data quality scoring
 - [ ] Create alerting for data issues
 
+#### POST `/api/llm/retrieve-context`
+**Description:** Raw RAG retrieval (offline, no LLM call) — returns the knowledge chunks a query would surface, with the active retrieval mode (`semantic` if embeddings available, otherwise `keyword`).
+
+**Request Body:**
+```json
+{
+  "query": "fair value gap",
+  "max_results": 5
+}
+```
+
+#### GET `/api/llm/knowledge/{term}`
+**Description:** Glossary lookup — returns the definition and related terms for a trading concept (e.g. `FVG`, `ICT`).
+
+#### POST `/api/llm/enhanced-analysis`
+**Description:** Knowledge-enhanced LLM analysis — retrieves relevant RAG context, then routes the prompt through `ModelRouter` to whichever provider is reachable (DeepSeek / GLM / MiniMax), returning the analysis plus the list of knowledge chunk titles used.
+
+**Request Body:**
+```json
+{
+  "query": "What is a fair value gap and how is it traded?",
+  "market_data": null,
+  "prompt_type": "trading_analyst",
+  "max_tokens": 400
+}
+```
+
+#### POST `/api/llm/test-hypothesis`
+**Description:** Runs a structured hypothesis test from `trading_knowledge/hypotheses/` through the LLM and returns the typed `HypothesisTestResult`.
+
+**Request Body:**
+```json
+{
+  "hypothesis_name": "overnight_margin_cascade",
+  "market_data": null
+}
+```
+
 ### WebSocket Endpoint
 
 #### WebSocket `/ws/market`
