@@ -40,13 +40,8 @@ def test_llm_models_shape():
 
 
 def test_llm_chat_graceful_offline():
-    """With no LLM provider reachable, chat returns success=True with fallback text.
-
-    NOTE: We send ``"hello"`` (no "market"/"trend"/"buy"/"sell" keyword) so the
-    offline fallback in ``src/api/main.py::chat_with_llm`` falls into the
-    generic-apology branch -- the most stable path when LM Studio is offline.
-    """
-    r = client.post("/api/llm/chat", json={"message": "hello"})
+    """Anchor pre-refactor offline behavior for the ``market`` keyword branch."""
+    r = client.post("/api/llm/chat", json={"message": "hello market"})
     assert r.status_code == 200
     body = r.json()
     assert body["success"] is True
