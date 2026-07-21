@@ -11,7 +11,7 @@ from pathlib import Path
 # Add src to path
 sys.path.append(str(Path(__file__).parent / "src"))
 
-from src.llm.enhanced_llm_client import EnhancedLLMManager, EnhancedLMStudioClient
+from src.llm.enhanced_llm_client import EnhancedLLMClient, EnhancedLLMManager
 from src.llm.hypothesis_tester import HypothesisTester
 from src.llm.trading_knowledge_rag import get_trading_rag
 
@@ -67,7 +67,7 @@ async def demo_enhanced_analysis():
     print("DEMO 2: Enhanced Analysis with Knowledge")
     print("=" * 80)
 
-    async with EnhancedLMStudioClient() as client:
+    async with EnhancedLLMClient() as client:
         # Test 1: Market analysis with context
         print("\n1. Market Analysis with Knowledge:")
         market_data = {
@@ -81,26 +81,8 @@ async def demo_enhanced_analysis():
             print("   Analysis completed with knowledge context")
             print(f"   Preview: {analysis[:150]}...")
 
-        # Test 2: Chart analysis with technical knowledge
-        print("\n2. Chart Analysis with Knowledge:")
-        chart_data = {
-            "symbol": "NQ",
-            "timeframe": "5m",
-            "candles": [
-                {"time": "10:00", "open": 15000, "high": 15025, "low": 14995, "close": 15020, "volume": 1250},
-                {"time": "10:05", "open": 15020, "high": 15045, "low": 15010, "close": 15035, "volume": 1380},
-                {"time": "10:10", "open": 15035, "high": 15050, "low": 15020, "close": 15040, "volume": 1420},
-            ],
-            "indicators": {"sma_20": 15010, "rsi": 65.5},
-        }
-
-        chart_analysis = await client.analyze_chart_with_context(chart_data)
-        if chart_analysis:
-            print("   Chart analysis completed")
-            print(f"   Preview: {chart_analysis[:150]}...")
-
-        # Test 3: Knowledge-enhanced query
-        print("\n3. Knowledge-Enhanced Query:")
+        # Test 2: Knowledge-enhanced query
+        print("\n2. Knowledge-Enhanced Query:")
         result = await client.analyze_with_knowledge(
             query="Explain the relationship between funding rates and perpetual futures prices",
             prompt_type="trading_analyst",
@@ -118,7 +100,7 @@ async def demo_hypothesis_testing():
     print("DEMO 3: Hypothesis Testing Framework")
     print("=" * 80)
 
-    async with EnhancedLMStudioClient() as client:
+    async with EnhancedLLMClient() as client:
         tester = HypothesisTester(client)
 
         # Test 1: List hypotheses
