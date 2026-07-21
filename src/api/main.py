@@ -23,6 +23,9 @@ import json
 from datetime import datetime
 from loguru import logger
 
+# Module-scope (not lazy in lifespan) so circular imports surface at import time.
+from src.api.routers import deps as router_deps
+
 # Import with error handling for missing dependencies
 try:
     from src.core.config import get_settings
@@ -93,6 +96,8 @@ async def lifespan(app: FastAPI):
         ohlc_analyzer = None
 
     logger.info(f"Lifespan initialization complete. Collector: {collector is not None}")
+    router_deps.init_state(collector=collector, ohlc_analyzer=ohlc_analyzer, db_manager=db_manager)
+    logger.info("Router deps state published")
     yield
 
     # Shutdown

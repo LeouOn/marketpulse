@@ -96,3 +96,15 @@ def success_response(data: Any) -> MarketResponse:
 
 def error_response(error: str) -> MarketResponse:
     return MarketResponse(success=False, error=error, timestamp=get_current_timestamp())
+
+
+def init_state(*, collector=None, ohlc_analyzer=None, db_manager=None):
+    """Called by app lifespan to publish runtime singletons to routers."""
+    globals()["collector"] = collector
+    globals()["ohlc_analyzer"] = ohlc_analyzer
+    if db_manager is not None:
+        globals()["db_manager"] = db_manager
+
+
+def get_collector():
+    return collector

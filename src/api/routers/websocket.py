@@ -7,6 +7,8 @@ from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
 
+from . import deps
+
 router = APIRouter(tags=["websocket"])
 
 
@@ -28,7 +30,7 @@ async def websocket_endpoint(websocket: WebSocket):
         message_count = 0
         while True:
             try:
-                from src.api.routers.deps import collector
+                collector = deps.collector
 
                 if collector:
                     internals = await collector.collect_market_internals()
@@ -138,21 +140,23 @@ async def stream_analysis_endpoint(websocket: WebSocket):
         include_breadth = data.get("include_breadth", True)
 
         if not query:
-            await websocket.send_json({
-                "phase": "error",
-                "content": "Missing 'query' field in request.",
-            })
+            await websocket.send_json(
+                {
+                    "phase": "error",
+                    "content": "Missing 'query' field in request.",
+                }
+            )
             return
 
-        logger.info(
-            f"Stream-analysis: query='{query[:60]}...' symbols={symbols}"
-        )
+        logger.info(f"Stream-analysis: query='{query[:60]}...' symbols={symbols}")
 
         # Send acknowledgement
-        await websocket.send_json({
-            "phase": "accepted",
-            "data": {"query": query, "symbols": symbols},
-        })
+        await websocket.send_json(
+            {
+                "phase": "accepted",
+                "data": {"query": query, "symbols": symbols},
+            }
+        )
 
         # Run the streaming pipeline
         from src.llm.agents.orchestrator import MarketAnalysisOrchestrator
@@ -160,31 +164,39 @@ async def stream_analysis_endpoint(websocket: WebSocket):
         orchestrator = MarketAnalysisOrchestrator()
         async with orchestrator:
             async for event in orchestrator.analyze_streaming(
-                query=query, symbols=symbols, include_breadth=include_breadth,
+                query=query,
+                symbols=symbols,
+                include_breadth=include_breadth,
             ):
                 # Send event as JSON to the WebSocket client
-                await websocket.send_json({
-                    "phase": event.phase,
-                    "agent_name": event.agent_name,
-                    "content": event.content,
-                    "tools_used": event.tools_used,
-                    "data": event.data,
-                })
+                await websocket.send_json(
+                    {
+                        "phase": event.phase,
+                        "agent_name": event.agent_name,
+                        "content": event.content,
+                        "tools_used": event.tools_used,
+                        "data": event.data,
+                    }
+                )
 
         # Send completion signal
-        await websocket.send_json({
-            "phase": "complete",
-            "content": "Analysis pipeline finished.",
-        })
+        await websocket.send_json(
+            {
+                "phase": "complete",
+                "content": "Analysis pipeline finished.",
+            }
+        )
 
     except WebSocketDisconnect:
         logger.info("Stream-analysis WebSocket disconnected")
     except Exception as e:
         logger.error(f"Stream-analysis WebSocket error: {e}")
         with contextlib.suppress(Exception):
-            await websocket.send_json({
-                "phase": "error",
-                "content": f"Pipeline error: {str(e)}",
-            })
+            await websocket.send_json(
+                {
+                    "phase": "error",
+                    "content": f"Pipeline error: {str(e)}",
+                }
+            )
     finally:
         logger.info("Stream-analysis WebSocket closed")
