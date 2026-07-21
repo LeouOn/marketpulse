@@ -51,9 +51,15 @@ select = [
 ]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Data fixtures (JSON / YAML / TXT) are not Python — silence Python-specific rules.
+"**/*.json" = ["B018"]
+"tests/**/*.json" = ["B018"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+exclude = ["**/*.json", "**/*.yaml", "**/*.yml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

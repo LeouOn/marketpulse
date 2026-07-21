@@ -1,0 +1,17 @@
+[
+  {"query": "fair value gap", "expect": ["market_structure", "FVG"]},
+  {"query": "what is an order block", "expect": ["market_structure", "Order Block"]},
+  {"query": "liquidity sweep", "expect": ["market_structure"]},
+  {"query": "break of structure vs change of character", "expect": ["market_structure", "BOS"]},
+  {"query": "london kill zone times", "expect": ["market_structure", "kill_zones"]},
+  {"query": "cumulative volume delta", "expect": ["market_structure", "CVD"]},
+  {"query": "overnight margin cascade in crypto", "expect": ["overnight_margin_cascade"]},
+  {"query": "funding rate", "expect": ["funding_rate"]},
+  {"query": "backwardation vs contango", "expect": ["backwardation", "contango"]},
+  {"query": "open interest", "expect": ["open_interest"]},
+  {"query": "what is VWAP", "expect": ["VWAP", "vwap"]},
+  {"query": "position sizing rules", "expect": ["position_sizing"]},
+  {"query": "liquidation cascade", "expect": ["liquidation_cascade", "overnight_margin_cascade"]},
+  {"query": "basis trade", "expect": ["basis"]},
+  {"query": "max drawdown", "expect": ["max_drawdown"]}
+]

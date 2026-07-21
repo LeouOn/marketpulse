@@ -114,6 +114,7 @@ class TradingKnowledgeRAG:
         if not hasattr(self, "_embedding_rag"):
             try:
                 from .embedding_rag import EmbeddingRAG
+
                 self._embedding_rag = EmbeddingRAG(self.knowledge_dir)
                 logger.info("TradingKnowledgeRAG: EmbeddingRAG enabled")
             except Exception as e:
@@ -122,30 +123,45 @@ class TradingKnowledgeRAG:
         return self._embedding_rag
 
     def retrieve_context(self, query: str, max_results: int = 5) -> list[dict[str, Any]]:
-        """
-        Retrieve relevant knowledge — semantic (embedding) first, keyword fallback.
+        """Hybrid retrieval: RRF fusion of semantic + keyword rankings.
 
         Args:
             query: User query or hypothesis to analyze
             max_results: Maximum number of context chunks to return
 
         Returns:
-            List of relevant knowledge chunks with metadata
+            List of relevant knowledge chunks with metadata; each chunk has a
+            ``retrieval`` field ("semantic" | "keyword" | "hybrid") and a
+            ``relevance_score`` (fused RRF score when hybrid).
         """
-        # Try semantic embedding search first
-        emb = self._embedding
-        if emb is not None:
-            try:
-                results = emb.retrieve_context(query, top_k=max_results)
-                if results:
-                    logger.debug(
-                        f"TradingKnowledgeRAG: embedding returned {len(results)} chunks"
-                    )
-                    return results
-            except Exception as e:
-                logger.warning(f"EmbeddingRAG failed, falling back to keyword: {e}")
+        semantic = self._semantic_ranked(query, max_results * 3)
+        keyword = self._keyword_ranked(query, max_results * 3)
 
-        # Fall back to keyword matching
+        if semantic and keyword:
+            return self._rrf_fuse(semantic, keyword, query)[:max_results]
+        if semantic:
+            for r in semantic:
+                r.setdefault("retrieval", "semantic")
+            return semantic[:max_results]
+        for r in keyword:
+            r.setdefault("retrieval", "keyword")
+        return keyword[:max_results]
+
+    def _semantic_ranked(self, query: str, limit: int) -> list[dict[str, Any]]:
+        emb = self._embedding
+        if emb is None:
+            return []
+        try:
+            results = emb.retrieve_context(query, top_k=limit) or []
+        except Exception as e:
+            logger.warning(f"EmbeddingRAG failed, keyword-only: {e}")
+            return []
+        for r in results:
+            r["retrieval"] = "semantic"
+            r["relevance_score"] = r.get("score", 0.0)
+        return results
+
+    def _keyword_ranked(self, query: str, limit: int) -> list[dict[str, Any]]:
         query_lower = query.lower()
         relevant_docs = []
         term_matches = []
@@ -193,8 +209,38 @@ class TradingKnowledgeRAG:
         # 4. Sort by relevance and return top results
         all_matches = term_matches + relevant_docs
         all_matches.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+        for r in all_matches:
+            r["retrieval"] = "keyword"
+        return all_matches[:limit]
 
-        return all_matches[:max_results]
+    @staticmethod
+    def _rrf_fuse(semantic: list[dict], keyword: list[dict], query: str, k: int = 60) -> list[dict]:
+        """Reciprocal rank fusion; exact glossary-term matches get a one-rank boost.
+
+        Dedupe key is ``content[:200]`` — note this can collide when two chunks
+        share a 200-char prefix; acceptable per brief for this iteration.
+        """
+        scores: dict[str, float] = {}
+        best: dict[str, dict] = {}
+        for rank, item in enumerate(semantic):
+            key = item.get("content", "")[:200]
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+            best.setdefault(key, item)
+        for rank, item in enumerate(keyword):
+            key = item.get("content", "")[:200]
+            boost = 0.0
+            if item.get("type") == "glossary" and item.get("term", "").lower() in query.lower():
+                boost = 1.0 / (k + 1)  # treat as one rank better than first
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1) + boost
+            best.setdefault(key, item)
+        fused = sorted(scores, key=lambda kk: scores[kk], reverse=True)
+        out = []
+        for key in fused:
+            item = dict(best[key])
+            item["relevance_score"] = scores[key]
+            item["retrieval"] = "hybrid"
+            out.append(item)
+        return out
 
     def _term_matches(self, term: str, query: str) -> bool:
         """Check if glossary term matches query"""
