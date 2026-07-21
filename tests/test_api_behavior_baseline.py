@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
@@ -56,7 +55,6 @@ def test_market_dashboard_shape():
     assert "success" in body and "timestamp" in body
 
 
-@pytest.mark.xfail(reason="symbols router not mounted until Task 4", strict=True)
 def test_symbols_list():
     r = client.get("/api/market/symbols")
     assert r.status_code == 200
