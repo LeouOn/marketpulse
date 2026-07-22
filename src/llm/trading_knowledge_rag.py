@@ -351,7 +351,7 @@ class KeywordKnowledgeRetriever:
             try:
                 with open(glossary_path, encoding="utf-8") as f:
                     return json.load(f)
-            except:
+            except Exception:
                 pass
         return {}
 
@@ -378,7 +378,7 @@ class KeywordKnowledgeRetriever:
                             if any(word in para.lower() for word in query_lower.split()):
                                 relevant_docs.append(f"From {md_file.stem}: {para[:300]}...")
                                 break
-                except:
+                except Exception:
                     continue
 
         return relevant_docs[:3]  # Top 3 matches

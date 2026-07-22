@@ -51,6 +51,7 @@ except Exception as e:
 # Global variables (populated by lifespan; published to routers via deps.init_state)
 collector = None
 ohlc_analyzer = None
+db_manager = DatabaseManager(settings.database_url) if settings and DatabaseManager else None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -123,8 +124,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
-
-db_manager = DatabaseManager(settings.database_url) if settings and DatabaseManager else None
 
 
 @app.get("/")
