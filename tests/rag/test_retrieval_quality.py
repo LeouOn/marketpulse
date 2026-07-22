@@ -76,3 +76,58 @@ def test_golden_hit_rate(rag, tmp_path, monkeypatch):
     rate = hits / len(queries)
     threshold = 0.8
     assert rate >= threshold, f"hit-rate {rate:.0%} < {threshold:.0%} on golden set; misses={misses}"
+
+
+def test_hybrid_at_least_as_good_as_keyword_only(monkeypatch, tmp_path):
+    """RRF hybrid fusion must not degrade retrieval below keyword-only baseline.
+
+    Uses a deterministic bag-of-words stub embedder (no model download, but
+    semantically meaningful vectors — texts sharing words have higher cosine
+    similarity). This exercises the real hybrid RRF fusion path in CI and
+    asserts that hybrid hits >= keyword-only hits on the golden set.
+    """
+    import hashlib
+
+    DIM = 256
+
+    class _BagOfWordsModel:
+        def get_sentence_embedding_dimension(self):
+            return DIM
+
+        def encode(self, texts, show_progress_bar=False):
+            vecs = np.zeros((len(texts), DIM), dtype=np.float32)
+            for i, text in enumerate(texts):
+                for word in text.lower().split():
+                    bucket = int(hashlib.md5(word.encode()).hexdigest()[:8], 16) % DIM
+                    vecs[i, bucket] += 1.0
+            return vecs
+
+    module = types.ModuleType("sentence_transformers")
+    module.SentenceTransformer = lambda *a, **kw: _BagOfWordsModel()
+    monkeypatch.setitem(sys.modules, "sentence_transformers", module)
+
+    from src.llm import embedding_rag as er_module
+
+    original_init = er_module.EmbeddingRAG.__init__
+
+    def _isolated_init(
+        self, knowledge_dir="trading_knowledge", model_name="all-MiniLM-L6-v2", cache_dir="data/rag_cache"
+    ):
+        return original_init(self, knowledge_dir, model_name, str(tmp_path / "cache"))
+
+    monkeypatch.setattr(er_module.EmbeddingRAG, "__init__", _isolated_init)
+
+    from src.llm.trading_knowledge_rag import TradingKnowledgeRAG
+
+    queries = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    rag = TradingKnowledgeRAG(str(KB_DIR))
+
+    hybrid_hits = sum(1 for q in queries if _hit(rag.retrieve_context(q["query"], 5), q["expect"]))
+
+    rag._embedding_rag = None
+    keyword_hits = sum(1 for q in queries if _hit(rag.retrieve_context(q["query"], 5), q["expect"]))
+
+    assert hybrid_hits >= keyword_hits, (
+        f"hybrid ({hybrid_hits}/{len(queries)}) < keyword-only ({keyword_hits}/{len(queries)}); "
+        f"RRF fusion degraded retrieval"
+    )
