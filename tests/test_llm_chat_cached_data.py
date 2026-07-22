@@ -9,7 +9,7 @@ Verifies that:
 import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -34,7 +34,7 @@ def test_get_cached_market_context_formats_internals():
         "data_quality": "good",
     }
 
-    with patch("src.api.routers.llm._collector", mock_collector):
+    with patch("src.api.routers.deps.collector", mock_collector):
         result = asyncio.run(_get_cached_market_context())
 
     assert "[LIVE MARKET DATA from cache]" in result
@@ -57,7 +57,7 @@ def test_get_cached_market_context_returns_empty_when_no_collector():
     """Should return empty string if collector is None."""
     from src.api.routers.llm import _get_cached_market_context
 
-    with patch("src.api.routers.llm._collector", None):
+    with patch("src.api.routers.deps.collector", None):
         result = asyncio.run(_get_cached_market_context())
 
     assert result == ""
@@ -71,7 +71,7 @@ def test_get_cached_market_context_handles_empty_internals():
     mock_collector = AsyncMock()
     mock_collector.collect_market_internals.return_value = None
 
-    with patch("src.api.routers.llm._collector", mock_collector):
+    with patch("src.api.routers.deps.collector", mock_collector):
         result = asyncio.run(_get_cached_market_context())
 
     assert result == ""
@@ -88,7 +88,7 @@ def test_get_cached_market_context_handles_partial_data():
         "vix": {"price": 18.50, "change": -0.75, "change_pct": -3.89, "volume": 0},
     }
 
-    with patch("src.api.routers.llm._collector", mock_collector):
+    with patch("src.api.routers.deps.collector", mock_collector):
         result = asyncio.run(_get_cached_market_context())
 
     assert "SPY (S&P 500)" in result
@@ -104,7 +104,7 @@ def test_get_cached_market_context_handles_exception():
     mock_collector = AsyncMock()
     mock_collector.collect_market_internals.side_effect = Exception("Redis connection failed")
 
-    with patch("src.api.routers.llm._collector", mock_collector):
+    with patch("src.api.routers.deps.collector", mock_collector):
         result = asyncio.run(_get_cached_market_context())
 
     assert result == ""
@@ -127,9 +127,6 @@ def test_chat_endpoint_includes_cached_market_data():
     captured_messages = []
 
     mock_client_instance = AsyncMock()
-    mock_client_instance.get_active_model.return_value = "test-model"
-    mock_client_instance.session = MagicMock()
-    mock_client_instance.session.closed = False
 
     def capture_completion(**kwargs):
         captured_messages.extend(kwargs.get("messages", []))
@@ -137,9 +134,13 @@ def test_chat_endpoint_includes_cached_market_data():
 
     mock_client_instance.generate_completion.side_effect = capture_completion
 
+    mock_router = AsyncMock()
+    mock_router.route.return_value = (mock_client_instance, "test-model")
+
     with (
-        patch("src.api.routers.llm._collector", mock_collector),
-        patch("src.api.routers.llm._get_llm_client", return_value=mock_client_instance),
+        patch("src.api.routers.deps.collector", mock_collector),
+        patch("src.api.routers.llm._get_router", AsyncMock(return_value=mock_router)),
+        patch("src.api.routers.llm._selected_model", None),
     ):
         request = ChatRequest(
             message="What is SPY doing today?",
@@ -176,15 +177,15 @@ def test_chat_endpoint_includes_frontend_context_plus_cached():
     captured_messages = []
 
     mock_client_instance = AsyncMock()
-    mock_client_instance.get_active_model.return_value = "test-model"
-    mock_client_instance.session = MagicMock()
-    mock_client_instance.session.closed = False
 
     def capture_completion(**kwargs):
         captured_messages.extend(kwargs.get("messages", []))
         return {"choices": [{"message": {"content": "Analysis here"}}]}
 
     mock_client_instance.generate_completion.side_effect = capture_completion
+
+    mock_router = AsyncMock()
+    mock_router.route.return_value = (mock_client_instance, "test-model")
 
     frontend_context = {
         "market_bias": "BULLISH",
@@ -195,8 +196,9 @@ def test_chat_endpoint_includes_frontend_context_plus_cached():
     }
 
     with (
-        patch("src.api.routers.llm._collector", mock_collector),
-        patch("src.api.routers.llm._get_llm_client", return_value=mock_client_instance),
+        patch("src.api.routers.deps.collector", mock_collector),
+        patch("src.api.routers.llm._get_router", AsyncMock(return_value=mock_router)),
+        patch("src.api.routers.llm._selected_model", None),
     ):
         request = ChatRequest(
             message="How is SPY trending?",
@@ -224,9 +226,6 @@ def test_chat_endpoint_works_without_collector():
     captured_messages = []
 
     mock_client_instance = AsyncMock()
-    mock_client_instance.get_active_model.return_value = "test-model"
-    mock_client_instance.session = MagicMock()
-    mock_client_instance.session.closed = False
 
     def capture_completion(**kwargs):
         captured_messages.extend(kwargs.get("messages", []))
@@ -234,9 +233,13 @@ def test_chat_endpoint_works_without_collector():
 
     mock_client_instance.generate_completion.side_effect = capture_completion
 
+    mock_router = AsyncMock()
+    mock_router.route.return_value = (mock_client_instance, "test-model")
+
     with (
-        patch("src.api.routers.llm._collector", None),
-        patch("src.api.routers.llm._get_llm_client", return_value=mock_client_instance),
+        patch("src.api.routers.deps.collector", None),
+        patch("src.api.routers.llm._get_router", AsyncMock(return_value=mock_router)),
+        patch("src.api.routers.llm._selected_model", None),
     ):
         request = ChatRequest(
             message="What is a moving average?",
