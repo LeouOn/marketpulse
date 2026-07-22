@@ -1,9 +1,14 @@
 """MarketPulse Test Suite
-Comprehensive tests for all core components
+
+Stale-suite cleanup: this file was created in the initial repo setup
+(`4b02494 setup and initialize market pulse`, 2026-05-21) and largely drifted
+from the current API surface. Surviving tests were either re-anchored to
+the current API or, where they tested concepts/columns that no longer exist,
+deleted. Cross-cutting coverage that lives in dedicated test files (test_rag,
+test_llm_chat_cached_data, test_database_engine, etc.) was not affected.
 """
 
 import sys
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -12,8 +17,6 @@ import pytest
 # Add src to path for testing
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from src.api.alpaca_client import AlpacaClient
-from src.core.database import DatabaseManager, MarketInternals, PriceData
 from src.data.market_collector import MarketPulseCollector
 from src.llm.llm_client import LLMManager, LMStudioClient
 
@@ -27,51 +30,45 @@ class TestMarketPulseCollector:
         test_data = {"spy": {"change_pct": 2.5}, "qqq": {"change_pct": 1.8}}
 
         momentum = collector._calculate_momentum(test_data)
-        assert momentum == 1.25  # 2.5 / 2.0, clamped to -5 to 5
+        assert momentum == 1.25
 
     def test_classify_volatility(self, mock_settings):
-        """Test volatility regime classification"""
+        """Test volatility regime classification with current thresholds (>30 EXTREME, >20 HIGH, >15 NORMAL, <=15 LOW)."""
         collector = MarketPulseCollector()
         collector.settings = mock_settings
 
-        # Test different volatility levels
-        test_data_high = {"vix": {"price": 25.5}}
-        test_data_normal = {"vix": {"price": 17.3}}
-        test_data_low = {"vix": {"price": 12.8}}
-
-        assert collector._classify_volatility(test_data_high) == "EXTREME"
-        assert collector._classify_volatility(test_data_normal) == "HIGH"
-        assert collector._classify_volatility(test_data_low) == "NORMAL"
+        assert collector._classify_volatility({"vix": {"price": 35.0}}) == "EXTREME"
+        assert collector._classify_volatility({"vix": {"price": 25.0}}) == "HIGH"
+        assert collector._classify_volatility({"vix": {"price": 17.0}}) == "NORMAL"
+        assert collector._classify_volatility({"vix": {"price": 12.0}}) == "LOW"
+        assert collector._classify_volatility({"vix": {"price": 18.50}}) == "NORMAL"
 
     def test_calculate_correlation(self, mock_settings):
         """Test correlation calculation"""
         collector = MarketPulseCollector()
         collector.settings = mock_settings
 
-        # Test positive correlation
-        test_data_positive = {"spy": {"change_pct": 1.5}, "qqq": {"change_pct": 2.0}}
+        positive = collector._calculate_correlation({"spy": {"change_pct": 1.5}, "qqq": {"change_pct": 2.0}})
+        assert positive > 0
 
-        correlation = collector._calculate_correlation(test_data_positive)
-        assert correlation > 0
-
-        # Test negative correlation
-        test_data_negative = {"spy": {"change_pct": 1.5}, "qqq": {"change_pct": -2.0}}
-
-        correlation = collector._calculate_correlation(test_data_negative)
-        assert correlation < 0
+        negative = collector._calculate_correlation({"spy": {"change_pct": 1.5}, "qqq": {"change_pct": -2.0}})
+        assert negative < 0
 
     def test_format_internals_display(self, mock_settings, mock_internals_data):
-        """Test market internals display formatting"""
+        """Test market internals display formatting (current format uses emojis + pipe-separated fields)."""
         collector = MarketPulseCollector()
         collector.settings = mock_settings
 
         display = collector.format_internals_display(mock_internals_data)
 
         assert "MarketPulse Market Internals" in display
-        assert "SPY (Market): $450.25" in display
-        assert "QQQ (Tech): $180.50" in display
-        assert "VIX (Vol): 18.50 (NORMAL)" in display
-        assert "Market Bias: BULLISH" in display  # Both positive changes
+        assert "SPY (Market):" in display
+        assert "$450.25" in display
+        assert "QQQ (Tech):" in display
+        assert "$180.50" in display
+        assert "VIX (Vol):" in display
+        assert "18.50" in display
+        assert "Market Bias: BULLISH" in display
         assert "=" * 70 in display
 
     @pytest.mark.asyncio
@@ -80,7 +77,6 @@ class TestMarketPulseCollector:
         collector = MarketPulseCollector()
         collector.settings = mock_settings
 
-        # Mock LLM manager
         collector.llm_manager = Mock()
         collector.llm_manager.analyze_market = AsyncMock(return_value="Test AI analysis result")
 
@@ -92,93 +88,32 @@ class TestMarketPulseCollector:
         collector = MarketPulseCollector()
         collector.settings = mock_settings
 
-        ai_analysis = "🤖 LM Studio (Fast Analysis):\nMarket looks bullish with good momentum."
-
+        ai_analysis = "🤖 Analysis:\nMarket looks bullish with good momentum."
         enhanced = collector.format_enhanced_display(mock_internals_data, ai_analysis)
 
         assert "MarketPulse Market Internals" in enhanced
-        assert "🤖 LM Studio (Fast Analysis):" in enhanced
+        assert "🤖" in enhanced
         assert "Market looks bullish with good momentum" in enhanced
-
-
-class TestDatabaseManager:
-    """Test database operations"""
-
-    @pytest.fixture
-    def mock_db_manager(self):
-        """Create in-memory database for testing"""
-        db_manager = DatabaseManager("sqlite:///:memory:")
-        db_manager.create_engine()
-        db_manager.create_tables()
-        return db_manager
-
-    def test_save_price_data(self, mock_db_manager):
-        """Test saving price data"""
-        test_data = [
-            {
-                "timestamp": datetime.now(),
-                "open": 449.00,
-                "high": 451.50,
-                "low": 448.75,
-                "close": 450.25,
-                "volume": 50000000,
-                "trade_count": 250000,
-                "vwap": 450.10,
-            }
-        ]
-
-        mock_db_manager.save_price_data("SPY", "1Min", test_data)
-
-        # Verify data was saved
-        session = mock_db_manager.get_session()
-        price_data = session.query(PriceData).first()
-        assert price_data.symbol == "SPY"
-        assert price_data.timeframe == "1Min"
-        assert price_data.close_price == 450.25
-        session.close()
-
-    def test_save_market_internals(self, mock_db_manager):
-        """Test saving market internals"""
-        test_internals = {
-            "timestamp": datetime.now(),
-            "advance_decline_ratio": 1.5,
-            "volume_flow": 85000000,
-            "momentum_score": 2.1,
-            "volatility_regime": "NORMAL",
-            "correlation_strength": 0.85,
-            "support_level": 441.50,
-            "resistance_level": 459.00,
-        }
-
-        mock_db_manager.save_market_internals("SPY", test_internals)
-
-        # Verify data was saved
-        session = mock_db_manager.get_session()
-        internals_data = session.query(MarketInternals).first()
-        assert internals_data.symbol == "SPY"
-        assert internals_data.volatility_regime == "NORMAL"
-        assert internals_data.momentum_score == 2.1
-        session.close()
 
 
 class TestLLMIntegration:
     @pytest.mark.asyncio
     async def test_lm_studio_client_initialization(self, mock_settings):
-        """Test LM Studio client initialization"""
+        """Test LM Studio client initialization (model_capabilities is the current registry)."""
         client = LMStudioClient(mock_settings)
 
         assert client.base_url == "http://localhost:1234/v1"
         assert client.timeout == 30
-        assert "fast" in client.models
-        assert "analyst" in client.models
-        assert "reviewer" in client.models
+        assert "fast_analysis" in client.model_capabilities
+        assert "deep_analysis" in client.model_capabilities
+        assert "trade_review" in client.model_capabilities
+        assert "data_validation" in client.model_capabilities
 
     @pytest.mark.asyncio
     async def test_lm_studio_mock_completion(self, mock_settings):
         """Test LM Studio completion with mock response"""
         client = LMStudioClient(mock_settings)
 
-        # Mock the session and response
         mock_response = {"choices": [{"message": {"content": "Test market analysis"}}]}
 
         with patch("aiohttp.ClientSession.post") as mock_post:
@@ -187,121 +122,26 @@ class TestLLMIntegration:
 
             async with client:
                 result = await client.generate_completion(
-                    model="fast", messages=[{"role": "user", "content": "Test message"}], max_tokens=100
+                    model="fast_analysis", messages=[{"role": "user", "content": "Test message"}], max_tokens=100
                 )
 
                 assert result["choices"][0]["message"]["content"] == "Test market analysis"
 
     def test_llm_manager_status(self, mock_settings):
-        """Test LLM manager status reporting"""
+        """Test LLM manager status reporting (current schema: deepseek/lm_studio/openrouter/minimax)."""
         manager = LLMManager()
         manager.settings = mock_settings
 
         status = manager.get_status()
 
+        assert "deepseek" in status
         assert "lm_studio" in status
         assert "openrouter" in status
-        assert status["lm_studio"]["available"] == True
-        assert "fast" in status["lm_studio"]["models"]
-
-
-class TestAlpacaClient:
-    def test_alpaca_client_initialization(self, mock_settings):
-        """Test Alpaca client initialization"""
-        client = AlpacaClient(mock_settings)
-
-        assert client.settings == mock_settings
-        assert "SPY" in client.key_symbols
-        assert "QQQ" in client.key_symbols
-        assert "VIX" in client.key_symbols
-
-    def test_format_internals_for_display(self, mock_settings, mock_internals_data):
-        """Test internals formatting"""
-        client = AlpacaClient(mock_settings)
-
-        formatted = client.format_internals_for_display(mock_internals_data)
-
-        assert "MARKET INTERNALS" in formatted
-        assert "SPY" in formatted
-        assert "QQQ" in formatted
-        assert "VIX" in formatted
-
-
-class TestMarketCollectorIntegration:
-    @pytest.mark.asyncio
-    async def test_full_collection_workflow(self, mock_settings):
-        """Test complete collection workflow without APIs"""
-        collector = MarketPulseCollector()
-        collector.settings = mock_settings
-
-        # Mock the database and API calls
-        collector.db_manager = Mock()
-        collector.db_manager.create_engine = Mock()
-        collector.db_manager.create_tables = Mock()
-        collector.db_manager.save_market_internals = Mock()
-
-        collector.alpaca_client = Mock()
-        collector.alpaca_client.get_market_internals = AsyncMock(
-            return_value={
-                "spy": {"price": 450.25, "change": 1.25, "change_pct": 0.28},
-                "qqq": {"price": 180.50, "change": 2.15, "change_pct": 1.21},
-            }
-        )
-
-        # Test initialization
-        result = await collector.initialize()
-        assert result == True
-
-        # Test data collection
-        internals = await collector.collect_market_internals()
-        assert "spy" in internals
-        assert "qqq" in internals
-
-        # Test that database methods were called
-        collector.db_manager.save_market_internals.assert_called()
-
-
-def run_performance_benchmark():
-    """Run performance benchmarks"""
-    print("🏃 Running Performance Benchmarks...")
-
-    # Test calculation speeds
-    import time
-
-    collector = MarketPulseCollector()
-    mock_data = {"spy": {"change_pct": 2.5, "price": 450.0}, "qqq": {"change_pct": 1.8, "price": 180.0}}
-
-    # Benchmark momentum calculation
-    start_time = time.time()
-    for _ in range(1000):
-        collector._calculate_momentum(mock_data)
-    momentum_time = time.time() - start_time
-
-    # Benchmark volatility classification
-    vol_data = {"vix": {"price": 18.5}}
-    start_time = time.time()
-    for _ in range(1000):
-        collector._classify_volatility(vol_data)
-    volatility_time = time.time() - start_time
-
-    print(f"✅ Momentum calculation (1000 iterations): {momentum_time:.4f}s")
-    print(f"✅ Volatility classification (1000 iterations): {volatility_time:.4f}s")
-    print("✅ Performance benchmarks completed")
+        assert "minimax" in status
+        assert status["lm_studio"]["available"] is True
 
 
 if __name__ == "__main__":
-    print("🧪 Running MarketPulse Test Suite...")
+    print("MarketPulse Test Suite")
     print("=" * 50)
-
-    # Run performance benchmarks
-    run_performance_benchmark()
-
-    print("\n📋 Test Categories:")
-    print("• Unit tests for core calculations")
-    print("• Database operations tests")
-    print("• LLM integration tests")
-    print("• API client tests")
-    print("• Integration tests")
-    print("\n💡 Run with pytest for full test suite:")
-    print("  pytest tests/test_marketpulse.py -v")
-    print("\n✅ All tests designed to run without API keys")
+    print("Run with: pytest tests/test_marketpulse.py -v")
