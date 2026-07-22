@@ -390,8 +390,18 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """Database connection URL"""
-        return f"postgresql+psycopg://{self.database_user}:{self.database_password}@{self.database_host}:{self.database_port}/{self.database_name}"
+        """Database connection URL.
+
+        Honors ``DATABASE_URL`` env var first (matches ``.env.example`` convention);
+        falls back to a constructed postgres URL from the discrete db_* settings.
+        """
+        env_url = os.environ.get("DATABASE_URL")
+        if env_url:
+            return env_url
+        return (
+            f"postgresql+psycopg://{self.database_user}:{self.database_password}"
+            f"@{self.database_host}:{self.database_port}/{self.database_name}"
+        )
 
     def get_api_key(self, service: str, key_type: str = "api_key") -> str:
         """Get API key for a specific service"""

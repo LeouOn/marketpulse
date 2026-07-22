@@ -18,7 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
+from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
 
 
@@ -359,24 +359,17 @@ class DatabaseManager:
                 execution_options={"schema_translate_map": {"market_data": None, "analysis": None}}
             )
         elif is_postgres:
-            # Try to use asyncpg, fall back to sync if not available
-            try:
-                self.engine = create_engine(
-                    self.database_url,
-                    poolclass=AsyncAdaptedQueuePool,
-                    pool_size=self._pool_size,
-                    max_overflow=self._max_overflow,
-                    pool_timeout=self._pool_timeout,
-                    pool_recycle=self._pool_recycle,
-                    pool_pre_ping=True,
-                )
-                logger.info(f"Database pool configured: size={self._pool_size}, max_overflow={self._max_overflow}")
-            except Exception as e:
-                logger.warning(f"Failed to create async pool, trying sync: {e}")
-                # Fall back to regular sync engine
-                self.engine = create_engine(
-                    self.database_url, pool_pre_ping=True, pool_size=self._pool_size, max_overflow=self._max_overflow
-                )
+            # Fail-fast: connect_timeout prevents the 60s TCP hang that blocked uvicorn boot when postgres was unreachable.
+            self.engine = create_engine(
+                self.database_url,
+                pool_size=self._pool_size,
+                max_overflow=self._max_overflow,
+                pool_timeout=self._pool_timeout,
+                pool_recycle=self._pool_recycle,
+                pool_pre_ping=True,
+                connect_args={"connect_timeout": 2},
+            )
+            logger.info(f"Database pool configured: size={self._pool_size}, max_overflow={self._max_overflow}")
         else:
             self.engine = create_engine(self.database_url)
 
