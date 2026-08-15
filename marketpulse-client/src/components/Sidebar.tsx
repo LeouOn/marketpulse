@@ -33,47 +33,47 @@ export function Sidebar({ collapsed, onToggle, mobile, onClose }: SidebarProps) 
 
   return (
     <nav
-      className={`bg-gray-900 border-r border-gray-800 h-full flex flex-col transition-all duration-200 ${
-        collapsed && !mobile ? 'w-16' : 'w-[200px]'
+      className={`bg-surface border-r border-line-subtle h-full flex flex-col transition-all duration-200 ${
+        collapsed && !mobile ? 'w-12' : 'w-[180px]'
       }`}
     >
       {mobile && (
-        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
-          <span className="text-sm font-semibold text-gray-300">Menu</span>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-line-subtle">
+          <span className="panel-title">Menu</span>
           <button
             onClick={onClose}
-            className="p-1 text-gray-400 hover:text-white transition-colors"
+            className="p-1 text-ink-secondary hover:text-ink"
             aria-label="Close menu"
           >
-            <X size={18} />
+            <X size={14} />
           </button>
         </div>
       )}
 
-      <div className="flex-1 py-4 px-2">
-        <ul className="space-y-1">
+      <div className="flex-1 py-2 px-0">
+        <ul className="space-y-0.5">
           {navItems.map((item) => {
             const active = isActive(item);
             const Icon = item.icon;
 
             const linkContent = (
               <div
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                className={`h-7 px-2 text-[12px] flex items-center gap-2 border-l-2 ${
                   active
-                    ? 'bg-blue-500/10 text-blue-400 border-l-2 border-blue-400'
+                    ? 'bg-teal-dim text-teal border-teal'
                     : item.disabled
-                    ? 'text-gray-600 cursor-not-allowed'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                    ? 'text-ink-muted cursor-not-allowed border-transparent'
+                    : 'text-ink-secondary hover:bg-surface-hover hover:text-ink border-transparent'
                 }`}
                 title={collapsed && !mobile ? item.label : undefined}
               >
-                <Icon size={20} className="shrink-0" />
+                <Icon size={14} className="shrink-0" />
                 {(!collapsed || mobile) && (
                   <span className="truncate">{item.label}</span>
                 )}
                 {(!collapsed || mobile) && item.disabled && (
-                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">
-                    Soon
+                  <span className="ml-auto text-[10px] font-mono tracking-[0.08em] text-ink-muted">
+                    SOON
                   </span>
                 )}
               </div>
@@ -97,13 +97,13 @@ export function Sidebar({ collapsed, onToggle, mobile, onClose }: SidebarProps) 
       </div>
 
       {!mobile && (
-        <div className="p-2 border-t border-gray-800">
+        <div className="p-2 border-t border-line-subtle">
           <button
             onClick={onToggle}
-            className="flex items-center justify-center w-full px-4 py-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-gray-200 transition-colors"
+            className="flex items-center justify-center w-full h-7 text-ink-secondary hover:bg-surface-hover hover:text-ink rounded-[3px]"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
         </div>
       )}

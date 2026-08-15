@@ -23,7 +23,7 @@ export function LayoutShell({ children }: LayoutShellProps) {
   }, []);
 
   return (
-    <div className="flex h-screen bg-gray-950 text-white">
+    <div className="flex h-screen bg-canvas text-ink">
       <div className="hidden lg:block">
         <Sidebar
           collapsed={sidebarCollapsed}
@@ -34,10 +34,10 @@ export function LayoutShell({ children }: LayoutShellProps) {
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-50">
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-canvas/80"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="absolute left-0 top-0 bottom-0 w-[200px] z-10">
+          <div className="absolute left-0 top-0 bottom-0 w-[180px] z-10">
             <Sidebar
               collapsed={false}
               onToggle={() => setMobileMenuOpen(false)}
@@ -52,12 +52,11 @@ export function LayoutShell({ children }: LayoutShellProps) {
         <TopBar
           onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)}
         />
-        <main className="flex-1 min-h-0 overflow-y-auto">
+        <main className="flex-1 min-h-0 overflow-y-auto bg-canvas">
           {children}
         </main>
-        <footer className="h-8 bg-gray-900 border-t border-gray-800 px-4 flex items-center justify-between text-xs text-gray-500 shrink-0">
-          <span>Data: Yahoo Finance</span>
-          <span>v0.3.0</span>
+        <footer className="h-6 text-[10px] font-mono text-ink-muted border-t border-line-subtle flex items-center px-3 gap-2 shrink-0">
+          <span>DATA YAHOO FINANCE · MARKETPULSE v0.3.0</span>
         </footer>
       </div>
     </div>
