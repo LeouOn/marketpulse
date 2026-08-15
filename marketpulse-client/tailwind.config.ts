@@ -8,15 +8,33 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      backgroundImage: {
-        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-conic':
-          'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
+      fontFamily: {
+        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-jbmono)', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
       },
       colors: {
-        gray: {
-          950: '#0a0a0a',
+        canvas: 'var(--canvas)',
+        surface: {
+          DEFAULT: 'var(--surface)',
+          raised: 'var(--surface-raised)',
+          hover: 'var(--surface-hover)',
         },
+        line: {
+          DEFAULT: 'var(--border-default)',
+          subtle: 'var(--border-subtle)',
+          strong: 'var(--border-strong)',
+          focus: 'var(--border-focus)',
+        },
+        ink: {
+          DEFAULT: 'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted: 'var(--text-muted)',
+        },
+        pos: { DEFAULT: 'var(--green)', dim: 'var(--green-dim)' },
+        neg: { DEFAULT: 'var(--red)', dim: 'var(--red-dim)' },
+        warn: { DEFAULT: 'var(--amber)', dim: 'var(--amber-dim)' },
+        sel: { DEFAULT: 'var(--blue)', dim: 'var(--blue-dim)' },
+        teal: { DEFAULT: 'var(--teal)', dim: 'var(--teal-dim)' },
       },
     },
   },
