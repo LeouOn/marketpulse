@@ -235,8 +235,8 @@ function MultiLineChart({ assets }: { assets: Record<string, AssetResult> }) {
               />
               <span className="text-sm font-medium text-ink">{assetKey}</span>
               <span
-                className={`text-sm font-semibold ${
-                  positive ? 'text-emerald-400' : 'text-red-400'
+                className={`text-sm font-semibold font-mono tabular-nums ${
+                  positive ? 'text-pos' : 'text-neg'
                 }`}
               >
                 {positive ? '+' : ''}
