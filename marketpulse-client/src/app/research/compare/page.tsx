@@ -24,7 +24,6 @@
 import { useState, useRef, useEffect, FormEvent } from 'react';
 import {
   createChart,
-  ColorType,
   CrosshairMode,
   LineSeries,
 } from 'lightweight-charts';
@@ -37,6 +36,8 @@ import {
   Info,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { getChartTheme, SERIES_PALETTE } from '@/lib/chart-theme';
+import { useTheme } from '@/components/theme-provider';
 
 // ----------------------------- Constants -----------------------------
 
@@ -74,9 +75,6 @@ const DEFAULT_START = '2010-01-01';
 function todayISO(): string {
   return new Date().toISOString().substring(0, 10);
 }
-
-// Distinct, color-blind-friendly line colors. Five assets max -> five colors.
-const SERIES_COLORS = ['#fbbf24', '#34d399', '#60a5fa', '#f472b6', '#a78bfa'];
 
 // ----------------------------- Types -----------------------------
 
@@ -116,6 +114,7 @@ interface CompareResponse {
 function MultiLineChart({ assets }: { assets: Record<string, AssetResult> }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const { theme } = useTheme();
 
   const validEntries = (
     Object.entries(assets).filter(([, r]) => !isAssetError(r)) as Array<[string, AssetSeries]>
@@ -132,34 +131,36 @@ function MultiLineChart({ assets }: { assets: Record<string, AssetResult> }) {
     }
 
     let resizeObserver: ResizeObserver | null = null;
+    const chartTheme = getChartTheme();
 
     try {
       const chart = createChart(container, {
         width: container.clientWidth,
         height: 520,
         layout: {
-          background: { type: ColorType.Solid, color: '#0a0a0a' },
-          textColor: '#a0a0a0',
-          fontSize: 12,
+          background: {
+            type: chartTheme.layout.background.type,
+            color: chartTheme.layout.background.color,
+          },
+          textColor: chartTheme.layout.textColor,
+          fontSize: chartTheme.layout.fontSize,
+          fontFamily: chartTheme.layout.fontFamily,
         },
-        grid: {
-          vertLines: { color: '#1a1a1a' },
-          horzLines: { color: '#1a1a1a' },
-        },
+        grid: chartTheme.grid,
         crosshair: { mode: CrosshairMode.Normal },
-        rightPriceScale: { borderColor: '#333333' },
+        rightPriceScale: chartTheme.rightPriceScale,
         timeScale: {
-          borderColor: '#333333',
+          ...chartTheme.timeScale,
           timeVisible: false,
           secondsVisible: false,
         },
       });
 
       validEntries.forEach(([assetKey, series], i) => {
-        const color = SERIES_COLORS[i % SERIES_COLORS.length];
+        const color = chartTheme.seriesPalette[i % chartTheme.seriesPalette.length];
         const lineSeries = chart.addSeries(LineSeries, {
           color,
-          lineWidth: 2,
+          lineWidth: 1,
           priceLineVisible: false,
           lastValueVisible: true,
           crosshairMarkerVisible: true,
@@ -200,11 +201,13 @@ function MultiLineChart({ assets }: { assets: Record<string, AssetResult> }) {
     // object reference per API response, so identity comparison suffices; we
     // additionally key off the count + a tight signature so the effect re-runs
     // even if React reuses the object (it doesn't today, but defensively).
+    // `theme` is included so options rebuild on theme toggle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     assets,
     validEntries.length,
     validEntries.map(([k, v]) => `${k}:${v.index.length}`).join('|'),
+    theme,
   ]);
 
   if (validEntries.length === 0) {
@@ -220,7 +223,7 @@ function MultiLineChart({ assets }: { assets: Record<string, AssetResult> }) {
       <div ref={containerRef} className="w-full" />
       <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
         {validEntries.map(([assetKey, series], i) => {
-          const color = SERIES_COLORS[i % SERIES_COLORS.length];
+          const color = SERIES_PALETTE[i % SERIES_PALETTE.length];
           const pct = series.total_return_pct;
           const positive = pct >= 0;
           return (

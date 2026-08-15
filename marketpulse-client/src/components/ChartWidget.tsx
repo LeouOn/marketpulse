@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   createChart,
-  ColorType,
   CrosshairMode,
   CandlestickSeries,
   HistogramSeries,
@@ -11,6 +10,8 @@ import {
 import type { IChartApi, Time } from 'lightweight-charts';
 
 import type { OHLCVBar } from '@/types/market';
+import { getChartTheme } from '@/lib/chart-theme';
+import { useTheme } from '@/components/theme-provider';
 
 interface ChartWidgetProps {
   data: OHLCVBar[];
@@ -36,8 +37,9 @@ export function ChartWidget({
 }: ChartWidgetProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const { theme } = useTheme();
 
-  const buildChart = useCallback(() => {
+  useEffect(() => {
     const container = chartContainerRef.current;
     if (!container || data.length === 0) return;
 
@@ -46,34 +48,39 @@ export function ChartWidget({
       chartRef.current = null;
     }
 
+    const chartTheme = getChartTheme();
+
     try {
       const chart = createChart(container, {
         width: container.clientWidth,
         height,
         layout: {
-          background: { type: ColorType.Solid, color: '#0a0a0a' },
-          textColor: '#a0a0a0',
+          background: {
+            type: chartTheme.layout.background.type,
+            color: chartTheme.layout.background.color,
+          },
+          textColor: chartTheme.layout.textColor,
+          fontSize: chartTheme.layout.fontSize,
+          fontFamily: chartTheme.layout.fontFamily,
         },
-        grid: {
-          vertLines: { color: '#1a1a1a' },
-          horzLines: { color: '#1a1a1a' },
-        },
+        grid: chartTheme.grid,
         crosshair: { mode: CrosshairMode.Normal },
-        rightPriceScale: { borderColor: '#333333' },
+        rightPriceScale: chartTheme.rightPriceScale,
         timeScale: {
-          borderColor: '#333333',
+          ...chartTheme.timeScale,
           timeVisible: true,
           secondsVisible: false,
         },
       });
 
       const candlestickSeries = chart.addSeries(CandlestickSeries, {
-        upColor: '#10b981',
-        downColor: '#ef4444',
-        borderDownColor: '#ef4444',
-        borderUpColor: '#10b981',
-        wickDownColor: '#ef4444',
-        wickUpColor: '#10b981',
+        upColor: chartTheme.upColor,
+        downColor: chartTheme.downColor,
+        borderUpColor: chartTheme.upColor,
+        borderDownColor: chartTheme.downColor,
+        wickUpColor: chartTheme.upColor,
+        wickDownColor: chartTheme.downColor,
+        borderVisible: false,
       });
 
       const candleData = data.map((bar) => ({
@@ -87,7 +94,7 @@ export function ChartWidget({
 
       if (showVolume) {
         const volumeSeries = chart.addSeries(HistogramSeries, {
-          color: '#333333',
+          color: chartTheme.volumeUp,
           priceFormat: { type: 'volume' },
           priceScaleId: 'volume',
         });
@@ -97,10 +104,7 @@ export function ChartWidget({
         const volumeData = data.map((bar) => ({
           time: parseTimestamp(bar.timestamp),
           value: bar.volume,
-          color:
-            bar.close >= bar.open
-              ? 'rgba(16, 185, 129, 0.3)'
-              : 'rgba(239, 68, 68, 0.3)',
+          color: bar.close >= bar.open ? chartTheme.volumeUp : chartTheme.volumeDown,
         }));
         volumeSeries.setData(volumeData);
       }
@@ -125,26 +129,15 @@ export function ChartWidget({
     } catch {
       chartRef.current = null;
     }
-  }, [data, height, showVolume]);
-
-  useEffect(() => {
-    const cleanup = buildChart();
-    return () => {
-      cleanup?.();
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-      }
-    };
-  }, [buildChart]);
+  }, [data, height, showVolume, theme]);
 
   if (data.length === 0) {
     return (
       <div
-        className={`flex items-center justify-center bg-[#0a0a0a] rounded-lg ${className ?? ''}`}
+        className={`flex items-center justify-center bg-surface border border-line-subtle rounded-[2px] ${className ?? ''}`}
         style={{ height }}
       >
-        <p className="text-neutral-500 text-sm">
+        <p className="text-ink-muted text-[12.5px] font-mono">
           No chart data available for {symbol}
         </p>
       </div>
