@@ -212,8 +212,8 @@ function MultiLineChart({ assets }: { assets: Record<string, AssetResult> }) {
 
   if (validEntries.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[520px] bg-gray-950 border border-gray-800 rounded-xl">
-        <p className="text-sm text-gray-500">No plottable series in response.</p>
+      <div className="flex items-center justify-center h-[520px] bg-canvas border border-line-subtle rounded-[2px]">
+        <p className="text-[12.5px] text-ink-muted">No plottable series in response.</p>
       </div>
     );
   }
@@ -233,7 +233,7 @@ function MultiLineChart({ assets }: { assets: Record<string, AssetResult> }) {
                 style={{ backgroundColor: color }}
                 aria-hidden
               />
-              <span className="text-sm font-medium text-gray-200">{assetKey}</span>
+              <span className="text-sm font-medium text-ink">{assetKey}</span>
               <span
                 className={`text-sm font-semibold ${
                   positive ? 'text-emerald-400' : 'text-red-400'
