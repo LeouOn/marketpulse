@@ -27,6 +27,12 @@ interface RiskMetrics {
   recommended_contracts: number;
 }
 
+const STATUS_TONE = {
+  safe: { text: 'text-pos', border: 'border-pos' },
+  warning: { text: 'text-warn', border: 'border-warn' },
+  danger: { text: 'text-neg', border: 'border-neg' },
+} as const;
+
 export default function RiskManagerTab() {
   const [riskMetrics, setRiskMetrics] = useState<RiskMetrics>({
     daily_pnl: 385.00,
@@ -50,13 +56,30 @@ export default function RiskManagerTab() {
   const tradesUsed = (riskMetrics.trades_today / riskMetrics.max_trades_per_day) * 100;
 
   // Determine risk status
-  const getRiskStatus = () => {
+  const getRiskStatus = (): keyof typeof STATUS_TONE => {
     if (riskMetrics.daily_pnl < -riskMetrics.daily_limit * 0.8) return 'danger';
     if (riskMetrics.daily_pnl < -riskMetrics.daily_limit * 0.5) return 'warning';
     return 'safe';
   };
 
   const riskStatus = getRiskStatus();
+  const statusTone = STATUS_TONE[riskStatus];
+
+  // P&L bar color: track uses bg-surface-raised; fill is bg-pos / bg-neg flat.
+  const pnlBarColor =
+    riskMetrics.daily_pnl < 0 && riskMetrics.daily_pnl < -riskMetrics.daily_limit * 0.5
+      ? riskMetrics.daily_pnl < -riskMetrics.daily_limit * 0.8
+        ? 'bg-neg'
+        : 'bg-warn'
+      : 'bg-pos';
+
+  // Drawdown meter color
+  const drawdownBarColor =
+    riskMetrics.current_drawdown > 10
+      ? 'bg-neg'
+      : riskMetrics.current_drawdown > 5
+      ? 'bg-warn'
+      : 'bg-pos';
 
   const fetchPositionSize = async () => {
     try {
@@ -91,214 +114,225 @@ export default function RiskManagerTab() {
   }, [recentTrades]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2.5">
       {error && (
-        <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-lg text-red-400 text-sm">
-          {error}
-          <button onClick={fetchPositionSize} className="ml-2 underline">Retry</button>
-        </div>
-      )}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-white">Risk Manager</h2>
-        <div className={`px-3 py-1 rounded-full text-sm font-semibold ${
-          riskStatus === 'danger' ? 'bg-red-500/20 text-red-400' :
-          riskStatus === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
-          'bg-green-500/20 text-green-400'
-        }`}>
-          {riskStatus.toUpperCase()}
-        </div>
-      </div>
-
-      {/* Daily Limits Section */}
-      <div className="grid grid-cols-2 gap-4">
-        {/* Daily P&L */}
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">Daily P&L</span>
-            <Shield size={16} className="text-gray-400" />
-          </div>
-          <div className={`text-3xl font-bold ${
-            riskMetrics.daily_pnl >= 0 ? 'text-green-400' : 'text-red-400'
-          }`}>
-            {riskMetrics.daily_pnl >= 0 ? '+' : ''}${riskMetrics.daily_pnl.toFixed(2)}
-          </div>
-          <div className="mt-2">
-            <div className="flex justify-between text-xs text-gray-400 mb-1">
-              <span>Limit: ${riskMetrics.daily_limit}</span>
-              <span>{dailyLimitUsed.toFixed(0)}%</span>
-            </div>
-            <div className="w-full bg-gray-700 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full ${
-                  dailyLimitUsed > 80 ? 'bg-red-500' :
-                  dailyLimitUsed > 50 ? 'bg-yellow-500' :
-                  'bg-green-500'
-                }`}
-                style={{ width: `${Math.min(dailyLimitUsed, 100)}%` }}
-              ></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Trades Remaining */}
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">Trades Today</span>
-            <Target size={16} className="text-gray-400" />
-          </div>
-          <div className="text-3xl font-bold text-blue-400">
-            {riskMetrics.trades_today} / {riskMetrics.max_trades_per_day}
-          </div>
-          <div className="mt-2">
-            <div className="flex justify-between text-xs text-gray-400 mb-1">
-              <span>Remaining: {riskMetrics.max_trades_per_day - riskMetrics.trades_today}</span>
-              <span>{tradesUsed.toFixed(0)}%</span>
-            </div>
-            <div className="w-full bg-gray-700 rounded-full h-2">
-              <div
-                className="h-2 rounded-full bg-blue-500"
-                style={{ width: `${Math.min(tradesUsed, 100)}%` }}
-              ></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Position Sizing Section */}
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
-          <TrendingUp size={16} />
-          Auto-Scaling Position Size
-        </h3>
-
-        <div className="grid grid-cols-3 gap-4 mb-4">
-          <div className="text-center">
-            <div className="text-xs text-gray-400">Win Streak</div>
-            <div className="text-2xl font-bold text-green-400">{riskMetrics.win_streak}</div>
-          </div>
-          <div className="text-center">
-            <div className="text-xs text-gray-400">Loss Streak</div>
-            <div className="text-2xl font-bold text-red-400">{riskMetrics.loss_streak}</div>
-          </div>
-          <div className="text-center">
-            <div className="text-xs text-gray-400">Recommended</div>
-            <div className="text-2xl font-bold text-blue-400">{riskMetrics.recommended_contracts}</div>
-          </div>
-        </div>
-
-        {/* Scaling Rules */}
-        <div className="bg-gray-900 rounded p-3">
-          <div className="text-xs text-gray-400 mb-2">Scaling Rules</div>
-          <div className="space-y-1 text-xs">
-            <div className={`flex items-center justify-between ${
-              riskMetrics.win_streak >= 3 ? 'text-green-400 font-semibold' : 'text-gray-500'
-            }`}>
-              <span>3 wins → 2 contracts</span>
-              {riskMetrics.win_streak >= 3 && <span>✓</span>}
-            </div>
-            <div className={`flex items-center justify-between ${
-              riskMetrics.win_streak >= 6 ? 'text-green-400 font-semibold' : 'text-gray-500'
-            }`}>
-              <span>6 wins → 4 contracts</span>
-              {riskMetrics.win_streak >= 6 && <span>✓</span>}
-            </div>
-            <div className={`flex items-center justify-between ${
-              riskMetrics.loss_streak >= 2 ? 'text-red-400 font-semibold' : 'text-gray-500'
-            }`}>
-              <span>2 losses → reset to 1</span>
-              {riskMetrics.loss_streak >= 2 && <span>⚠</span>}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Drawdown Warning */}
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <AlertTriangle size={16} className="text-yellow-400" />
-          Drawdown Monitor
-        </h3>
-
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-400">Current Drawdown</span>
-            <span className="text-lg font-bold text-white">
-              {riskMetrics.current_drawdown.toFixed(1)}%
-            </span>
-          </div>
-
-          <div className="w-full bg-gray-700 rounded-full h-3">
-            <div
-              className={`h-3 rounded-full ${
-                riskMetrics.current_drawdown > 10 ? 'bg-red-500' :
-                riskMetrics.current_drawdown > 5 ? 'bg-yellow-500' :
-                'bg-green-500'
-              }`}
-              style={{ width: `${(riskMetrics.current_drawdown / riskMetrics.max_drawdown_limit) * 100}%` }}
-            ></div>
-          </div>
-
-          <div className="flex justify-between text-xs text-gray-400">
-            <span>Safe: &lt;5%</span>
-            <span>Warning: 5-10%</span>
-            <span>Danger: &gt;10%</span>
-          </div>
-        </div>
-
-        {riskMetrics.current_drawdown > 10 && (
-          <div className="mt-3 bg-red-500/10 border border-red-500/30 rounded p-2">
-            <div className="text-xs text-red-400 font-semibold">
-              ⚠ High Drawdown Alert
-            </div>
-            <div className="text-xs text-red-300 mt-1">
-              Consider reducing position size or taking a break
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Weekly Performance */}
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold mb-3">Weekly Performance</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-xs text-gray-400">Week P&L</div>
-            <div className={`text-2xl font-bold ${
-              riskMetrics.weekly_pnl >= 0 ? 'text-green-400' : 'text-red-400'
-            }`}>
-              {riskMetrics.weekly_pnl >= 0 ? '+' : ''}${riskMetrics.weekly_pnl.toFixed(2)}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-gray-400">Goal</div>
-            <div className="text-lg font-semibold text-white">$2,000</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Trade Journal Link */}
-      <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold text-white mb-1">Trade Journal</div>
-            <div className="text-xs text-gray-400">
-              Review your recent trades and identify patterns
-            </div>
-          </div>
-          <button className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm">
-            View Journal
+        <div className="p-2.5 bg-neg-dim border border-line rounded-[2px] text-[12.5px] flex items-center gap-2">
+          <span className="text-neg">{error}</span>
+          <button onClick={fetchPositionSize} className="ml-auto underline text-neg hover:text-ink">
+            Retry
           </button>
         </div>
-      </div>
+      )}
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-3">
-        <button className="bg-gray-800 hover:bg-gray-700 rounded py-3 text-sm font-semibold">
-          Export Risk Report
-        </button>
-        <button className="bg-gray-800 hover:bg-gray-700 rounded py-3 text-sm font-semibold">
-          Adjust Limits
-        </button>
+      {/* Main panel */}
+      <div className="panel">
+        <div className="border-b border-line-subtle px-3 h-8 flex items-center justify-between">
+          <span className="panel-title">Risk Manager</span>
+          <span
+            className={`border rounded-[2px] px-1.5 h-5 text-[11px] font-mono inline-flex items-center ${statusTone.border} ${statusTone.text}`}
+          >
+            {riskStatus.toUpperCase()}
+          </span>
+        </div>
+
+        <div className="p-2.5 space-y-2.5">
+          {/* Daily Limits — 2 stat tiles */}
+          <div className="grid grid-cols-2 gap-2.5">
+            {/* Daily P&L tile */}
+            <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+              <div className="flex items-center justify-between">
+                <span className="panel-title">Daily P&L</span>
+                <Shield className="w-3 h-3 text-ink-muted" />
+              </div>
+              <div
+                className={`text-[15px] leading-tight mt-0.5 font-mono tabular-nums ${
+                  riskMetrics.daily_pnl >= 0 ? 'text-pos' : 'text-neg'
+                }`}
+              >
+                {riskMetrics.daily_pnl >= 0 ? '+' : ''}${riskMetrics.daily_pnl.toFixed(2)}
+              </div>
+              <div className="flex justify-between text-[10px] text-ink-muted mt-1.5">
+                <span>Limit: ${riskMetrics.daily_limit}</span>
+                <span>{dailyLimitUsed.toFixed(0)}%</span>
+              </div>
+              <div className="w-full bg-surface-raised border border-line rounded-[2px] h-3 mt-0.5">
+                <div
+                  className={`h-full ${pnlBarColor}`}
+                  style={{ width: `${Math.min(dailyLimitUsed, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Trades Today tile */}
+            <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+              <div className="flex items-center justify-between">
+                <span className="panel-title">Trades Today</span>
+                <Target className="w-3 h-3 text-ink-muted" />
+              </div>
+              <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-sel">
+                {riskMetrics.trades_today} / {riskMetrics.max_trades_per_day}
+              </div>
+              <div className="flex justify-between text-[10px] text-ink-muted mt-1.5">
+                <span>Remaining: {riskMetrics.max_trades_per_day - riskMetrics.trades_today}</span>
+                <span>{tradesUsed.toFixed(0)}%</span>
+              </div>
+              <div className="w-full bg-surface-raised border border-line rounded-[2px] h-3 mt-0.5">
+                <div
+                  className="h-full bg-sel"
+                  style={{ width: `${Math.min(tradesUsed, 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Position Sizing Section */}
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.08em] text-ink-secondary mb-1.5 flex items-center gap-1.5">
+              <TrendingUp className="w-3 h-3" />
+              Auto-Scaling Position Size
+            </div>
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+                <div className="panel-title">Win Streak</div>
+                <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-pos">
+                  {riskMetrics.win_streak}
+                </div>
+              </div>
+              <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+                <div className="panel-title">Loss Streak</div>
+                <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-neg">
+                  {riskMetrics.loss_streak}
+                </div>
+              </div>
+              <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+                <div className="panel-title">Recommended</div>
+                <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-sel">
+                  {riskMetrics.recommended_contracts}
+                </div>
+              </div>
+            </div>
+
+            {/* Scaling Rules */}
+            <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5 mt-2">
+              <div className="panel-title">Scaling Rules</div>
+              <div className="mt-1 space-y-1 text-[12px]">
+                <div
+                  className={`flex items-center justify-between ${
+                    riskMetrics.win_streak >= 3
+                      ? 'text-pos font-semibold'
+                      : 'text-ink-muted'
+                  }`}
+                >
+                  <span>3 wins → 2 contracts</span>
+                  {riskMetrics.win_streak >= 3 && <span>✓</span>}
+                </div>
+                <div
+                  className={`flex items-center justify-between ${
+                    riskMetrics.win_streak >= 6
+                      ? 'text-pos font-semibold'
+                      : 'text-ink-muted'
+                  }`}
+                >
+                  <span>6 wins → 4 contracts</span>
+                  {riskMetrics.win_streak >= 6 && <span>✓</span>}
+                </div>
+                <div
+                  className={`flex items-center justify-between ${
+                    riskMetrics.loss_streak >= 2
+                      ? 'text-neg font-semibold'
+                      : 'text-ink-muted'
+                  }`}
+                >
+                  <span>2 losses → reset to 1</span>
+                  {riskMetrics.loss_streak >= 2 && <span>⚠</span>}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Drawdown Warning */}
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.08em] text-ink-secondary mb-1.5 flex items-center gap-1.5">
+              <AlertTriangle className="w-3 h-3 text-warn" />
+              Drawdown Monitor
+            </div>
+            <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-[12px] text-ink-secondary">Current Drawdown</span>
+                <span className="text-[13px] font-mono tabular-nums text-ink">
+                  {riskMetrics.current_drawdown.toFixed(1)}%
+                </span>
+              </div>
+              <div className="w-full bg-surface-raised border border-line rounded-[2px] h-3">
+                <div
+                  className={`h-full ${drawdownBarColor}`}
+                  style={{
+                    width: `${(riskMetrics.current_drawdown / riskMetrics.max_drawdown_limit) * 100}%`,
+                  }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-ink-muted mt-1">
+                <span>Safe: &lt;5%</span>
+                <span>Warning: 5-10%</span>
+                <span>Danger: &gt;10%</span>
+              </div>
+            </div>
+
+            {riskMetrics.current_drawdown > 10 && (
+              <div className="mt-2 bg-neg-dim border border-line rounded-[2px] px-2 py-1.5">
+                <div className="text-[12px] text-neg font-semibold">
+                  ⚠ High Drawdown Alert
+                </div>
+                <div className="text-[11px] text-ink-secondary mt-0.5">
+                  Consider reducing position size or taking a break
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Weekly Performance */}
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.08em] text-ink-secondary mb-1.5 flex items-center gap-1.5">
+              <TrendingDown className="w-3 h-3" />
+              Weekly Performance
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+                <div className="panel-title">Week P&L</div>
+                <div
+                  className={`text-[15px] leading-tight mt-0.5 font-mono tabular-nums ${
+                    riskMetrics.weekly_pnl >= 0 ? 'text-pos' : 'text-neg'
+                  }`}
+                >
+                  {riskMetrics.weekly_pnl >= 0 ? '+' : ''}${riskMetrics.weekly_pnl.toFixed(2)}
+                </div>
+              </div>
+              <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+                <div className="panel-title">Goal</div>
+                <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-ink">
+                  $2,000
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Trade Journal Link */}
+          <div className="bg-sel-dim border border-line rounded-[2px] px-2.5 py-1.5 flex items-center justify-between">
+            <div>
+              <div className="text-[12.5px] text-ink">Trade Journal</div>
+              <div className="text-[11px] text-ink-secondary">
+                Review your recent trades and identify patterns
+              </div>
+            </div>
+            <button className="btn">View Journal</button>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <button className="btn">Export Risk Report</button>
+            <button className="btn">Adjust Limits</button>
+          </div>
+        </div>
       </div>
     </div>
   );

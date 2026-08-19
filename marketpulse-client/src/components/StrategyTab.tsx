@@ -25,6 +25,12 @@ interface SignalResult {
   timestamp: string;
 }
 
+const STATUS_TONE = {
+  active: { text: 'text-pos', border: 'border-pos' },
+  testing: { text: 'text-warn', border: 'border-warn' },
+  disabled: { text: 'text-ink-muted', border: 'border-line' },
+} as const;
+
 export default function StrategyTab() {
   const [selectedStrategy, setSelectedStrategy] = useState<string>('fvg_divergence');
   const [signals, setSignals] = useState<SignalResult[]>([]);
@@ -123,190 +129,221 @@ export default function StrategyTab() {
   const currentStrategy = strategies.find(s => s.id === selectedStrategy);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-white">Strategy Testing</h2>
-        <div className="flex items-center gap-2">
-          <Settings size={16} className="text-blue-400" />
-          <span className="text-xs text-gray-400">Pattern Scanner</span>
+    <div className="space-y-2.5">
+      <div className="panel">
+        <div className="border-b border-line-subtle px-3 h-8 flex items-center justify-between">
+          <span className="panel-title">Strategy Testing</span>
+          <div className="flex items-center gap-1.5 text-[11px] text-ink-secondary">
+            <Settings className="w-3 h-3 text-sel" />
+            <span className="font-mono uppercase tracking-[0.08em]">Pattern Scanner</span>
+          </div>
         </div>
-      </div>
 
-      {/* Strategy Selector */}
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold mb-3 text-white">Active Strategies</h3>
-        <div className="grid grid-cols-1 gap-2">
-          {strategies.map(strategy => (
-            <button
-              key={strategy.id}
-              onClick={() => setSelectedStrategy(strategy.id)}
-              className={`text-left p-3 rounded-lg border transition-all ${
-                selectedStrategy === strategy.id
-                  ? 'bg-blue-900/30 border-blue-500/50'
-                  : 'bg-gray-900 border-gray-700 hover:border-gray-600'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-semibold text-white">{strategy.name}</span>
-                <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                  strategy.status === 'active' ? 'bg-green-500/20 text-green-400' :
-                  strategy.status === 'testing' ? 'bg-yellow-500/20 text-yellow-400' :
-                  'bg-gray-500/20 text-gray-400'
-                }`}>
-                  {strategy.status.toUpperCase()}
-                </span>
-              </div>
-              <p className="text-xs text-gray-400 mb-2">{strategy.description}</p>
-              <div className="flex items-center gap-4 text-xs">
-                <span className="text-gray-500">Win Rate: <span className="text-green-400 font-semibold">{strategy.win_rate}%</span></span>
-                <span className="text-gray-500">R:R: <span className="text-blue-400 font-semibold">{strategy.risk_reward}</span></span>
-              </div>
-            </button>
-          ))}
+        {/* Strategy Selector — flat panel rows */}
+        <div className="p-2.5">
+          <div className="text-[11px] uppercase tracking-[0.08em] text-ink-secondary mb-1.5">
+            Active Strategies
+          </div>
+          <div className="space-y-1.5">
+            {strategies.map(strategy => {
+              const tone = STATUS_TONE[strategy.status];
+              const isSelected = selectedStrategy === strategy.id;
+              return (
+                <button
+                  key={strategy.id}
+                  onClick={() => setSelectedStrategy(strategy.id)}
+                  className={`w-full text-left bg-surface-raised border rounded-[2px] px-2.5 py-1.5 transition-colors ${
+                    isSelected
+                      ? 'border-sel'
+                      : 'border-line-subtle hover:border-line'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] font-semibold text-ink">{strategy.name}</span>
+                    <span
+                      className={`border rounded-[2px] px-1.5 h-5 text-[11px] font-mono inline-flex items-center ${tone.border} ${tone.text}`}
+                    >
+                      {strategy.status.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-ink-secondary mt-0.5">{strategy.description}</p>
+                  <div className="flex items-center gap-4 text-[11px] font-mono tabular-nums mt-1">
+                    <span className="text-ink-muted">
+                      Win Rate <span className="text-pos">{strategy.win_rate}%</span>
+                    </span>
+                    <span className="text-ink-muted">
+                      R:R <span className="text-sel">{strategy.risk_reward}</span>
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* Strategy Details */}
       {currentStrategy && (
-        <div className="bg-gray-800 rounded-lg p-4">
-          <h3 className="text-sm font-semibold mb-3 text-white">Strategy Conditions</h3>
-          <div className="space-y-2">
-            {currentStrategy.conditions.map((condition, idx) => (
-              <div key={idx} className="flex items-center gap-2 text-sm">
-                <CheckCircle size={16} className="text-green-400" />
-                <span className="text-gray-300">{condition}</span>
-              </div>
-            ))}
+        <div className="panel">
+          <div className="border-b border-line-subtle px-3 h-8 flex items-center">
+            <span className="panel-title">Strategy Conditions</span>
           </div>
+          <div className="p-2.5 space-y-3">
+            <div className="space-y-1.5">
+              {currentStrategy.conditions.map((condition, idx) => (
+                <div key={idx} className="flex items-center gap-2 text-[12.5px]">
+                  <CheckCircle className="w-3 h-3 text-pos" />
+                  <span className="text-ink-secondary">{condition}</span>
+                </div>
+              ))}
+            </div>
 
-          <div className="mt-4 pt-4 border-t border-gray-700">
-            <button
-              onClick={scanMarket}
-              disabled={scanning}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 rounded py-3 text-white font-semibold transition-colors flex items-center justify-center gap-2"
-            >
-              {scanning ? (
-                <>
-                  <Activity size={16} className="animate-spin" />
-                  Scanning Market...
-                </>
-              ) : (
-                <>
-                  <Target size={16} />
-                  Scan for {currentStrategy.name} Setups
-                </>
-              )}
-            </button>
+            <div className="pt-2 border-t border-line-subtle">
+              <button
+                onClick={scanMarket}
+                disabled={scanning}
+                className="btn btn-primary w-full"
+              >
+                {scanning ? (
+                  <>
+                    <Activity className="w-3 h-3 animate-spin" />
+                    Scanning Market…
+                  </>
+                ) : (
+                  <>
+                    <Target className="w-3 h-3" />
+                    Scan for {currentStrategy.name} Setups
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Signals */}
+      {/* Signals — flat panel rows */}
       {signals.length > 0 && (
-        <div className="bg-gray-800 rounded-lg p-4">
-          <h3 className="text-sm font-semibold mb-3 text-white flex items-center gap-2">
-            <AlertCircle size={16} className="text-green-400" />
-            Active Signals ({signals.length})
-          </h3>
-          <div className="space-y-3">
-            {signals.map((signal, idx) => (
-              <div key={idx} className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-white">{signal.symbol}</span>
-                    <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-semibold">
-                      {signal.signal_type}
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-400">Confidence</div>
-                    <div className={`text-lg font-bold ${
-                      signal.confidence >= 80 ? 'text-green-400' :
-                      signal.confidence >= 65 ? 'text-yellow-400' :
-                      'text-gray-400'
-                    }`}>
-                      {signal.confidence}%
+        <div className="panel">
+          <div className="border-b border-line-subtle px-3 h-8 flex items-center gap-2">
+            <AlertCircle className="w-3 h-3 text-pos" />
+            <span className="panel-title">Active Signals ({signals.length})</span>
+          </div>
+          <div className="p-2.5 space-y-2">
+            {signals.map((signal, idx) => {
+              const confidenceTone =
+                signal.confidence >= 80 ? 'text-pos' :
+                signal.confidence >= 65 ? 'text-warn' :
+                'text-ink-muted';
+              return (
+                <div
+                  key={idx}
+                  className="bg-surface-raised border border-line-subtle rounded-[2px] p-2.5"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] font-bold text-ink font-mono tabular-nums">
+                        {signal.symbol}
+                      </span>
+                      <span className="border border-sel rounded-[2px] px-1.5 h-5 text-[11px] font-mono inline-flex items-center text-sel">
+                        {signal.signal_type}
+                      </span>
                     </div>
+                    <div className="text-right">
+                      <div className="text-[11px] uppercase tracking-[0.08em] text-ink-secondary">
+                        Confidence
+                      </div>
+                      <div className={`text-[14px] font-mono tabular-nums ${confidenceTone}`}>
+                        {signal.confidence}%
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[12px] text-ink-secondary mb-2">{signal.setup_description}</p>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.08em] text-ink-muted">Entry</div>
+                      <div className="text-[13px] font-mono tabular-nums text-ink">
+                        {signal.entry_price.toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.08em] text-ink-muted">Stop</div>
+                      <div className="text-[13px] font-mono tabular-nums text-neg">
+                        {signal.stop_loss.toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.08em] text-ink-muted">Target</div>
+                      <div className="text-[13px] font-mono tabular-nums text-pos">
+                        {signal.take_profit.toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.08em] text-ink-muted">R:R</div>
+                      <div className="text-[13px] font-mono tabular-nums text-sel">
+                        1:{signal.risk_reward_ratio.toFixed(1)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button className="btn btn-primary">Execute Trade</button>
+                    <button className="btn">Add to Watchlist</button>
                   </div>
                 </div>
-
-                <p className="text-sm text-gray-300 mb-3">{signal.setup_description}</p>
-
-                <div className="grid grid-cols-4 gap-3">
-                  <div>
-                    <div className="text-xs text-gray-400">Entry</div>
-                    <div className="text-sm font-mono font-semibold text-white">
-                      {signal.entry_price.toLocaleString()}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-400">Stop</div>
-                    <div className="text-sm font-mono font-semibold text-red-400">
-                      {signal.stop_loss.toLocaleString()}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-400">Target</div>
-                    <div className="text-sm font-mono font-semibold text-green-400">
-                      {signal.take_profit.toLocaleString()}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-400">R:R</div>
-                    <div className="text-sm font-mono font-semibold text-blue-400">
-                      1:{signal.risk_reward_ratio.toFixed(1)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex gap-2">
-                  <button className="flex-1 bg-green-600 hover:bg-green-700 rounded py-2 text-white text-sm font-semibold">
-                    Execute Trade
-                  </button>
-                  <button className="flex-1 bg-gray-700 hover:bg-gray-600 rounded py-2 text-white text-sm font-semibold">
-                    Add to Watchlist
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Performance Stats */}
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold mb-3 text-white">Strategy Performance (Last 30 Days)</h3>
-        <div className="grid grid-cols-4 gap-4">
-          <div className="text-center">
-            <div className="text-xs text-gray-400 mb-1">Total Signals</div>
-            <div className="text-2xl font-bold text-white">42</div>
+      {/* Performance Stats — mono tile strip */}
+      <div className="panel">
+        <div className="border-b border-line-subtle px-3 h-8 flex items-center">
+          <span className="panel-title">Strategy Performance (Last 30 Days)</span>
+        </div>
+        <div className="p-2.5 grid grid-cols-4 gap-2.5">
+          <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+            <div className="panel-title">Total Signals</div>
+            <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-ink">
+              42
+            </div>
           </div>
-          <div className="text-center">
-            <div className="text-xs text-gray-400 mb-1">Win Rate</div>
-            <div className="text-2xl font-bold text-green-400">68%</div>
+          <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+            <div className="panel-title">Win Rate</div>
+            <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-pos">
+              68%
+            </div>
           </div>
-          <div className="text-center">
-            <div className="text-xs text-gray-400 mb-1">Avg R:R</div>
-            <div className="text-2xl font-bold text-blue-400">1:2.3</div>
+          <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+            <div className="panel-title">Avg R:R</div>
+            <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-sel">
+              1:2.3
+            </div>
           </div>
-          <div className="text-center">
-            <div className="text-xs text-gray-400 mb-1">Total P&L</div>
-            <div className="text-2xl font-bold text-green-400">+$3,450</div>
+          <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+            <div className="panel-title">Total P&amp;L</div>
+            <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-pos">
+              +$3,450
+            </div>
           </div>
         </div>
       </div>
 
       {/* Empty State */}
       {signals.length === 0 && !scanning && (
-        <div className="bg-gray-800 rounded-lg p-12 text-center">
-          <Target size={48} className="mx-auto text-gray-600 mb-4" />
-          <h3 className="text-lg font-semibold text-gray-400 mb-2">No Active Signals</h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Select a strategy and click "Scan Market" to find trading opportunities
-          </p>
-          <p className="text-xs text-gray-600">
-            Strategies are automatically evaluated based on current market conditions
-          </p>
+        <div className="panel">
+          <div className="p-12 text-center">
+            <Target className="w-8 h-8 mx-auto text-ink-muted mb-3" />
+            <div className="text-[13px] text-ink-secondary mb-1.5">No Active Signals</div>
+            <p className="text-[12px] text-ink-muted mb-3">
+              Select a strategy and click "Scan Market" to find trading opportunities
+            </p>
+            <p className="text-[11px] text-ink-muted font-mono">
+              Strategies are automatically evaluated based on current market conditions
+            </p>
+          </div>
         </div>
       )}
     </div>

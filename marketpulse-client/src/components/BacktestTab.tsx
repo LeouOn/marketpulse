@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { TrendingUp, TrendingDown, BarChart2, Calendar, DollarSign, Target, Activity } from 'lucide-react';
+import { TrendingUp, TrendingDown, BarChart2, DollarSign, Target, Activity } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 
 interface BacktestResults {
@@ -79,197 +79,238 @@ export default function BacktestTab() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2.5">
       {error && (
-        <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-lg text-red-400 text-sm">
-          {error}
-          <button onClick={runBacktest} className="ml-2 underline">Retry</button>
+        <div className="p-2.5 bg-neg-dim border border-line rounded-[2px] text-[12.5px] flex items-center gap-2">
+          <span className="text-neg">{error}</span>
+          <button onClick={runBacktest} className="ml-auto underline text-neg hover:text-ink">
+            Retry
+          </button>
         </div>
       )}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-white">Backtesting Engine</h2>
-        <div className="flex items-center gap-2 text-xs text-gray-400">
-          <Activity size={14} />
-          <span>FVG + Divergence Strategy</span>
-        </div>
-      </div>
 
-      {/* Configuration Section */}
-      <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold mb-3 text-white">Backtest Configuration</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div>
-            <label className="text-xs text-gray-400">Symbol</label>
-            <select
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
-            >
-              <option value="NQ">NQ (Nasdaq 100)</option>
-              <option value="ES">ES (S&P 500)</option>
-              <option value="YM">YM (Dow Jones)</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-400">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400">End Date</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400">Contracts</label>
-            <input
-              type="number"
-              value={contracts}
-              onChange={(e) => setContracts(parseInt(e.target.value))}
-              min={1}
-              max={10}
-              className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
-            />
+      <div className="panel">
+        <div className="border-b border-line-subtle px-3 h-8 flex items-center justify-between">
+          <span className="panel-title">Backtesting Engine</span>
+          <div className="flex items-center gap-1.5 text-[11px] text-ink-secondary">
+            <Activity className="w-3 h-3" />
+            <span className="font-mono uppercase tracking-[0.08em]">FVG + Divergence</span>
           </div>
         </div>
-        <button
-          onClick={runBacktest}
-          disabled={loading}
-          className="mt-4 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 rounded py-2 text-white font-semibold transition-colors"
-        >
-          {loading ? 'Running Backtest...' : 'Run Backtest'}
-        </button>
+
+        {/* Configuration */}
+        <div className="p-2.5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+            <div>
+              <label className="block text-[11px] uppercase tracking-[0.08em] text-ink-secondary mb-1">
+                Symbol
+              </label>
+              <select
+                value={symbol}
+                onChange={(e) => setSymbol(e.target.value)}
+                className="input w-full"
+              >
+                <option value="NQ">NQ (Nasdaq 100)</option>
+                <option value="ES">ES (S&amp;P 500)</option>
+                <option value="YM">YM (Dow Jones)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] uppercase tracking-[0.08em] text-ink-secondary mb-1">
+                Start Date
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="input w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] uppercase tracking-[0.08em] text-ink-secondary mb-1">
+                End Date
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="input w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] uppercase tracking-[0.08em] text-ink-secondary mb-1">
+                Contracts
+              </label>
+              <input
+                type="number"
+                value={contracts}
+                onChange={(e) => setContracts(parseInt(e.target.value))}
+                min={1}
+                max={10}
+                className="input w-full"
+              />
+            </div>
+          </div>
+          <button
+            onClick={runBacktest}
+            disabled={loading}
+            className="btn btn-primary mt-3 w-full"
+          >
+            {loading ? 'Running Backtest…' : 'Run Backtest'}
+          </button>
+        </div>
       </div>
 
       {/* Results Section */}
       {results && (
         <>
-          {/* Performance Overview */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <DollarSign size={16} className="text-green-400" />
-                <span className="text-xs text-gray-400">Total P&L</span>
+          {/* Performance Overview — 4 hero tiles */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+            <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+              <div className="flex items-center gap-1.5 panel-title">
+                <DollarSign className="w-3 h-3 text-pos" />
+                Total P&amp;L
               </div>
-              <div className={`text-2xl font-bold ${results.pnl_metrics.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <div
+                className={`text-[15px] leading-tight mt-0.5 font-mono tabular-nums ${
+                  results.pnl_metrics.total_pnl >= 0 ? 'text-pos' : 'text-neg'
+                }`}
+              >
                 ${results.pnl_metrics.total_pnl.toLocaleString()}
               </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {results.pnl_metrics.total_pnl_percent >= 0 ? '+' : ''}{results.pnl_metrics.total_pnl_percent}%
+              <div className="text-[11px] font-mono tabular-nums text-ink-secondary mt-0.5">
+                {results.pnl_metrics.total_pnl_percent >= 0 ? '+' : ''}
+                {results.pnl_metrics.total_pnl_percent}%
               </div>
             </div>
 
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Target size={16} className="text-blue-400" />
-                <span className="text-xs text-gray-400">Win Rate</span>
+            <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+              <div className="flex items-center gap-1.5 panel-title">
+                <Target className="w-3 h-3 text-sel" />
+                Win Rate
               </div>
-              <div className="text-2xl font-bold text-white">
+              <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-ink">
                 {results.basic_metrics.win_rate}%
               </div>
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-[11px] font-mono tabular-nums text-ink-secondary mt-0.5">
                 {results.basic_metrics.winning_trades}W / {results.basic_metrics.losing_trades}L
               </div>
             </div>
 
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp size={16} className="text-purple-400" />
-                <span className="text-xs text-gray-400">Profit Factor</span>
+            <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+              <div className="flex items-center gap-1.5 panel-title">
+                <TrendingUp className="w-3 h-3 text-teal" />
+                Profit Factor
               </div>
-              <div className="text-2xl font-bold text-white">
+              <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-ink">
                 {results.pnl_metrics.profit_factor.toFixed(2)}
               </div>
-              <div className="text-xs text-gray-500 mt-1">
-                Avg: ${results.trade_metrics.average_trade_pnl}
+              <div className="text-[11px] font-mono tabular-nums text-ink-secondary mt-0.5">
+                Avg ${results.trade_metrics.average_trade_pnl}
               </div>
             </div>
 
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingDown size={16} className="text-red-400" />
-                <span className="text-xs text-gray-400">Max Drawdown</span>
+            <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+              <div className="flex items-center gap-1.5 panel-title">
+                <TrendingDown className="w-3 h-3 text-neg" />
+                Max Drawdown
               </div>
-              <div className="text-2xl font-bold text-red-400">
+              <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-neg">
                 {results.risk_metrics.max_drawdown_percent}%
               </div>
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-[11px] font-mono tabular-nums text-ink-secondary mt-0.5">
                 ${Math.abs(results.risk_metrics.max_drawdown).toLocaleString()}
               </div>
             </div>
           </div>
 
-          {/* Risk Metrics */}
-          <div className="bg-gray-800 rounded-lg p-4">
-            <h3 className="text-sm font-semibold mb-3 text-white">Risk-Adjusted Returns</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Sharpe Ratio</div>
-                <div className={`text-xl font-bold ${results.risk_metrics.sharpe_ratio > 1 ? 'text-green-400' : 'text-yellow-400'}`}>
+          {/* Risk-Adjusted Returns */}
+          <div className="panel">
+            <div className="border-b border-line-subtle px-3 h-8 flex items-center">
+              <span className="panel-title">Risk-Adjusted Returns</span>
+            </div>
+            <div className="p-2.5 grid grid-cols-3 gap-2.5">
+              <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+                <div className="panel-title">Sharpe Ratio</div>
+                <div
+                  className={`text-[15px] leading-tight mt-0.5 font-mono tabular-nums ${
+                    results.risk_metrics.sharpe_ratio > 1
+                      ? 'text-pos'
+                      : results.risk_metrics.sharpe_ratio > 0.5
+                      ? 'text-warn'
+                      : 'text-neg'
+                  }`}
+                >
                   {results.risk_metrics.sharpe_ratio.toFixed(2)}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {results.risk_metrics.sharpe_ratio > 1 ? 'Excellent' : results.risk_metrics.sharpe_ratio > 0.5 ? 'Good' : 'Poor'}
+                <div className="text-[11px] font-mono tabular-nums text-ink-secondary mt-0.5">
+                  {results.risk_metrics.sharpe_ratio > 1
+                    ? 'Excellent'
+                    : results.risk_metrics.sharpe_ratio > 0.5
+                    ? 'Good'
+                    : 'Poor'}
                 </div>
               </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Sortino Ratio</div>
-                <div className="text-xl font-bold text-white">
+              <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+                <div className="panel-title">Sortino Ratio</div>
+                <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-ink">
                   {results.risk_metrics.sortino_ratio.toFixed(2)}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">Downside risk adj.</div>
+                <div className="text-[11px] font-mono tabular-nums text-ink-secondary mt-0.5">
+                  Downside risk adj.
+                </div>
               </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Expectancy</div>
-                <div className="text-xl font-bold text-blue-400">
+              <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5">
+                <div className="panel-title">Expectancy</div>
+                <div className="text-[15px] leading-tight mt-0.5 font-mono tabular-nums text-sel">
                   ${results.trade_metrics.expectancy}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">Per trade</div>
+                <div className="text-[11px] font-mono tabular-nums text-ink-secondary mt-0.5">
+                  Per trade
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Strategy Performance */}
-          <div className="bg-gray-800 rounded-lg p-4">
-            <h3 className="text-sm font-semibold mb-3 text-white">Strategy Breakdown</h3>
-            <div className="grid grid-cols-2 gap-4">
+          {/* Strategy Breakdown */}
+          <div className="panel">
+            <div className="border-b border-line-subtle px-3 h-8 flex items-center">
+              <span className="panel-title">Strategy Breakdown</span>
+            </div>
+            <div className="p-2.5 grid grid-cols-2 gap-2.5">
               <div>
-                <div className="text-xs text-gray-400 mb-2">Setup Success Rates</div>
-                <div className="space-y-2">
+                <div className="text-[11px] uppercase tracking-[0.08em] text-ink-secondary mb-1.5">
+                  Setup Success Rates
+                </div>
+                <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5 space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-300">FVG Setups</span>
-                    <span className="text-sm font-semibold text-green-400">
+                    <span className="text-[12px] text-ink-secondary">FVG Setups</span>
+                    <span className="text-[12.5px] font-mono tabular-nums text-pos">
                       {results.strategy_metrics.fvg_success_rate}%
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-300">Divergence Setups</span>
-                    <span className="text-sm font-semibold text-blue-400">
+                    <span className="text-[12px] text-ink-secondary">Divergence Setups</span>
+                    <span className="text-[12.5px] font-mono tabular-nums text-sel">
                       {results.strategy_metrics.divergence_success_rate}%
                     </span>
                   </div>
                 </div>
               </div>
               <div>
-                <div className="text-xs text-gray-400 mb-2">Best Trading Times</div>
-                <div className="space-y-2">
+                <div className="text-[11px] uppercase tracking-[0.08em] text-ink-secondary mb-1.5">
+                  Best Trading Times
+                </div>
+                <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 py-1.5 space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-300">Best Hour</span>
-                    <span className="text-sm font-semibold text-white">
+                    <span className="text-[12px] text-ink-secondary">Best Hour</span>
+                    <span className="text-[12.5px] font-mono tabular-nums text-ink">
                       {results.strategy_metrics.best_hour_of_day}:00
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-300">Best Day</span>
-                    <span className="text-sm font-semibold text-white">
+                    <span className="text-[12px] text-ink-secondary">Best Day</span>
+                    <span className="text-[12.5px] font-mono tabular-nums text-ink">
                       {results.strategy_metrics.best_day_of_week}
                     </span>
                   </div>
@@ -280,43 +321,51 @@ export default function BacktestTab() {
 
           {/* Sample Trades */}
           {results.sample_trades.length > 0 && (
-            <div className="bg-gray-800 rounded-lg p-4">
-              <h3 className="text-sm font-semibold mb-3 text-white">Recent Trades (Sample)</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-gray-400 border-b border-gray-700">
+            <div className="panel">
+              <div className="border-b border-line-subtle px-3 h-8 flex items-center">
+                <span className="panel-title">Recent Trades (Sample)</span>
+              </div>
+              <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <table className="data-table">
+                  <thead>
                     <tr>
-                      <th className="text-left pb-2">Entry</th>
-                      <th className="text-left pb-2">Direction</th>
-                      <th className="text-right pb-2">Entry</th>
-                      <th className="text-right pb-2">Exit</th>
-                      <th className="text-right pb-2">P&L</th>
-                      <th className="text-left pb-2">Setup</th>
+                      <th className="sticky top-0 bg-surface">Entry Date</th>
+                      <th>Direction</th>
+                      <th className="num">Entry</th>
+                      <th className="num">Exit</th>
+                      <th className="num">P&amp;L</th>
+                      <th>Setup</th>
                     </tr>
                   </thead>
-                  <tbody className="text-gray-300">
-                    {results.sample_trades.slice(0, 10).map((trade, idx) => (
-                      <tr key={idx} className="border-b border-gray-700/50">
-                        <td className="py-2">
-                          {new Date(trade.entry_time).toLocaleDateString()}
-                        </td>
-                        <td className="py-2">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            trade.direction === 'LONG' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                          }`}>
-                            {trade.direction}
-                          </span>
-                        </td>
-                        <td className="text-right py-2 font-mono">{trade.entry_price}</td>
-                        <td className="text-right py-2 font-mono">{trade.exit_price}</td>
-                        <td className={`text-right py-2 font-mono font-semibold ${
-                          trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
-                        }`}>
-                          {trade.pnl >= 0 ? '+' : ''}${trade.pnl}
-                        </td>
-                        <td className="py-2 text-xs text-gray-400">{trade.setup_type}</td>
-                      </tr>
-                    ))}
+                  <tbody>
+                    {results.sample_trades.slice(0, 10).map((trade, idx) => {
+                      const directionClass =
+                        trade.direction === 'LONG' ? 'text-pos' : 'text-neg';
+                      return (
+                        <tr key={idx}>
+                          <td>
+                            {new Date(trade.entry_time).toLocaleDateString()}
+                          </td>
+                          <td>
+                            <span className={`text-[11px] font-mono ${directionClass}`}>
+                              {trade.direction}
+                            </span>
+                          </td>
+                          <td className="num">{trade.entry_price}</td>
+                          <td className="num">{trade.exit_price}</td>
+                          <td
+                            className={`num ${
+                              trade.pnl >= 0 ? 'text-pos' : 'text-neg'
+                            }`}
+                          >
+                            {trade.pnl >= 0 ? '+' : ''}${trade.pnl}
+                          </td>
+                          <td className="text-[11px] text-ink-secondary">
+                            {trade.setup_type}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -327,15 +376,17 @@ export default function BacktestTab() {
 
       {/* Empty State */}
       {!results && !loading && (
-        <div className="bg-gray-800 rounded-lg p-12 text-center">
-          <BarChart2 size={48} className="mx-auto text-gray-600 mb-4" />
-          <h3 className="text-lg font-semibold text-gray-400 mb-2">No Backtest Results</h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Configure your backtest parameters above and click "Run Backtest" to see results.
-          </p>
-          <p className="text-xs text-gray-600">
-            Strategy: FVG + Divergence | Timeframe: 5 minutes | Risk: 1:2 R/R
-          </p>
+        <div className="panel">
+          <div className="p-12 text-center">
+            <BarChart2 className="w-8 h-8 mx-auto text-ink-muted mb-3" />
+            <div className="text-[13px] text-ink-secondary mb-1.5">No Backtest Results</div>
+            <p className="text-[12px] text-ink-muted mb-3">
+              Configure your backtest parameters above and click "Run Backtest" to see results.
+            </p>
+            <p className="text-[11px] text-ink-muted font-mono">
+              Strategy: FVG + Divergence | Timeframe: 5 minutes | Risk: 1:2 R/R
+            </p>
+          </div>
         </div>
       )}
     </div>
