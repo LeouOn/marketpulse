@@ -93,3 +93,6 @@ data/rag_cache/
 
 # Docker
 .omo/
+
+# SDD working artifacts (superpowers subagent-driven development)
+.superpowers/
