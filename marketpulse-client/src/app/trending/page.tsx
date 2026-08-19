@@ -1,32 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useScreener } from '@/hooks/useScreenerData';
+import { useRowNav } from '@/hooks/useRowNav';
 import { FiftyTwoWeekBar } from '@/components/FiftyTwoWeekBar';
-import { Flame, TrendingUp, TrendingDown, BarChart3, RefreshCw } from 'lucide-react';
+import { Flame, RefreshCw } from 'lucide-react';
 import { formatVolume } from '@/lib/format';
 import type { ScreenerResult } from '@/types/market';
 
 type ScreenerTab = 'gainers' | 'losers' | 'most_active';
 
-const tabs: { key: ScreenerTab; label: string; icon: typeof TrendingUp }[] = [
-  { key: 'gainers', label: 'Gainers', icon: TrendingUp },
-  { key: 'losers', label: 'Losers', icon: TrendingDown },
-  { key: 'most_active', label: 'Most Active', icon: BarChart3 },
+const tabs: { key: ScreenerTab; label: string }[] = [
+  { key: 'gainers', label: 'Gainers' },
+  { key: 'losers', label: 'Losers' },
+  { key: 'most_active', label: 'Most Active' },
 ];
 
-const tabStyles: Record<ScreenerTab, string> = {
-  gainers: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-  losers: 'bg-red-500/20 text-red-400 border border-red-500/30',
-  most_active: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-};
-
 function RankBadge({ rank }: { rank: number }) {
-  if (rank === 1) return <span className="font-bold text-yellow-400">#{rank}</span>;
-  if (rank === 2) return <span className="font-bold text-gray-300">#{rank}</span>;
-  if (rank === 3) return <span className="font-bold text-amber-700">#{rank}</span>;
-  return <span className="text-gray-400">#{rank}</span>;
+  let cls = 'font-mono text-ink-muted';
+  if (rank === 1) cls = 'font-mono text-warn';
+  else if (rank === 2) cls = 'font-mono text-ink-secondary';
+  else if (rank === 3) cls = 'font-mono text-warn';
+  return <span className={cls}>#{rank}</span>;
 }
 
 function SkeletonRows() {
@@ -35,8 +32,8 @@ function SkeletonRows() {
       {Array.from({ length: 8 }).map((_, i) => (
         <tr key={i}>
           {Array.from({ length: 7 }).map((__, j) => (
-            <td key={j} className="px-4 py-3 border-b border-gray-800">
-              <div className="h-4 bg-gray-800 rounded animate-pulse" />
+            <td key={j} className="px-2 py-[3px]">
+              <div className="h-3 bg-surface-raised animate-pulse" />
             </td>
           ))}
         </tr>
@@ -46,65 +43,97 @@ function SkeletonRows() {
 }
 
 export default function TrendingPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<ScreenerTab>('gainers');
   const { data, isLoading, isError, dataUpdatedAt } = useScreener(activeTab);
-
   const results: ScreenerResult[] = data ?? [];
+
+  const { focusedIndex, setFocusedIndex, handleKeyDown } = useRowNav(
+    results.length,
+    {
+      onEnter: (i) => {
+        const row = results[i];
+        if (row) router.push(`/chart/${row.symbol}`);
+      },
+    }
+  );
+
+  const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+
+  // Keep refs array in sync with results length so out-of-range indices are trimmed
+  useEffect(() => {
+    rowRefs.current.length = results.length;
+  }, [results.length]);
+
+  // Scroll focused row into view on focusedIndex change
+  useEffect(() => {
+    const row = rowRefs.current[focusedIndex];
+    if (row) row.scrollIntoView({ block: 'nearest' });
+  }, [focusedIndex]);
+
+  const handleTabChange = useCallback(
+    (key: ScreenerTab) => {
+      setActiveTab(key);
+      setFocusedIndex(0);
+    },
+    [setFocusedIndex]
+  );
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-1">
-          <Flame className="w-7 h-7 text-orange-400" />
-          <h1 className="text-2xl font-bold text-white">Trending Stocks</h1>
+          <Flame className="w-7 h-7 text-warn" />
+          <h1 className="text-2xl font-bold text-ink">Trending Stocks</h1>
         </div>
-        <p className="text-gray-400 text-sm ml-10">
+        <p className="text-ink-secondary text-sm ml-10">
           Real-time market movers from Yahoo Finance
         </p>
       </div>
 
-      <div className="flex gap-2 mb-6">
-        {tabs.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-              activeTab === key
-                ? tabStyles[key]
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-300'
-            }`}
-          >
-            <Icon className="w-4 h-4" />
-            {label}
-          </button>
-        ))}
+      <div className="flex items-end justify-between mb-2.5 border-b border-line-subtle">
+        <div className="flex gap-4">
+          {tabs.map(({ key, label }) => {
+            const isActive = activeTab === key;
+            return (
+              <button
+                key={key}
+                onClick={() => handleTabChange(key)}
+                className={`px-1 pb-1.5 text-[11px] uppercase tracking-[0.08em] font-mono transition-colors ${
+                  isActive
+                    ? 'text-teal border-b-2 border-teal'
+                    : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="pb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-muted">
+          <span className="kbd">j</span>
+          <span className="kbd">k</span>
+          <span className="ml-1">navigate</span>
+          <span className="kbd ml-1">↵</span>
+          <span className="ml-1">open</span>
+        </div>
       </div>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-        <table className="w-full">
+      <div
+        className="panel overflow-hidden max-h-[600px] overflow-y-auto focus:outline focus:outline-1 focus:outline-line-focus"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+      >
+        <table className="data-table">
           <thead>
-            <tr className="bg-gray-800">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                #
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Symbol
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Price
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Change %
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Volume
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                52W Range
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Action
-              </th>
+            <tr>
+              <th className="sticky top-0 bg-surface">#</th>
+              <th className="sticky top-0 bg-surface">Symbol</th>
+              <th className="num sticky top-0 bg-surface">Price</th>
+              <th className="num sticky top-0 bg-surface">Change %</th>
+              <th className="num sticky top-0 bg-surface">Volume</th>
+              <th className="num sticky top-0 bg-surface">52W Range</th>
+              <th className="num sticky top-0 bg-surface">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -112,9 +141,9 @@ export default function TrendingPage() {
               <SkeletonRows />
             ) : isError || results.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center">
-                  <RefreshCw className="w-8 h-8 text-gray-600 mx-auto mb-3" />
-                  <p className="text-gray-400">
+                <td colSpan={7} className="px-2 py-12 text-center">
+                  <RefreshCw className="w-8 h-8 text-ink-muted mx-auto mb-3" />
+                  <p className="text-ink-secondary">
                     No screener data available — market may be closed or data is loading
                   </p>
                 </td>
@@ -122,36 +151,36 @@ export default function TrendingPage() {
             ) : (
               results.map((item, idx) => {
                 const changeColor =
-                  item.change_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                  item.change_pct >= 0 ? 'text-pos' : 'text-neg';
                 const sign = item.change_pct >= 0 ? '+' : '';
+                const isFocused = idx === focusedIndex;
 
                 return (
                   <tr
                     key={item.symbol}
-                    className="border-b border-gray-800 hover:bg-gray-800/50"
+                    ref={(el) => {
+                      rowRefs.current[idx] = el;
+                    }}
+                    className={isFocused ? 'row-focused' : undefined}
                   >
-                    <td className="px-4 py-3">
+                    <td>
                       <RankBadge rank={item.rank ?? idx + 1} />
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-white">{item.symbol}</div>
+                    <td>
+                      <div className="font-mono text-ink">{item.symbol}</div>
                       {item.name && (
-                        <div className="text-xs text-gray-500 truncate max-w-[180px]">
+                        <div className="text-[11px] text-ink-muted truncate max-w-[180px]">
                           {item.name}
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-white font-mono">
-                      ${item.price.toFixed(2)}
-                    </td>
-                    <td className={`px-4 py-3 text-right font-mono font-medium ${changeColor}`}>
+                    <td className="num">${item.price.toFixed(2)}</td>
+                    <td className={`num ${changeColor}`}>
                       {sign}
                       {item.change_pct.toFixed(2)}%
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-300 font-mono">
-                      {formatVolume(item.volume)}
-                    </td>
-                    <td className="px-4 py-3">
+                    <td className="num">{formatVolume(item.volume)}</td>
+                    <td className="num">
                       {item.high_52w && item.low_52w ? (
                         <FiftyTwoWeekBar
                           currentPrice={item.price}
@@ -159,15 +188,15 @@ export default function TrendingPage() {
                           low52w={item.low_52w}
                         />
                       ) : (
-                        <span className="text-gray-600 text-xs">—</span>
+                        <span className="text-ink-muted text-[11px]">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="num">
                       <Link
                         href={`/chart/${item.symbol}`}
-                        className="text-blue-400 hover:text-blue-300 text-sm font-medium"
+                        className="text-sel hover:text-ink text-[11px] uppercase tracking-[0.08em] font-mono"
                       >
-                        View Chart
+                        Chart →
                       </Link>
                     </td>
                   </tr>
@@ -179,7 +208,7 @@ export default function TrendingPage() {
       </div>
 
       {dataUpdatedAt ? (
-        <div className="mt-3 text-xs text-gray-500 text-right">
+        <div className="mt-2 text-[11px] text-ink-muted text-right font-mono">
           Last updated:{' '}
           {new Date(dataUpdatedAt).toLocaleTimeString()}
         </div>
