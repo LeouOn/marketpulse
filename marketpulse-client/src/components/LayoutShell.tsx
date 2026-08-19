@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { CommandPalette } from './CommandPalette';
+import { KbdHelp } from './KbdHelp';
 
 interface LayoutShellProps {
   children: React.ReactNode;
@@ -59,6 +61,8 @@ export function LayoutShell({ children }: LayoutShellProps) {
           <span>DATA YAHOO FINANCE · MARKETPULSE v0.3.0</span>
         </footer>
       </div>
+      <CommandPalette />
+      <KbdHelp />
     </div>
   );
 }
