@@ -330,11 +330,11 @@ export default function BacktestTab() {
                   <thead>
                     <tr>
                       <th className="sticky top-0 bg-surface">Entry Date</th>
-                      <th>Direction</th>
-                      <th className="num">Entry</th>
-                      <th className="num">Exit</th>
-                      <th className="num">P&amp;L</th>
-                      <th>Setup</th>
+                      <th className="sticky top-0 bg-surface">Direction</th>
+                      <th className="num sticky top-0 bg-surface">Entry</th>
+                      <th className="num sticky top-0 bg-surface">Exit</th>
+                      <th className="num sticky top-0 bg-surface">P&amp;L</th>
+                      <th className="sticky top-0 bg-surface">Setup</th>
                     </tr>
                   </thead>
                   <tbody>
