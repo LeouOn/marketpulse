@@ -17,10 +17,10 @@ function formatNumber(n: number): string {
   });
 }
 
-function getFillColor(pct: number): string {
-  if (pct < 0.3) return 'bg-red-500/60';
-  if (pct <= 0.7) return 'bg-blue-500/60';
-  return 'bg-emerald-500/60';
+function getFillClass(pct: number): string {
+  if (pct < 0.3) return 'bg-neg';
+  if (pct <= 0.7) return 'bg-sel';
+  return 'bg-pos';
 }
 
 export function FiftyTwoWeekBar({
@@ -37,19 +37,19 @@ export function FiftyTwoWeekBar({
 
   return (
     <div className={clsx('w-full', className)}>
-      <div className="h-1.5 rounded-full bg-gray-800 w-full relative">
+      <div className="h-1 bg-surface-raised w-full relative">
         <div
-          className={clsx('absolute left-0 top-0 h-full rounded-full', getFillColor(pct))}
+          className={clsx('absolute left-0 top-0 h-full', getFillClass(pct))}
           style={{ width: `${pct * 100}%` }}
         />
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white"
+          className="absolute top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-ink"
           style={{ left: `${pct * 100}%`, transform: 'translate(-50%, -50%)' }}
         />
       </div>
 
       {showLabels && (
-        <div className="flex justify-between mt-1 text-[10px] text-gray-500">
+        <div className="flex justify-between mt-1 text-[10px] text-ink-muted font-mono tabular-nums">
           <span>{formatNumber(low52w)}</span>
           <span>{formatNumber(high52w)}</span>
         </div>

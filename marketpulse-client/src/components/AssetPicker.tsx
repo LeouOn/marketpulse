@@ -4,8 +4,8 @@
  * Asset picker dropdown for the Multi-Asset Macro Research Lab (W5 T22).
  *
  * Renders the 5 supported assets (BTC / GOLD / OIL / EQUITIES / HOUSING) as a
- * compact dropdown whose visual tokens match the dashboard tab control in
- * `ThreeColumnDashboard.tsx` (bg-gray-900, border-gray-700, emerald-400 accent).
+ * compact dropdown whose visual tokens match the shared design system
+ * (`.btn` trigger, `.panel` menu, teal accent).
  *
  * The options list is hard-coded so the picker works without a network round
  * trip. If T20's `GET /api/research/assets` returns extra metadata later, the
@@ -91,24 +91,24 @@ export function AssetPicker({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 bg-gray-900 border border-gray-700 hover:border-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg pl-3 pr-2 py-2 text-sm text-white transition-colors"
+        className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Select asset, currently ${current?.label ?? value}`}
       >
-        <span className="font-mono text-[10px] tracking-wide bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded">
+        <span className="font-mono text-[10px] tracking-wide bg-teal-dim text-teal px-1.5 py-0.5">
           {current?.key ?? normalized}
         </span>
         <span className="font-medium">{current?.label ?? normalized}</span>
         <ChevronDown
-          className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-ink-secondary transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
       {open && (
         <ul
           role="listbox"
-          className="absolute right-0 z-50 mt-1 w-64 max-h-80 overflow-auto bg-gray-900 border border-gray-700 rounded-lg shadow-xl"
+          className="absolute right-0 z-50 mt-1 w-64 max-h-80 overflow-auto panel p-0"
         >
           {options.map((opt) => {
             const active = opt.key === normalized;
@@ -121,26 +121,26 @@ export function AssetPicker({
                     onChange(opt.key);
                     setOpen(false);
                   }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                  className={`w-full flex items-center gap-3 h-7 px-2 text-left transition-colors ${
                     active
-                      ? 'bg-emerald-600/15 text-emerald-300'
-                      : 'text-gray-300 hover:bg-gray-800'
+                      ? 'bg-surface-hover text-teal'
+                      : 'text-ink-secondary hover:bg-surface-hover'
                   }`}
                 >
-                  <span className="font-mono text-[10px] tracking-wide bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded min-w-[3.75rem] text-center">
+                  <span className="font-mono text-[10px] tracking-wide bg-surface-raised text-ink-secondary px-1.5 py-0.5 min-w-[3.75rem] text-center">
                     {opt.key}
                   </span>
                   <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-medium text-white truncate">
+                    <span className="block text-sm font-medium text-ink truncate">
                       {opt.label}
                     </span>
                     {opt.sublabel && (
-                      <span className="block text-[11px] text-gray-500 truncate">
+                      <span className="block text-[11px] text-ink-muted truncate">
                         {opt.sublabel}
                       </span>
                     )}
                   </span>
-                  {active && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
+                  {active && <Check className="w-4 h-4 text-teal shrink-0" />}
                 </button>
               </li>
             );

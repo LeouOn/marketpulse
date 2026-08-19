@@ -11,6 +11,12 @@ interface SparklineProps {
   className?: string;
 }
 
+function readCssVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
 export function Sparkline({
   data,
   width = 80,
@@ -39,9 +45,11 @@ export function Sparkline({
     return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
   }).join(' ');
 
-  // Determine trend and color
+  // Determine trend and color — token-driven with static fallbacks matching the
+  // dark-theme SERIES_PALETTE so SSR / pre-hydration renders match the client.
   const isUp = data[data.length - 1] >= data[0];
-  const strokeColor = color || (isUp ? '#10b981' : '#ef4444');
+  const strokeColor =
+    color ?? (isUp ? readCssVar('--green', '#8be879') : readCssVar('--red', '#ff5e62'));
 
   return (
     <svg
@@ -56,7 +64,7 @@ export function Sparkline({
         d={pathData}
         fill="none"
         stroke={strokeColor}
-        strokeWidth="1.5"
+        strokeWidth="1"
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
@@ -81,9 +89,8 @@ export function Sparkline({
       <circle
         cx={(data.length - 1) * scaleX}
         cy={height - (data[data.length - 1] - min) * scaleY}
-        r="2"
+        r="1.5"
         fill={strokeColor}
-        opacity="0.8"
       />
     </svg>
   );

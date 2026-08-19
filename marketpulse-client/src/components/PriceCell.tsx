@@ -30,16 +30,16 @@ export function PriceCell({ price, change, changePct, isCrypto, className }: Pri
 
   return (
     <div className={clsx('flex flex-col items-end', className)}>
-      <span className="text-white font-medium transition-colors duration-300">
+      <span className="text-ink font-medium font-mono tabular-nums transition-colors duration-300">
         {formatPrice(price, isCrypto)}
       </span>
 
       {change !== undefined && (
         <span
-          className={clsx('text-sm transition-colors duration-300', {
-            'text-emerald-400': isPositive,
-            'text-red-400': !isPositive,
-          })}
+          className={clsx(
+            'text-sm font-mono tabular-nums transition-colors duration-300',
+            isPositive ? 'text-pos' : 'text-neg'
+          )}
         >
           {formatChange(change)}
         </span>
@@ -48,11 +48,8 @@ export function PriceCell({ price, change, changePct, isCrypto, className }: Pri
       {changePct !== undefined && (
         <span
           className={clsx(
-            'text-xs px-1.5 py-0.5 rounded font-medium transition-colors duration-300',
-            {
-              'bg-emerald-500/20 text-emerald-400': isPositive,
-              'bg-red-500/20 text-red-400': !isPositive,
-            }
+            'h-4 px-1 inline-flex items-center text-[10.5px] font-mono tabular-nums transition-colors duration-300',
+            isPositive ? 'bg-pos-dim text-pos' : 'bg-neg-dim text-neg'
           )}
         >
           {formatChangePct(changePct)}
