@@ -9,28 +9,28 @@ import { PipelineProgress } from './PipelineProgress';
 import { AgentTracePanel } from './AgentTracePanel';
 // Custom icon components
 const SendIcon = () => (
-  <div className="w-5 h-5 bg-blue-400 rounded-full flex items-center justify-center">
-    <div className="w-2 h-2 bg-white rounded-sm" style={{transform: 'rotate(-45deg) translateY(1px)'}}></div>
+  <div className="w-5 h-5 bg-teal flex items-center justify-center rounded-[2px]">
+    <div className="w-2 h-2 bg-ink rounded-sm" style={{transform: 'rotate(-45deg) translateY(1px)'}}></div>
   </div>
 );
 
 const BotIcon = () => (
-  <div className="w-6 h-6 bg-purple-400 rounded-lg flex items-center justify-center text-white font-bold">AI</div>
+  <div className="w-5 h-5 bg-teal-dim text-teal flex items-center justify-center text-[10px] font-mono font-bold rounded-[2px]">AI</div>
 );
 
 const UserIcon = () => (
-  <div className="w-6 h-6 bg-green-400 rounded-full flex items-center justify-center text-white font-bold">U</div>
+  <div className="w-5 h-5 bg-sel-dim text-sel flex items-center justify-center text-[10px] font-mono font-bold rounded-[2px]">U</div>
 );
 
 const RefreshIcon = () => (
-  <div className="w-5 h-5 border-2 border-gray-400 rounded-full" />
+  <div className="w-4 h-4 border border-line" />
 );
 
 const SparklesIcon = () => (
   <div className="w-4 h-4 flex gap-0.5">
-    <div className="w-1 h-1 bg-yellow-400 rounded-full"></div>
-    <div className="w-1 h-1 bg-yellow-300 rounded-full"></div>
-    <div className="w-1 h-1 bg-yellow-200 rounded-full"></div>
+    <div className="w-1 h-1 bg-warn"></div>
+    <div className="w-1 h-1 bg-warn"></div>
+    <div className="w-1 h-1 bg-warn"></div>
   </div>
 );
 
@@ -657,7 +657,7 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
   ];
 
   return (
-    <div className="flex flex-col h-full bg-transparent">
+    <div className="flex flex-col h-full panel overflow-hidden">
       {/* Agentic Pipeline UI */}
       {pipelinePhase && (
         <PipelineProgress
@@ -680,40 +680,40 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Streaming Synthesis Preview */}
           {streamingSynthesis && (
-            <div className="px-4 py-2 bg-blue-900/20 border-b border-blue-800/30 text-blue-300 text-xs max-h-32 overflow-y-auto">
+            <div className="px-2.5 py-2 bg-sel-dim border-b border-line-subtle text-sel text-[12.5px] max-h-32 overflow-y-auto">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {streamingSynthesis.slice(0, 800)}
               </ReactMarkdown>
             </div>
           )}
       {error && (
-        <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-lg text-red-400 text-sm m-4">
+        <div className="p-2.5 bg-neg-dim border border-line rounded-[2px] text-neg text-[12.5px] m-2.5">
           {error}
           <button onClick={() => { setError(null); fetchModelStatus(); }} className="ml-2 underline">Retry</button>
         </div>
       )}
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-800/50">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between px-2.5 h-8 border-b border-line-subtle">
+        <div className="flex items-center gap-2">
           <div className="relative">
-            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-pos' : 'bg-neg'} animate-pulse`} />
             {isConnected && (
-              <div className="absolute inset-0 w-3 h-3 rounded-full bg-green-500 animate-ping" />
+              <div className="absolute inset-0 w-2 h-2 rounded-full bg-pos animate-ping" />
             )}
           </div>
           <div className="flex items-center gap-2">
             <BotIcon />
-            <h3 className="text-lg font-semibold text-white">AI Trading Assistant</h3>
-            <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">
+            <h3 className="panel-title">AI ANALYST</h3>
+            <span className="border border-sel rounded-[2px] px-1.5 h-5 text-[11px] font-mono inline-flex items-center text-sel">
               {symbol}
             </span>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {/* Model Status */}
-          <div className="flex items-center gap-2 px-2 py-1 bg-gray-800/50 rounded-lg">
-            <div className={`w-2 h-2 rounded-full ${modelStatus?.lm_studio_connected ? 'bg-green-400' : 'bg-red-400'}`} />
-            <span className="text-xs text-gray-400">
+          <div className="flex items-center gap-2 px-1.5 h-7 bg-surface-raised">
+            <div className={`w-2 h-2 rounded-full ${modelStatus?.lm_studio_connected ? 'bg-pos' : 'bg-neg'}`} />
+            <span className="text-[11px] font-mono text-ink-muted">
               {modelStatus?.current_model?.split('-')[0] || 'Loading...'}
             </span>
           </div>
@@ -722,17 +722,17 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
           <div className="relative model-selector-container">
             <button
               onClick={() => setShowModelSelector(!showModelSelector)}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors text-xs"
+              className="btn text-[11px]"
               title="Select Model"
             >
-              🤖
+              Model
             </button>
 
             {showModelSelector && (
-              <div className="absolute right-0 top-full mt-2 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50">
-                <div className="p-3 border-b border-gray-700">
-                  <h4 className="text-sm font-medium text-white">Select AI Model</h4>
-                  <p className="text-xs text-gray-400">
+              <div className="absolute right-0 top-full mt-1 w-80 panel p-0 z-50">
+                <div className="p-2.5 border-b border-line-subtle">
+                  <h4 className="panel-title">Select AI Model</h4>
+                  <p className="text-[11px] text-ink-muted">
                     {modelStatus?.lm_studio_connected ? 'LM Studio Connected' : 'LM Studio Disconnected'}
                     {modelStatus?.response_time_ms && ` • ${modelStatus.response_time_ms}ms`}
                   </p>
@@ -743,34 +743,34 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
                     <button
                       key={model.id}
                       onClick={() => selectModel(model.id)}
-                      className={`w-full p-3 text-left hover:bg-gray-700 transition-colors border-b border-gray-700 last:border-b-0 ${
-                        selectedModel === model.id ? 'bg-blue-600/20 border-blue-500/30' : ''
+                      className={`w-full px-2.5 py-1.5 text-left hover:bg-surface-hover border-b border-line-subtle last:border-b-0 ${
+                        selectedModel === model.id ? 'bg-sel-dim' : ''
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-white truncate">
+                            <span className="text-[12.5px] font-medium text-ink truncate">
                               {model.id.split('-')[0]}
                             </span>
                             {model.recommended && (
-                              <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">
+                              <span className="border border-sel rounded-[2px] px-1.5 h-5 text-[11px] font-mono inline-flex items-center text-sel">
                                 Recommended
                               </span>
                             )}
                           </div>
-                          <div className="text-xs text-gray-400 truncate">
+                          <div className="text-[11px] text-ink-muted truncate font-mono">
                             {model.id}
                           </div>
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-gray-500">{model.size}</span>
-                            <span className="text-xs text-gray-600">•</span>
-                            <span className="text-xs text-gray-500">{model.owned_by}</span>
+                            <span className="text-[11px] text-ink-muted font-mono">{model.size}</span>
+                            <span className="text-[11px] text-ink-muted">•</span>
+                            <span className="text-[11px] text-ink-muted">{model.owned_by}</span>
                           </div>
                         </div>
                         {selectedModel === model.id && (
-                          <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
-                            <div className="w-2 h-2 bg-white rounded-full" />
+                          <div className="w-3 h-3 bg-teal flex items-center justify-center">
+                            <div className="w-1.5 h-1.5 bg-ink" />
                           </div>
                         )}
                       </div>
@@ -778,15 +778,15 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
                   ))}
                 </div>
 
-                <div className="p-3 border-t border-gray-700">
+                <div className="p-2.5 border-t border-line-subtle">
                   <button
                     onClick={() => {
                       fetchAvailableModels();
                       fetchModelStatus();
                     }}
-                    className="w-full p-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors"
+                    className="btn w-full justify-center"
                   >
-                    🔄 Refresh Models
+                    Refresh Models
                   </button>
                 </div>
               </div>
@@ -795,7 +795,7 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
 
           <button
             onClick={clearChat}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors"
+            className="btn"
             title="Clear chat"
           >
             <RefreshIcon />
@@ -804,7 +804,7 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ maxHeight: 'calc(100% - 250px)' }}>
+      <div className="flex-1 overflow-y-auto p-2.5 space-y-2" style={{ maxHeight: 'calc(100% - 250px)' }}>
         <AnimatePresence>
           {messages.map((message) => (
             <motion.div
@@ -815,16 +815,16 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
               transition={{ duration: 0.3 }}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`flex gap-3 max-w-[95%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+              <div className={`flex gap-2 max-w-[95%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                <div className={`w-5 h-5 flex items-center justify-center flex-shrink-0 rounded-[2px] ${
                   message.role === 'user'
-                    ? 'bg-blue-600'
+                    ? 'bg-sel-dim'
                     : message.isThinking
-                      ? 'bg-yellow-500 animate-pulse'
-                      : 'bg-purple-600'
+                      ? 'bg-warn-dim animate-pulse'
+                      : 'bg-teal-dim'
                 }`}>
                   {message.isThinking ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-3 h-3 border border-line border-t-teal animate-spin" />
                   ) : (
                     message.role === 'user' ? (
                       <UserIcon />
@@ -833,55 +833,55 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
                     )
                   )}
                 </div>
-                <div className={`rounded-lg px-4 py-3 shadow-lg ${
+                <div className={`rounded-[2px] p-2 text-[12.5px] ${
                   message.role === 'user'
-                    ? 'bg-blue-600 text-white border border-blue-500'
+                    ? 'bg-surface-raised text-ink border-l-2 border-teal'
                     : message.isThinking
-                      ? 'bg-yellow-900/30 text-yellow-200 border border-yellow-600/50'
-                      : 'bg-gray-800 text-gray-100 border border-gray-600'
+                      ? 'bg-warn-dim text-warn border-l-2 border-warn'
+                      : 'bg-surface text-ink border-l-2 border-line-subtle'
                 }`}>
                   {message.isThinking ? (
                     <div className="flex items-center gap-2">
                       <SparklesIcon />
-                      <span>Thinking...</span>
+                      <span className="text-teal animate-pulse">Thinking...</span>
                     </div>
                   ) : (
-                    <div className={`prose prose-invert max-w-none ${message.role === 'user' ? 'prose-p:text-white prose-strong:text-white prose-headings:text-white' : ''}`}>
+                    <div className={`prose max-w-none ${message.role === 'user' ? 'prose-p:text-ink prose-strong:text-ink prose-headings:text-ink' : ''}`}>
                       {message.role === 'assistant' ? (
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
-                            h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2 text-white" {...props} />,
-                            h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2 text-white" {...props} />,
-                            h3: ({node, ...props}) => <h3 className="text-base font-bold mb-1 text-white" {...props} />,
-                            p: ({node, ...props}) => <p className="mb-2 text-gray-100" {...props} />,
-                            ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 text-gray-100" {...props} />,
-                            ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 text-gray-100" {...props} />,
-                            li: ({node, ...props}) => <li className="mb-1 text-gray-100" {...props} />,
-                            strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
-                            em: ({node, ...props}) => <em className="italic text-gray-200" {...props} />,
+                            h1: ({node, ...props}) => <h1 className="text-[15px] font-bold mb-2 text-ink" {...props} />,
+                            h2: ({node, ...props}) => <h2 className="text-[15px] font-bold mb-2 text-ink" {...props} />,
+                            h3: ({node, ...props}) => <h3 className="text-[12.5px] font-bold mb-1 text-ink" {...props} />,
+                            p: ({node, ...props}) => <p className="mb-2 text-ink" {...props} />,
+                            ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 text-ink" {...props} />,
+                            ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 text-ink" {...props} />,
+                            li: ({node, ...props}) => <li className="mb-1 text-ink" {...props} />,
+                            strong: ({node, ...props}) => <strong className="font-bold text-ink" {...props} />,
+                            em: ({node, ...props}) => <em className="italic text-ink-secondary" {...props} />,
                             code: ({node, className, children, ...props}) => {
                               const inline = !className;
                               return inline ? (
-                                <code className="bg-gray-900 px-1 py-0.5 rounded text-blue-300 text-sm" {...props}>{children}</code>
+                                <code className="bg-canvas border border-line-subtle px-1 py-0.5 rounded-[2px] text-sel font-mono text-[11.5px]" {...props}>{children}</code>
                               ) : (
-                                <code className="block bg-gray-900 p-2 rounded text-green-300 text-sm overflow-x-auto" {...props}>{children}</code>
+                                <code className="block bg-canvas border border-line-subtle p-2 rounded-[2px] text-pos font-mono text-[11.5px] overflow-x-auto" {...props}>{children}</code>
                               );
                             },
-                            table: ({node, ...props}) => <table className="border-collapse border border-gray-600 my-2 text-sm" {...props} />,
-                            th: ({node, ...props}) => <th className="border border-gray-600 px-2 py-1 bg-gray-700 font-semibold text-white" {...props} />,
-                            td: ({node, ...props}) => <td className="border border-gray-600 px-2 py-1 text-gray-100" {...props} />,
-                            blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-blue-500 pl-3 italic text-gray-300 my-2" {...props} />,
+                            table: ({node, ...props}) => <table className="border-collapse border border-line my-2 text-[12.5px]" {...props} />,
+                            th: ({node, ...props}) => <th className="border border-line px-2 py-1 bg-surface-raised font-semibold text-ink" {...props} />,
+                            td: ({node, ...props}) => <td className="border border-line px-2 py-1 text-ink" {...props} />,
+                            blockquote: ({node, ...props}) => <blockquote className="border-l-2 border-teal pl-3 italic text-ink-secondary my-2" {...props} />,
                           }}
                         >
                           {message.content}
                         </ReactMarkdown>
                       ) : (
-                        <div className="whitespace-pre-wrap text-white">{message.content}</div>
+                        <div className="whitespace-pre-wrap text-ink">{message.content}</div>
                       )}
                     </div>
                   )}
-                  <div className="text-xs opacity-60 mt-2 text-gray-400">
+                  <div className="text-[11px] opacity-60 mt-2 text-ink-muted font-mono">
                     {new Date(message.timestamp).toLocaleTimeString()}
                   </div>
                 </div>
@@ -894,14 +894,14 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
 
       {/* Suggested Questions */}
       {messages.length <= 2 && (
-        <div className="px-4 py-3 border-t border-gray-800/50">
-          <p className="text-xs text-gray-500 mb-2">Suggested questions:</p>
+        <div className="px-2.5 py-2 border-t border-line-subtle">
+          <p className="text-[11px] text-ink-muted mb-2">Suggested questions:</p>
           <div className="flex flex-wrap gap-2">
             {suggestedQuestions.map((question, index) => (
               <button
                 key={index}
                 onClick={() => setInput(question)}
-                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs rounded-full transition-colors"
+                className="btn h-6 text-[11px]"
                 disabled={isLoading}
               >
                 {question}
@@ -912,17 +912,17 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
       )}
 
       {/* Input */}
-      <div className="p-4 border-t border-gray-800/50">
+      <div className="p-2.5 border-t border-line-subtle">
         {/* Detected Symbols Display */}
         {detectedSymbols.length > 0 && (
-          <div className="mb-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-            <div className="flex items-center gap-2 text-xs text-blue-400">
-              <span>🎯 Detected symbols:</span>
+          <div className="mb-2 p-2 bg-sel-dim border border-line rounded-[2px]">
+            <div className="flex items-center gap-2 text-[11px] text-sel">
+              <span>Detected symbols:</span>
               <div className="flex flex-wrap gap-1">
                 {detectedSymbols.map(sym => {
                   const mapping = symbolMappings.find(m => m.symbol === sym);
                   return (
-                    <span key={sym} className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs">
+                    <span key={sym} className="border border-sel rounded-[2px] px-1.5 h-5 text-[11px] font-mono inline-flex items-center text-sel">
                       {sym} {mapping?.category && `(${mapping.category})`}
                     </span>
                   );
@@ -939,26 +939,26 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
             onChange={handleInputChange}
             onKeyDown={handleKeyPress}
             placeholder={`Ask about ${symbol} or market analysis...\n\nTry: "How's Real Estate performing?", "Compare BTC to gold", "NQ futures analysis"\n\nPress Enter to send, Shift+Enter for new line`}
-            className="flex-1 px-4 py-3 bg-gray-800 border-2 border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all resize-none min-h-[100px] font-sans"
+            className="input flex-1 resize-none min-h-[72px] h-auto py-1.5"
             disabled={isLoading}
             rows={3}
           />
           <button
             onClick={sendMessage}
             disabled={!input.trim() || isLoading}
-            className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2 self-end h-fit"
+            className="btn btn-primary self-end disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-4 h-4 border border-line border-t-teal animate-spin" />
             ) : (
               <SendIcon />
             )}
             <span className="hidden sm:inline">Send</span>
           </button>
         </div>
-        <div className="mt-2 text-xs text-gray-500">
-          <span className="font-semibold text-gray-400">💡 Tip:</span> Press <kbd className="px-1 py-0.5 bg-gray-700 rounded text-gray-300 text-xs">Enter</kbd> to send, <kbd className="px-1 py-0.5 bg-gray-700 rounded text-gray-300 text-xs">Shift+Enter</kbd> for new line •
-          {isConnected ? <span className="text-green-500 ml-1">● Connected</span> : <span className="text-red-500 ml-1">● Disconnected</span>}
+        <div className="mt-2 text-[11px] text-ink-muted">
+          <span className="font-semibold text-ink-secondary">Tip:</span> Press <kbd className="kbd">Enter</kbd> to send, <kbd className="kbd">Shift+Enter</kbd> for new line •
+          {isConnected ? <span className="text-pos ml-1 font-mono">Connected</span> : <span className="text-neg ml-1 font-mono">Disconnected</span>}
         </div>
       </div>
         </div>{/* close flex-1 flex-col */}
