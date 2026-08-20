@@ -221,21 +221,21 @@ function MultiLineChart({ assets }: { assets: Record<string, AssetResult> }) {
   return (
     <div>
       <div ref={containerRef} className="w-full" />
-      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
         {validEntries.map(([assetKey, series], i) => {
           const color = SERIES_PALETTE[i % SERIES_PALETTE.length];
           const pct = series.total_return_pct;
           const positive = pct >= 0;
           return (
-            <div key={assetKey} className="flex items-center gap-2">
+            <div key={assetKey} className="flex items-center gap-1.5">
               <span
-                className="inline-block w-3 h-3 rounded-sm"
+                className="inline-block w-2 h-2"
                 style={{ backgroundColor: color }}
                 aria-hidden
               />
-              <span className="text-sm font-medium text-ink">{assetKey}</span>
+              <span className="text-[11px] font-mono text-ink">{assetKey}</span>
               <span
-                className={`text-sm font-semibold font-mono tabular-nums ${
+                className={`text-[11px] font-mono tabular-nums ${
                   positive ? 'text-pos' : 'text-neg'
                 }`}
               >
@@ -309,16 +309,16 @@ export default function ComparePage() {
     : [];
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-canvas text-ink p-2.5">
+      <div className="max-w-7xl mx-auto space-y-2.5">
         {/* Header */}
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-            <GitCompare className="w-6 h-6" />
+        <div className="flex items-start gap-2.5">
+          <div className="p-1.5 bg-teal-dim text-teal rounded-[2px]">
+            <GitCompare className="w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">Cross-Asset Comparison</h1>
-            <p className="text-sm text-gray-400 mt-1 max-w-3xl">
+            <h1 className="text-[15px] leading-tight font-semibold text-ink">Cross-Asset Comparison</h1>
+            <p className="text-[12.5px] text-ink-secondary mt-1 max-w-3xl">
               Normalized total return (rebased to 100) across 2-5 assets over a shared
               date window. Powered by the same backtest engine as the BTC lab.
             </p>
@@ -328,15 +328,15 @@ export default function ComparePage() {
         {/* Controls panel */}
         <form
           onSubmit={onCompare}
-          className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-5"
+          className="panel p-2.5 space-y-2.5"
         >
           {/* Assets */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-medium text-gray-300 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-blue-400" />
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="panel-title flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-sel" />
                 Assets
-                <span className="text-xs text-gray-500 font-normal">
+                <span className="text-[11px] text-ink-muted font-mono font-normal normal-case tracking-normal">
                   {selected.length}/{MAX_ASSETS} selected (min {MIN_ASSETS})
                 </span>
               </h2>
@@ -348,12 +348,12 @@ export default function ComparePage() {
                 return (
                   <label
                     key={opt.key}
-                    className={`flex items-start gap-2 rounded-lg border p-3 transition-colors ${
+                    className={`flex items-start gap-2 border p-2 rounded-[2px] ${
                       checked
-                        ? 'bg-emerald-500/10 border-emerald-500/50 cursor-pointer'
+                        ? 'bg-teal-dim border-teal cursor-pointer'
                         : disabled
-                        ? 'bg-gray-900 border-gray-800 opacity-50 cursor-not-allowed'
-                        : 'bg-gray-900 border-gray-800 hover:border-gray-700 cursor-pointer'
+                        ? 'bg-surface border-line-subtle opacity-50 cursor-not-allowed'
+                        : 'bg-surface border-line-subtle hover:border-line cursor-pointer'
                     }`}
                   >
                     <input
@@ -361,11 +361,11 @@ export default function ComparePage() {
                       checked={checked}
                       disabled={disabled}
                       onChange={() => toggleAsset(opt.key)}
-                      className="mt-0.5 accent-emerald-500"
+                      className="mt-0.5 accent-[var(--teal)]"
                     />
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-white">{opt.key}</div>
-                      <div className="text-xs text-gray-500 truncate">{opt.label}</div>
+                      <div className="text-[12.5px] font-mono font-medium text-ink">{opt.key}</div>
+                      <div className="text-[11px] text-ink-muted truncate">{opt.label}</div>
                     </div>
                   </label>
                 );
@@ -374,11 +374,11 @@ export default function ComparePage() {
           </div>
 
           {/* Strategy + date range */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
             <div>
               <label
                 htmlFor="strategy"
-                className="text-xs text-gray-500 uppercase tracking-wider block mb-1"
+                className="panel-title block mb-1"
               >
                 Strategy
               </label>
@@ -386,7 +386,7 @@ export default function ComparePage() {
                 id="strategy"
                 value={strategy}
                 onChange={(e) => setStrategy(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                className="input w-full"
               >
                 {STRATEGY_OPTIONS.map((s) => (
                   <option key={s} value={s}>
@@ -398,7 +398,7 @@ export default function ComparePage() {
             <div>
               <label
                 htmlFor="start"
-                className="text-xs text-gray-500 uppercase tracking-wider block mb-1"
+                className="panel-title block mb-1"
               >
                 Start date
               </label>
@@ -407,13 +407,13 @@ export default function ComparePage() {
                 type="date"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                className="input w-full"
               />
             </div>
             <div>
               <label
                 htmlFor="end"
-                className="text-xs text-gray-500 uppercase tracking-wider block mb-1"
+                className="panel-title block mb-1"
               >
                 End date
               </label>
@@ -422,26 +422,26 @@ export default function ComparePage() {
                 type="date"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                className="input w-full"
               />
             </div>
           </div>
 
           {/* Submit */}
-          <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-gray-800">
+          <div className="flex flex-wrap items-center gap-2.5 pt-2.5 border-t border-line-subtle">
             <button
               type="submit"
               disabled={!canCompare}
-              className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:text-gray-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              className="btn btn-primary disabled:opacity-50"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <GitCompare className="w-4 h-4" />
               )}
-              <span>{loading ? 'Running backtests…' : 'Compare'}</span>
+              <span>{loading ? 'Running backtests\u2026' : 'Compare'}</span>
             </button>
-            <p className="text-xs text-gray-500">
+            <p className="text-[11px] text-ink-muted">
               Multi-asset backtests can take 5-30s depending on the date range.
             </p>
           </div>
@@ -451,13 +451,13 @@ export default function ComparePage() {
         {error && (
           <div
             role="alert"
-            className="flex items-start gap-2 text-red-400 bg-red-900/20 border border-red-800 rounded-lg p-3"
+            className="flex items-start gap-2 text-neg bg-neg-dim border border-line rounded-[2px] p-2.5"
           >
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-            <div className="text-sm">
-              <p className="font-medium">Comparison failed.</p>
-              <p className="text-red-300/80 mt-0.5">{error}</p>
-              <p className="text-xs text-red-300/60 mt-1">
+            <div className="text-[12.5px]">
+              <p className="font-medium text-ink">Comparison failed.</p>
+              <p className="text-neg mt-0.5">{error}</p>
+              <p className="text-[11px] text-ink-muted mt-1">
                 Check API server + FRED_API_KEY.
               </p>
             </div>
@@ -466,23 +466,23 @@ export default function ComparePage() {
 
         {/* Loading */}
         {loading && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 flex flex-col items-center justify-center min-h-[240px]">
-            <Loader2 className="w-8 h-8 text-emerald-400 animate-spin mb-3" />
-            <p className="text-sm text-gray-400">
-              Running {selected.length}-asset backtest with {strategy}…
+          <div className="panel p-8 flex flex-col items-center justify-center min-h-[240px]">
+            <Loader2 className="w-8 h-8 text-teal animate-spin mb-3" />
+            <p className="text-[12.5px] text-ink-secondary">
+              Running {selected.length}-asset backtest with {strategy}{'\u2026'}
             </p>
           </div>
         )}
 
         {/* Results */}
         {!loading && result && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+          <div className="panel p-2.5 space-y-2.5">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-emerald-400" />
-                Normalized total return (base = 100)
+              <h3 className="panel-title flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-teal" />
+                Relative Performance (Rebased 100)
               </h3>
-              <p className="text-xs text-gray-500 font-mono">
+              <p className="text-[11px] text-ink-muted font-mono">
                 {result.strategy} · {result.start} → {result.end}
               </p>
             </div>
@@ -491,19 +491,19 @@ export default function ComparePage() {
 
             {/* Per-asset errors (API surfaces these inline, overall success still true) */}
             {failedAssets.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
-                <p className="text-xs uppercase tracking-wider text-gray-500">
+              <div className="mt-2.5 pt-2.5 border-t border-line-subtle space-y-2">
+                <p className="panel-title">
                   Failed assets
                 </p>
                 {failedAssets.map(([assetKey, r]) => (
                   <div
                     key={assetKey}
-                    className="flex items-start gap-2 text-xs"
+                    className="flex items-start gap-2 text-[11px]"
                   >
-                    <span className="font-mono text-gray-400 shrink-0">
+                    <span className="font-mono text-ink-muted shrink-0">
                       {assetKey}:
                     </span>
-                    <span className="text-red-400">{r.error}</span>
+                    <span className="text-neg">{r.error}</span>
                   </div>
                 ))}
               </div>
@@ -513,12 +513,12 @@ export default function ComparePage() {
 
         {/* Empty state */}
         {!loading && !result && !error && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 flex flex-col items-center justify-center text-center">
-            <Info className="w-10 h-10 text-gray-600 mb-3" />
-            <p className="text-sm text-gray-400">
+          <div className="panel p-12 flex flex-col items-center justify-center text-center">
+            <Info className="w-8 h-8 text-ink-muted mb-3" />
+            <p className="text-[12.5px] text-ink-secondary">
               Select {MIN_ASSETS}-{MAX_ASSETS} assets, a strategy, and a date range, then hit Compare.
             </p>
-            <p className="text-xs text-gray-600 mt-1">
+            <p className="text-[11px] text-ink-muted mt-1">
               All series are rebased to 100 at the start date for direct comparison.
             </p>
           </div>
