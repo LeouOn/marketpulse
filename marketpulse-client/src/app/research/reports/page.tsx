@@ -8,6 +8,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, RefreshCw } from 'lucide-react';
 import { marketPulseAPI } from '@/lib/api';
@@ -113,6 +114,8 @@ export default function ReportsPage() {
 }
 
 function ReportRow({ report }: { report: Report }) {
+  const router = useRouter();
+  const href = `/research/reports/${report.id}`;
   const m = report.metrics_summary ?? {};
   const paramPreview = report.params
     ? Object.entries(report.params)
@@ -121,9 +124,12 @@ function ReportRow({ report }: { report: Report }) {
         .join('  ·  ')
     : '';
   return (
-    <tr>
+    <tr
+      className="cursor-pointer"
+      onClick={() => router.push(href)}
+    >
       <td>
-        <Link href={`/research/reports/${report.id}`} className="text-teal hover:text-ink font-mono text-[11px] uppercase tracking-[0.08em]">
+        <Link href={href} className="text-teal hover:text-ink font-mono text-[11px] uppercase tracking-[0.08em]">
           {report.kind}
         </Link>
       </td>
