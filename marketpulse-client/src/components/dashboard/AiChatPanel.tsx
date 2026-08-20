@@ -9,17 +9,14 @@ export interface AiChatPanelProps {
 }
 
 /**
- * Right column of the dashboard: `AI ANALYST` panel wrapping the
- * existing `LLMChat` component. Visual-only — LLMChat itself is not
- * touched in this task (Task 10 does that).
+ * Right column of the dashboard: height wrapper around `LLMChat`.
+ * Chrome (`.panel` + `AI ANALYST` title) lives on `LLMChat` (Task 10)
+ * so the home column is a single panel, not nested ones.
  */
 export function AiChatPanel({ marketData }: AiChatPanelProps) {
   return (
-    <div className="panel flex flex-col" style={{ height: 'calc(100vh - 200px)', minHeight: '700px' }}>
-      <div className="border-b border-line-subtle px-3 h-8 flex items-center">
-        <span className="panel-title">AI Analyst</span>
-      </div>
-      <div className="flex-1 min-h-0 p-2.5">
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 200px)', minHeight: '700px' }}>
+      <div className="flex-1 min-h-0">
         <LLMChat marketData={marketData} />
       </div>
     </div>
