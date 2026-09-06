@@ -106,8 +106,8 @@ export function ThreeColumnDashboard() {
           </button>
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-[0.08em] text-ink-muted">Session P&amp;L</div>
-            <div className="font-mono tabular-nums text-[15px] text-pos">+$385.00</div>
-            <div className="text-[10px] font-mono text-ink-muted">Limit $1000</div>
+            <div className="font-mono tabular-nums text-[15px] text-ink-muted">—</div>
+            <div className="text-[10px] font-mono text-ink-muted">not wired</div>
           </div>
         </div>
       </div>

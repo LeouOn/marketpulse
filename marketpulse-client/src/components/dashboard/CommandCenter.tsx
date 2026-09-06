@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { Target, Clock, Activity } from 'lucide-react';
 import { Sparkline } from '@/components/ui/Sparkline';
 import type { MarketBreadth } from '@/types/market';
@@ -44,6 +45,15 @@ export function CommandCenter({
 }: CommandCenterProps) {
   const hasPrice = heroPrice > 0;
   const regimeChip = REGIME_CHIP[regime];
+  const MNQ_POINT_VALUE = 2;
+  const RISK_PER_TRADE = 250;
+  const [stopPts, setStopPts] = useState('');
+  const [rr, setRr] = useState('2.0');
+  const maxContracts = useMemo(() => {
+    const stop = Number(stopPts);
+    if (!Number.isFinite(stop) || stop <= 0) return null;
+    return Math.max(0, Math.floor(RISK_PER_TRADE / (stop * MNQ_POINT_VALUE)));
+  }, [stopPts]);
 
   // Sparkline for the hero block. Guarded so we don't pass NaN into the
   // SVG when no price is available yet.
@@ -152,7 +162,7 @@ export function CommandCenter({
           <div>
             <div className="panel-title">RISK PER TRADE</div>
             <div className="bg-surface-raised border border-line-subtle rounded-[2px] px-2 h-7 flex items-center font-mono tabular-nums text-[15px] text-ink">
-              $250.00
+              ${RISK_PER_TRADE.toFixed(2)}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-1.5">
@@ -160,6 +170,10 @@ export function CommandCenter({
               <div className="panel-title">STOP DISTANCE</div>
               <input
                 type="number"
+                min="0"
+                step="0.25"
+                value={stopPts}
+                onChange={(e) => setStopPts(e.target.value)}
                 placeholder="Points"
                 className="input w-full font-mono tabular-nums"
               />
@@ -168,15 +182,20 @@ export function CommandCenter({
               <div className="panel-title">R:R RATIO</div>
               <input
                 type="number"
+                min="0"
+                step="0.1"
+                value={rr}
+                onChange={(e) => setRr(e.target.value)}
                 placeholder="2.0"
-                defaultValue="2.0"
                 className="input w-full font-mono tabular-nums"
               />
             </div>
           </div>
           <div className="bg-sel-dim border border-line rounded-[2px] px-2 py-1 flex items-center justify-between">
             <div className="panel-title text-sel">MAX CONTRACTS (MNQ)</div>
-            <div className="font-mono tabular-nums text-2xl text-sel">4</div>
+            <div className="font-mono tabular-nums text-2xl text-sel">
+              {maxContracts === null ? '—' : maxContracts}
+            </div>
           </div>
         </div>
       </div>

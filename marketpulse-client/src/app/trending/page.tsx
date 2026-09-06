@@ -120,7 +120,7 @@ export default function TrendingPage() {
       </div>
 
       <div
-        className="panel overflow-hidden max-h-[600px] overflow-y-auto focus:outline focus:outline-1 focus:outline-line-focus"
+        className="panel max-h-[600px] overflow-x-hidden overflow-y-auto focus:outline focus:outline-1 focus:outline-line-focus"
         tabIndex={0}
         onKeyDown={handleKeyDown}
       >

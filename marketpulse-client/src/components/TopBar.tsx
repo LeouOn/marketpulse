@@ -55,6 +55,7 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('mp:open-palette'))}
           data-testid="palette-trigger"
+          aria-label="Open command palette"
           className="hidden md:flex w-[280px] h-7 pl-2 pr-1.5 bg-surface-raised border border-line rounded-[3px] text-[12px] text-ink-muted text-left hover:border-line-strong items-center justify-between cursor-pointer"
         >
           <span className="flex items-center gap-1.5"><Search size={12} /> Search symbols, pages…</span>

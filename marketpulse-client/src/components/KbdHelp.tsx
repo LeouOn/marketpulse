@@ -11,16 +11,11 @@ const SHORTCUTS: Shortcut[] = [
   { keys: ['Ctrl', 'K'], label: 'command palette' },
   { keys: ['/'], label: 'command palette' },
   { keys: ['?'], label: 'this help' },
-  { keys: ['j', '/', 'k'], label: 'row focus (down / up)' },
-  { keys: ['↑', '↓'], label: 'row focus (down / up)' },
+  { keys: ['j', 'k'], label: 'row focus down / up' },
+  { keys: ['\u2191', '\u2193'], label: 'row focus (arrows)' },
   { keys: ['Enter'], label: 'open focused row' },
   { keys: ['Esc'], label: 'clear focus / close' },
-  { keys: ['1'], label: 'switch dashboard tab' },
-  { keys: ['2'], label: 'switch dashboard tab' },
-  { keys: ['3'], label: 'switch dashboard tab' },
-  { keys: ['4'], label: 'switch dashboard tab' },
-  { keys: ['5'], label: 'switch dashboard tab' },
-  { keys: ['palette'], label: 'toggle light / dark theme' },
+  { keys: ['1\u20136'], label: 'dashboard tabs' },
 ];
 
 export function KbdHelp() {

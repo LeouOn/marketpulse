@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
+import Link from 'next/link';
 import { Activity, BarChart2, Target, TrendingUp, Settings, Globe } from 'lucide-react';
 import { Sparkline } from '@/components/ui/Sparkline';
 import RiskManagerTab from '@/components/RiskManagerTab';
@@ -64,7 +65,7 @@ export function CenterTabs({
         return;
       }
       const idx = parseInt(e.key, 10);
-      if (idx >= 1 && idx <= 5) {
+      if (idx >= 1 && idx <= TABS.length) {
         const next = TABS[idx - 1];
         if (next) {
           e.preventDefault();
@@ -97,11 +98,9 @@ export function CenterTabs({
               >
                 <Icon size={11} />
                 {tab.label}
-                {i < 5 && (
-                  <span className="text-[10px] font-mono text-ink-muted ml-0.5 hidden sm:inline">
-                    {i + 1}
-                  </span>
-                )}
+                <span className="text-[10px] font-mono text-ink-muted ml-0.5 hidden sm:inline">
+                  {i + 1}
+                </span>
               </button>
             );
           })}
@@ -182,7 +181,7 @@ const INDICES_COLUMNS = [
 function buildRows(
   data: Record<string, MarketData>,
   labels: Record<string, string>,
-): Array<Record<string, React.ReactNode>> {
+): Array<Record<string, ReactNode>> {
   return Object.entries(data)
     .filter(([, md]) => md && md.price !== 0)
     .map(([symbol, md]) => {
@@ -190,7 +189,14 @@ function buildRows(
       const changeClass = md.change >= 0 ? 'text-pos' : 'text-neg';
       const sign = md.change >= 0 ? '+' : '';
       return {
-        symbol: labels[symbol] || symbol,
+        symbol: (
+          <Link
+            href={`/chart/${encodeURIComponent(symbol.replace(/^\^/, ''))}`}
+            className="text-ink hover:text-teal font-mono"
+          >
+            {labels[symbol] || symbol}
+          </Link>
+        ),
         trend: (
           <Sparkline
             data={sparklineData}
