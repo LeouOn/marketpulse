@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Clock, Search, Menu, Sun, Moon } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@/components/theme-provider';
+import { marketKeys } from '@/hooks/useMarketData';
+import { marketPulseAPI } from '@/lib/api';
 
 interface TopBarProps {
   onMenuToggle: () => void;
@@ -21,7 +23,13 @@ function formatTime(date: Date): string {
 export function TopBar({ onMenuToggle }: TopBarProps) {
   const [now, setNow] = useState<Date | null>(null);
   const { theme, toggleTheme } = useTheme();
-  const queryClient = useQueryClient();
+  const dashQ = useQuery({
+    queryKey: marketKeys.dashboard(),
+    queryFn: () => marketPulseAPI.getDashboardData(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: 1,
+  });
 
   useEffect(() => {
     setNow(new Date());
@@ -29,11 +37,8 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
     return () => clearInterval(timer);
   }, []);
 
-  const dashboardState = queryClient.getQueryState(['market', 'dashboard']);
-  const isConnected = dashboardState?.status === 'success';
-  const lastUpdate = dashboardState?.dataUpdatedAt
-    ? new Date(dashboardState.dataUpdatedAt)
-    : null;
+  const isConnected = dashQ.isSuccess;
+  const lastUpdate = dashQ.dataUpdatedAt ? new Date(dashQ.dataUpdatedAt) : null;
 
   return (
     <header className="h-11 bg-surface border-b border-line-subtle px-3 flex items-center gap-3 shrink-0">

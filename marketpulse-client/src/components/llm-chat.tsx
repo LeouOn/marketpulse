@@ -355,27 +355,27 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
     try {
       setError(null);
       const data = await apiFetch<any>('/llm/models');
-      if (data.success && data.data?.models) {
-        setAvailableModels(data.data.models);
-      }
+      const models = data?.models ?? data?.data?.models;
+      if (models) setAvailableModels(models);
     } catch (error) {
       console.error('Failed to fetch models:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch models');
     }
   };
 
   const fetchModelStatus = async () => {
     try {
-      const data = await apiFetch<{ success: boolean; data: ModelStatus }>('/llm/model-status');
-      if (data.success && data.data) {
-        setModelStatus(data.data);
-        setSelectedModel(data.data.current_model);
-        setIsConnected(data.data.lm_studio_connected);
+      const data = await apiFetch<ModelStatus>('/llm/model-status');
+      const status = (data as ModelStatus & { data?: ModelStatus })?.current_model
+        ? data
+        : (data as { data?: ModelStatus }).data;
+      if (status) {
+        setModelStatus(status);
+        setSelectedModel(status.current_model);
+        setIsConnected(!!status.lm_studio_connected);
       }
     } catch (err) {
       console.error('Failed to fetch model status:', err);
       setIsConnected(false);
-      setError(err instanceof Error ? err.message : 'Failed to fetch model status');
     }
   };
 
@@ -714,7 +714,7 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
           <div className="flex items-center gap-2 px-1.5 h-7 bg-surface-raised">
             <div className={`w-2 h-2 rounded-full ${modelStatus?.lm_studio_connected ? 'bg-pos' : 'bg-neg'}`} />
             <span className="text-[11px] font-mono text-ink-muted">
-              {modelStatus?.current_model?.split('-')[0] || 'Loading...'}
+              {modelStatus?.current_model?.split('-')[0] || (isConnected ? 'Ready' : 'Offline')}
             </span>
           </div>
 
@@ -804,7 +804,7 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-2.5 space-y-2" style={{ maxHeight: 'calc(100% - 250px)' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-2">
         <AnimatePresence>
           {messages.map((message) => (
             <motion.div
@@ -956,9 +956,11 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
             <span className="hidden sm:inline">Send</span>
           </button>
         </div>
-        <div className="mt-2 text-[11px] text-ink-muted">
-          <span className="font-semibold text-ink-secondary">Tip:</span> Press <kbd className="kbd">Enter</kbd> to send, <kbd className="kbd">Shift+Enter</kbd> for new line •
-          {isConnected ? <span className="text-pos ml-1 font-mono">Connected</span> : <span className="text-neg ml-1 font-mono">Disconnected</span>}
+        <div className="mt-2 text-[11px] text-ink-muted flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>
+            <span className="font-semibold text-ink-secondary">Tip:</span> <kbd className="kbd">Enter</kbd> send · <kbd className="kbd">Shift+Enter</kbd> newline
+          </span>
+          {isConnected ? <span className="text-pos font-mono">Connected</span> : <span className="text-neg font-mono">Offline</span>}
         </div>
       </div>
         </div>{/* close flex-1 flex-col */}

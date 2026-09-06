@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { marketKeys } from '@/hooks/useMarketData';
 import type { DashboardData, MacroData, MarketBreadth } from '@/types/market';
 import { CommandCenter } from './dashboard/CommandCenter';
 import { CenterTabs } from './dashboard/CenterTabs';
@@ -11,33 +13,42 @@ import { INDEX_LABELS, MACRO_LABELS, MACRO_SYMBOLS } from './dashboard/labels';
 import type { MarketData, MarketRegime, SessionInfo } from './dashboard/types';
 
 export function ThreeColumnDashboard() {
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [macroData, setMacroData] = useState<MacroData | null>(null);
-  const [breadthData, setBreadthData] = useState<MarketBreadth | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const queryClient = useQueryClient();
+  const dashQ = useQuery({
+    queryKey: marketKeys.dashboard(),
+    queryFn: () => apiFetch<DashboardData>('/market/dashboard'),
+    refetchInterval: 60_000,
+    retry: 1,
+  });
+  const macroQ = useQuery({
+    queryKey: marketKeys.macro(),
+    queryFn: () => apiFetch<MacroData>('/market/macro'),
+    refetchInterval: 60_000,
+    retry: 1,
+  });
+  const breadthQ = useQuery({
+    queryKey: [...marketKeys.all, 'breadth'] as const,
+    queryFn: () => apiFetch<MarketBreadth>('/market/breadth'),
+    refetchInterval: 60_000,
+    retry: 1,
+  });
+
+  const dashboardData = dashQ.data ?? null;
+  const macroData = macroQ.data ?? null;
+  // apiFetch already unwraps `{ data }`; do not read `.data` again.
+  const breadthData = breadthQ.data ?? null;
+  const loading = dashQ.isPending && !dashQ.data;
+  const failed = [dashQ, macroQ, breadthQ].filter((q) => q.isError);
+  const error = failed.length
+    ? `Failed to load some market data: ${failed.map((q) => (q.error as Error)?.message ?? 'error').join('; ')}`
+    : null;
+  const lastUpdate = dashQ.dataUpdatedAt ? new Date(dashQ.dataUpdatedAt) : null;
   const [sessionTime, setSessionTime] = useState('');
   const [sessionCountdown, setSessionCountdown] = useState('');
 
-  const fetchData = async () => {
-    try {
-      setError(null);
-      const [d, m, b] = await Promise.allSettled([apiFetch<any>('/market/dashboard'), apiFetch<any>('/market/macro'), apiFetch<any>('/market/breadth')]);
-      if (d.status === 'fulfilled') setDashboardData(d.value);
-      if (m.status === 'fulfilled') setMacroData(m.value?.data || m.value);
-      if (b.status === 'fulfilled') setBreadthData(b.value?.data || null);
-      const fail = [d, m, b].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
-      if (fail) setError(`Failed to load some market data: ${fail.reason?.message || 'Unknown error'}`);
-      setLastUpdate(new Date()); setLoading(false);
-    } catch (err) {
-      console.error('Failed to fetch data:', err);
-      setError('Failed to load market data. Please check your connection.');
-      setLoading(false);
-    }
+  const fetchData = () => {
+    void queryClient.invalidateQueries({ queryKey: marketKeys.all });
   };
-
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 60000); return () => clearInterval(i); }, []);
 
   useEffect(() => {
     const p2 = (n: number) => n.toString().padStart(2, '0');
@@ -90,8 +101,8 @@ export function ThreeColumnDashboard() {
         </div>
         <div className="flex items-center gap-3">
           {lastUpdate && <span className="text-[11px] font-mono text-ink-muted hidden sm:block">UPD {lastUpdate.toLocaleTimeString()}</span>}
-          <button onClick={fetchData} disabled={loading} className="btn btn-primary" title="Refresh data" aria-label="Refresh data">
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          <button onClick={fetchData} disabled={dashQ.isFetching} className="btn btn-primary" title="Refresh data" aria-label="Refresh data">
+            <RefreshCw className={`w-3.5 h-3.5 ${dashQ.isFetching ? 'animate-spin' : ''}`} />
           </button>
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-[0.08em] text-ink-muted">Session P&amp;L</div>

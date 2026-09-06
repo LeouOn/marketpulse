@@ -15,7 +15,7 @@ export interface AiChatPanelProps {
  */
 export function AiChatPanel({ marketData }: AiChatPanelProps) {
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 200px)', minHeight: '700px' }}>
+    <div className="flex flex-col h-[min(calc(100vh-9rem),42rem)] min-h-[28rem]">
       <div className="flex-1 min-h-0">
         <LLMChat marketData={marketData} />
       </div>
