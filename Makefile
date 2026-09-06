@@ -46,20 +46,15 @@ install: ## Install all dependencies
 	@echo "Installation complete!"
 
 # Development
-dev: ## Start both backend and frontend
-	@echo "Starting MarketPulse in development mode..."
-	@echo "Backend: http://localhost:8000"
-	@echo "Frontend: http://localhost:3000"
-	@echo "Press Ctrl+C to stop both services"
-	@echo "Checking dependencies..."
-	@if [ -d "venv" ]; then \
-		venv/Scripts/python.exe -c "import sys; exit(0)" 2>/dev/null && npm --version >/dev/null 2>&1 && echo "Dependencies OK" || (echo "Error: Python and Node.js must be installed" && exit 1); \
-	else \
-		python -c "import sys; exit(0)" 2>/dev/null && npm --version >/dev/null 2>&1 && echo "Dependencies OK" || (echo "Error: Python and Node.js must be installed" && exit 1); \
-	fi
-	@echo "Use separate terminals for:"
-	@echo "  make dev-backend"
-	@echo "  make dev-frontend"
+# Windows: PowerShell stack (docker postgres/redis or sqlite, then API + Next).
+# Unix: scripts/dev.sh
+ifeq ($(OS),Windows_NT)
+dev: ## Start db (or sqlite) + backend + frontend
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
+else
+dev: ## Start db (or sqlite) + backend + frontend
+	./scripts/dev.sh
+endif
 
 dev-backend: ## Start backend API server
 	@echo "Starting backend API server on http://localhost:8000..."

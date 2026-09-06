@@ -1,5 +1,10 @@
-# MarketPulse Development Script for Windows
-# PowerShell script to start development servers
+# MarketPulse local stack for Windows.
+# Starts: Postgres+Redis (if Docker is up) OR SQLite fallback, then API + Next.js.
+#
+#   .\scripts\dev.ps1
+#   .\scripts\dev.ps1 -BackendOnly
+#   .\scripts\dev.ps1 -FrontendOnly
+#   .\scripts\dev.ps1 -Docker          # full compose (api+frontend+db in containers)
 
 param(
     [switch]$BackendOnly,
@@ -8,186 +13,158 @@ param(
     [switch]$Production
 )
 
-Write-Host "MarketPulse Development Environment" -ForegroundColor Green
-Write-Host "==================================" -ForegroundColor Green
-Write-Host ""
+$ErrorActionPreference = "Continue"
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+Set-Location $Root
 
-# Function to check if a port is in use
-function Test-Port($Port) {
+function Test-Port([int]$Port) {
     try {
-        $connection = New-Object System.Net.Sockets.TcpClient
-        $connection.Connect("localhost", $Port)
-        $connection.Close()
+        $c = New-Object System.Net.Sockets.TcpClient
+        $c.Connect("127.0.0.1", $Port)
+        $c.Close()
         return $true
-    }
-    catch {
+    } catch {
         return $false
     }
 }
 
-# Function to stop processes on a port
-function Stop-Port($Port) {
-    $process = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
-    if ($process) {
-        $pid = $process.OwningProcess
-        Write-Host "Stopping process on port $Port (PID: $pid)..." -ForegroundColor Yellow
-        Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+function Stop-Port([int]$Port) {
+    $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    foreach ($c in $conns) {
+        Write-Host "  stopping PID $($c.OwningProcess) on port $Port"
+        Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
     }
 }
 
-# Check if we're in the right directory
+function Wait-Http([string]$Url, [int]$Seconds = 40) {
+    for ($i = 0; $i -lt $Seconds; $i++) {
+        try {
+            $r = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
+            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { return $true }
+        } catch { }
+        Start-Sleep -Seconds 1
+    }
+    return $false
+}
+
+function Test-Docker {
+    try {
+        docker info 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
 if (-not (Test-Path "requirements.txt") -or -not (Test-Path "marketpulse-client\package.json")) {
-    Write-Host "Error: Please run this script from the MarketPulse root directory" -ForegroundColor Red
+    Write-Host "Run this from the MarketPulse repo root." -ForegroundColor Red
     exit 1
 }
 
-# Docker mode
+Write-Host ""
+Write-Host "MarketPulse dev stack" -ForegroundColor Green
+Write-Host "=====================" -ForegroundColor Green
+Write-Host ""
+
 if ($Docker) {
-    Write-Host "Starting with Docker..." -ForegroundColor Yellow
-
     if ($Production) {
-        Write-Host "Starting production services..." -ForegroundColor Cyan
-        docker-compose --profile production up
+        docker compose --profile production up
     } else {
-        Write-Host "Starting development services..." -ForegroundColor Cyan
-        docker-compose up
+        docker compose up
     }
-    exit 0
+    exit $LASTEXITCODE
 }
 
-# Check virtual environment
-if (Test-Path "venv") {
-    Write-Host "Activating virtual environment..." -ForegroundColor Yellow
-    & .\venv\Scripts\Activate.ps1
+$python = "python"
+if (Test-Path "venv\Scripts\python.exe") {
+    $python = (Resolve-Path "venv\Scripts\python.exe").Path
+    Write-Host "[ok] python: venv" -ForegroundColor Green
 } else {
-    Write-Host "Warning: Virtual environment not found. Using system Python." -ForegroundColor Yellow
-    Write-Host "Run '.\scripts\setup.ps1' to create virtual environment." -ForegroundColor Yellow
+    Write-Host "[ok] python: system ($python)" -ForegroundColor Yellow
 }
 
-# Check if ports are available
-if (-not $BackendOnly -and -not $FrontendOnly) {
-    if (Test-Port 8000) {
-        Write-Host "Port 8000 is already in use. Stopping existing backend..." -ForegroundColor Yellow
-        Stop-Port 8000
-    }
-    if (Test-Port 3000) {
-        Write-Host "Port 3000 is already in use. Stopping existing frontend..." -ForegroundColor Yellow
-        Stop-Port 3000
+# Infra: docker postgres/redis, else sqlite so uvicorn does not hang.
+$dbUrl = $null
+if (-not $FrontendOnly) {
+    if (Test-Docker) {
+        Write-Host "[start] docker compose postgres + redis" -ForegroundColor Cyan
+        docker compose up -d postgres redis
+        $ready = $false
+        for ($i = 0; $i -lt 40; $i++) {
+            if (Test-Port 5433) { $ready = $true; break }
+            Start-Sleep -Seconds 1
+        }
+        if ($ready) {
+            Write-Host "[ok] Postgres on :5433  Redis on :6379" -ForegroundColor Green
+        } else {
+            Write-Host "[warn] Docker up but Postgres not listening on 5433; using SQLite" -ForegroundColor Yellow
+            $dbUrl = "sqlite:///./marketpulse.db"
+        }
+    } else {
+        Write-Host "[warn] Docker not running - API will use SQLite (marketpulse.db)" -ForegroundColor Yellow
+        $dbUrl = "sqlite:///./marketpulse.db"
     }
 }
 
-# Start backend only
+if (-not $FrontendOnly) {
+    if (Test-Port 8000) { Stop-Port 8000; Start-Sleep -Seconds 1 }
+}
+if (-not $BackendOnly) {
+    if (Test-Port 3000) { Stop-Port 3000; Start-Sleep -Seconds 1 }
+}
+
 if ($BackendOnly) {
-    if (Test-Port 8000) {
-        Write-Host "Port 8000 is already in use. Stopping existing backend..." -ForegroundColor Yellow
-        Stop-Port 8000
-    }
-
-    Write-Host "Starting Backend API Server..." -ForegroundColor Cyan
-    Write-Host "Backend will be available at: http://localhost:8000" -ForegroundColor White
-    Write-Host "API Documentation: http://localhost:8000/docs" -ForegroundColor White
-    Write-Host "Press Ctrl+C to stop the server" -ForegroundColor Yellow
-    Write-Host ""
-
-    python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
-    exit 0
+    if ($dbUrl) { $env:DATABASE_URL = $dbUrl }
+    Write-Host "Backend  http://localhost:8000   (Ctrl+C to stop)" -ForegroundColor Cyan
+    & $python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload
+    exit $LASTEXITCODE
 }
 
-# Start frontend only
 if ($FrontendOnly) {
-    if (Test-Port 3000) {
-        Write-Host "Port 3000 is already in use. Stopping existing frontend..." -ForegroundColor Yellow
-        Stop-Port 3000
-    }
-
-    Write-Host "Starting Frontend Development Server..." -ForegroundColor Cyan
-    Write-Host "Frontend will be available at: http://localhost:3000" -ForegroundColor White
-    Write-Host "Press Ctrl+C to stop the server" -ForegroundColor Yellow
-    Write-Host ""
-
-    Set-Location marketpulse-client
+    Write-Host "Frontend http://localhost:3000   (Ctrl+C to stop)" -ForegroundColor Cyan
+    Set-Location (Join-Path $Root "marketpulse-client")
     npm run dev
-    Set-Location ..
-    exit 0
+    exit $LASTEXITCODE
 }
 
-# Start both backend and frontend
-Write-Host "Starting MarketPulse in Development Mode..." -ForegroundColor Cyan
-Write-Host ""
+# Two extra windows so logs stay visible; this script waits then prints URLs.
+$dbLine = ""
+if ($dbUrl) { $dbLine = "`$env:DATABASE_URL = '$dbUrl'; " }
 
-# Create jobs for parallel execution
-$backendJob = Start-Job -ScriptBlock {
-    param($RootPath)
-    Set-Location $RootPath
-    if (Test-Path "venv") {
-        & .\venv\Scripts\Activate.ps1
-    }
-    Write-Host "Backend starting on http://localhost:8000" -ForegroundColor Green
-    python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
-} -ArgumentList (Get-Location)
+$backendCmd = @"
+Set-Location '$Root'
+${dbLine}& '$python' -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload
+"@
+$frontendCmd = @"
+Set-Location '$(Join-Path $Root "marketpulse-client")'
+npm run dev
+"@
 
-$frontendJob = Start-Job -ScriptBlock {
-    param($RootPath)
-    Set-Location $RootPath\marketpulse-client
-    Write-Host "Frontend starting on http://localhost:3000" -ForegroundColor Green
-    npm run dev
-} -ArgumentList (Get-Location)
+Write-Host "[start] backend window" -ForegroundColor Cyan
+Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoExit", "-NoProfile", "-Command", $backendCmd)
 
-# Wait a moment for services to start
-Start-Sleep -Seconds 3
-
-# Check if services started successfully
-Write-Host "Checking service status..." -ForegroundColor Yellow
-
-$backendRunning = Test-Port 8000
-$frontendRunning = Test-Port 3000
-
-if ($backendRunning) {
-    Write-Host "✅ Backend API is running at http://localhost:8000" -ForegroundColor Green
-    Write-Host "   API Docs: http://localhost:8000/docs" -ForegroundColor Gray
-} else {
-    Write-Host "❌ Backend API failed to start" -ForegroundColor Red
+if (-not (Test-Path "marketpulse-client\node_modules")) {
+    Write-Host "[install] npm install" -ForegroundColor Yellow
+    Push-Location "marketpulse-client"
+    npm install
+    Pop-Location
 }
 
-if ($frontendRunning) {
-    Write-Host "✅ Frontend is running at http://localhost:3000" -ForegroundColor Green
-} else {
-    Write-Host "❌ Frontend failed to start" -ForegroundColor Red
-}
+Write-Host "[start] frontend window" -ForegroundColor Cyan
+Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoExit", "-NoProfile", "-Command", $frontendCmd)
+
+Write-Host "[wait] backend /docs ..." -ForegroundColor Yellow
+$be = Wait-Http "http://127.0.0.1:8000/docs" 45
+if ($be) { Write-Host "[ok] API  http://localhost:8000  (docs: /docs)" -ForegroundColor Green }
+else { Write-Host "[warn] API did not answer /docs in 45s — check the backend window" -ForegroundColor Yellow }
+
+Write-Host "[wait] frontend / ..." -ForegroundColor Yellow
+$fe = Wait-Http "http://localhost:3000/" 45
+if ($fe) { Write-Host "[ok] UI   http://localhost:3000" -ForegroundColor Green }
+else { Write-Host "[wait] UI still starting — open http://localhost:3000 shortly" -ForegroundColor Yellow }
 
 Write-Host ""
-Write-Host "Press Ctrl+C to stop all services" -ForegroundColor Yellow
-Write-Host "Or run '.\scripts\stop.ps1' to stop from another terminal" -ForegroundColor Gray
-
-# Wait for Ctrl+C
-try {
-    while ($true) {
-        Start-Sleep -Seconds 1
-
-        # Check if jobs are still running
-        $backendState = Get-Job -Id $backendJob.JobId -State
-        $frontendState = Get-Job -Id $frontendJob.JobId -State
-
-        if ($backendState -eq "Failed" -or $frontendState -eq "Failed") {
-            Write-Host "One or more services failed. Check logs above." -ForegroundColor Red
-            break
-        }
-
-        if ($backendState -eq "Completed" -or $frontendState -eq "Completed") {
-            Write-Host "One or more services completed unexpectedly." -ForegroundColor Yellow
-            break
-        }
-    }
-}
-finally {
-    Write-Host "Stopping all services..." -ForegroundColor Yellow
-    Remove-Job -Id $backendJob.JobId -Force -ErrorAction SilentlyContinue
-    Remove-Job -Id $frontendJob.JobId -Force -ErrorAction SilentlyContinue
-
-    # Clean up any remaining processes
-    Stop-Port 8000
-    Stop-Port 3000
-
-    Write-Host "All services stopped." -ForegroundColor Green
-}
+Write-Host "Dashboard:  http://localhost:3000"
+Write-Host "API:        http://localhost:8000/docs"
+Write-Host "Stop:       .\stop-dev.bat   (or close the two windows)"
+Write-Host ""

@@ -17,8 +17,10 @@ Real-time market analysis platform with AI-powered trading insights, OHLC techni
 # One-time setup
 .\scripts\setup.ps1
 
-# Start development servers
+# Start everything (Postgres+Redis if Docker is up, else SQLite; API + Next.js)
 .\scripts\dev.ps1
+# same thing:
+.\start-dev.bat
 
 # Or start with Docker
 .\scripts\docker.ps1 -Action up
@@ -41,7 +43,7 @@ Real-time market analysis platform with AI-powered trading insights, OHLC techni
 # One-time setup
 make install
 
-# Start development servers
+# Start everything (Windows uses scripts/dev.ps1; Unix uses scripts/dev.sh)
 make dev
 
 # Or start with Docker

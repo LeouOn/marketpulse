@@ -176,6 +176,22 @@ if [[ "$FRONTEND_ONLY" == true ]]; then
     exit 0
 fi
 
+# Infra: docker postgres/redis, else sqlite so uvicorn does not hang.
+if docker info >/dev/null 2>&1; then
+    echo -e "${CYAN}Starting Postgres + Redis...${NC}"
+    docker compose up -d postgres redis || docker-compose up -d postgres redis || true
+    for i in $(seq 1 40); do
+        if check_port 5433; then
+            echo -e "${GREEN}Postgres on :5433${NC}"
+            break
+        fi
+        sleep 1
+    done
+else
+    echo -e "${YELLOW}Docker not running — API will use SQLite (marketpulse.db)${NC}"
+    export DATABASE_URL="sqlite:///./marketpulse.db"
+fi
+
 # Start both backend and frontend
 echo -e "${CYAN}Starting MarketPulse in Development Mode...${NC}"
 echo ""

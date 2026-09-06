@@ -6,8 +6,9 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 export default async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
-  // Skip LLM routes — they have their own API route handlers in src/app/api/llm/
-  if (pathname.startsWith('/api/llm/')) {
+  // Only the streaming chat route lives in Next (src/app/api/llm/chat).
+  // models / model-status / select-model must reach FastAPI.
+  if (pathname === '/api/llm/chat' || pathname.startsWith('/api/llm/chat/')) {
     return NextResponse.next();
   }
 
