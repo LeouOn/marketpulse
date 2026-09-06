@@ -37,7 +37,7 @@ type TabId = (typeof TABS)[number]['id'];
  * Center column: dense tab strip + active tab content.
  *
  *  - Tab strip: 11px uppercase mono labels, active = teal with bottom border.
- *  - Number keys `1`-`5` switch tabs (first five). Ignored while typing in
+ *  - Number keys `1`-`6` switch tabs. Ignored while typing in
  *    input/textarea/contenteditable so it doesn't fight with the AI chat box
  *    or any other form on the page.
  *  - Overview content is rendered with the new MiniTable / sector-bar

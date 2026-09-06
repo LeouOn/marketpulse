@@ -167,7 +167,9 @@ export default function TrendingPage() {
                       <RankBadge rank={item.rank ?? idx + 1} />
                     </td>
                     <td>
-                      <div className="font-mono text-ink">{item.symbol}</div>
+                      <Link href={`/chart/${item.symbol}`} className="font-mono text-ink hover:text-teal">
+                        {item.symbol}
+                      </Link>
                       {item.name && (
                         <div className="text-[11px] text-ink-muted truncate max-w-[180px]">
                           {item.name}

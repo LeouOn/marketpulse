@@ -101,14 +101,15 @@ export function CommandCenter({
             <StatTile
               label="TICK"
               value={
-                breadth
-                  ? breadth.tick_30min_avg > 0
-                    ? '↑'
-                    : breadth.tick_30min_avg < 0
-                    ? '↓'
-                    : '·'
-                  : '--'
+                breadth ? (
+                  <span className={breadth.tick_30min_avg >= 0 ? 'text-pos' : 'text-neg'}>
+                    {breadth.tick_30min_avg.toFixed(0)}
+                  </span>
+                ) : (
+                  '--'
+                )
               }
+              mono
             />
             <StatTile
               label="A/D"
@@ -118,14 +119,15 @@ export function CommandCenter({
             <StatTile
               label="VOLD"
               value={
-                breadth
-                  ? breadth.total_vold > 0
-                    ? '↑'
-                    : breadth.total_vold < 0
-                    ? '↓'
-                    : '·'
-                  : '--'
+                breadth ? (
+                  <span className={breadth.total_vold >= 0 ? 'text-pos' : 'text-neg'}>
+                    {breadth.total_vold.toFixed(2)}
+                  </span>
+                ) : (
+                  '--'
+                )
               }
+              mono
             />
           </div>
         </div>
