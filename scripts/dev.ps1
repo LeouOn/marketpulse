@@ -40,7 +40,7 @@ function Wait-Http([string]$Url, [int]$Seconds = 40) {
     for ($i = 0; $i -lt $Seconds; $i++) {
         try {
             $r = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
-            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { return $true }
+            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 400) { return $true }
         } catch { }
         Start-Sleep -Seconds 1
     }
@@ -131,17 +131,11 @@ if ($FrontendOnly) {
 $dbLine = ""
 if ($dbUrl) { $dbLine = "`$env:DATABASE_URL = '$dbUrl'; " }
 
-$backendCmd = @"
-Set-Location '$Root'
-${dbLine}& '$python' -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload
-"@
-$frontendCmd = @"
-Set-Location '$(Join-Path $Root "marketpulse-client")'
-npm run dev
-"@
+$backendCmd = "${dbLine}& '$python' -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload"
+$frontendDir = Join-Path $Root "marketpulse-client"
 
 Write-Host "[start] backend window" -ForegroundColor Cyan
-Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoExit", "-NoProfile", "-Command", $backendCmd)
+Start-Process -FilePath "powershell.exe" -WorkingDirectory $Root -ArgumentList @("-NoExit", "-NoProfile", "-Command", $backendCmd)
 
 if (-not (Test-Path "marketpulse-client\node_modules")) {
     Write-Host "[install] npm install" -ForegroundColor Yellow
@@ -151,7 +145,7 @@ if (-not (Test-Path "marketpulse-client\node_modules")) {
 }
 
 Write-Host "[start] frontend window" -ForegroundColor Cyan
-Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoExit", "-NoProfile", "-Command", $frontendCmd)
+Start-Process -FilePath "powershell.exe" -WorkingDirectory $frontendDir -ArgumentList @("-NoExit", "-NoProfile", "-Command", "npm run dev")
 
 Write-Host "[wait] backend /docs ..." -ForegroundColor Yellow
 $be = Wait-Http "http://127.0.0.1:8000/docs" 45
