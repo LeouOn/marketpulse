@@ -35,15 +35,16 @@ export default function ChartPage() {
   const ohlcData = ohlcResult?.data ?? [];
 
   return (
-    <div className="min-h-screen bg-canvas text-ink p-2.5">
+    <div className="bg-canvas text-ink p-2.5">
       <div className="max-w-7xl mx-auto space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <Link
               href="/"
               className="btn"
+              aria-label="Back to dashboard"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4" aria-hidden />
             </Link>
             <div>
               <h1 className="text-xl font-bold text-ink">

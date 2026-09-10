@@ -169,26 +169,32 @@ export function CommandCenter({
           </div>
           <div className="grid grid-cols-2 gap-1.5">
             <div>
-              <div className="panel-title">STOP DISTANCE</div>
+              <label htmlFor="mp-stop-pts" className="panel-title">STOP DISTANCE</label>
               <input
+                id="mp-stop-pts"
                 type="number"
                 min="0"
                 step="0.25"
+                name="stop_distance"
+                autoComplete="off"
                 value={stopPts}
                 onChange={(e) => setStopPts(e.target.value)}
-                placeholder="Points"
+                placeholder="e.g. 12.5"
                 className="input w-full font-mono tabular-nums"
               />
             </div>
             <div>
-              <div className="panel-title">R:R RATIO</div>
+              <label htmlFor="mp-rr" className="panel-title">R:R RATIO</label>
               <input
+                id="mp-rr"
                 type="number"
                 min="0"
                 step="0.1"
+                name="rr_ratio"
+                autoComplete="off"
                 value={rr}
                 onChange={(e) => setRr(e.target.value)}
-                placeholder="2.0"
+                placeholder="e.g. 2.0"
                 className="input w-full font-mono tabular-nums"
               />
             </div>

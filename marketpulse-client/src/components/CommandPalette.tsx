@@ -91,8 +91,8 @@ export function CommandPalette() {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" role="dialog" aria-label="Command palette">
-      <div className="absolute inset-0 bg-canvas/70" onClick={close} />
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] overscroll-contain" role="dialog" aria-modal="true" aria-label="Command palette">
+      <button type="button" className="absolute inset-0 bg-canvas/70" onClick={close} aria-label="Close command palette" />
       <div className="relative w-[480px] max-w-[92vw] panel shadow-none">
         <input
           ref={inputRef}
@@ -107,21 +107,26 @@ export function CommandPalette() {
             if (e.key === 'Enter') { e.preventDefault(); runSelected(filtered[selected]); }
           }}
           placeholder="Search symbols, pages, actions…"
-          className="w-full h-9 bg-transparent border-0 border-b border-line-subtle px-3 text-[13px] font-mono text-ink placeholder:text-ink-muted focus:outline-none"
-          aria-label="Search symbols pages actions"
+          autoComplete="off"
+          spellCheck={false}
+          name="palette-query"
+          className="w-full h-9 bg-transparent border-0 border-b border-line-subtle px-3 text-[13px] font-mono text-ink placeholder:text-ink-muted focus-visible:outline focus-visible:outline-1 focus-visible:outline-line-focus"
+          aria-label="Search symbols, pages, actions"
         />
-        <ul className="max-h-[320px] overflow-y-auto py-1">
+        <ul className="max-h-[320px] overflow-y-auto py-1 overscroll-contain" role="listbox">
           {filtered.map((c, i) => (
-            <li
-              key={c.id}
-              onMouseEnter={() => setSelected(i)}
-              onClick={() => runSelected(c)}
-              className={`h-7 px-3 flex items-center justify-between cursor-pointer text-[12.5px] ${
-                i === selected ? 'bg-sel-dim text-ink' : 'text-ink-secondary'
-              }`}
-            >
+            <li key={c.id} role="option" aria-selected={i === selected}>
+              <button
+                type="button"
+                onMouseEnter={() => setSelected(i)}
+                onClick={() => runSelected(c)}
+                className={`w-full h-7 px-3 flex items-center justify-between text-[12.5px] ${
+                  i === selected ? 'bg-sel-dim text-ink' : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
               <span>{c.label}</span>
               {c.hint && <span className="font-mono text-[10.5px] text-ink-muted">{c.hint}</span>}
+              </button>
             </li>
           ))}
           {filtered.length === 0 && (

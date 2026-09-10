@@ -78,6 +78,11 @@
 
 html {
   height: 100%;
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+}
+html[data-theme='light'] {
+  color-scheme: light;
 }
 
 body {
@@ -85,6 +90,16 @@ body {
   background: var(--canvas);
   color: var(--text-primary);
   font-size: 13px;
+  touch-action: manipulation;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ===== Components ===== */
@@ -144,7 +159,7 @@ body {
     color: var(--text-primary);
     font-size: 12px;
   }
-  .input:focus { outline: 1px solid var(--border-focus); outline-offset: 0; border-color: var(--border-focus); }
+  .input:focus-visible { outline: 1px solid var(--border-focus); outline-offset: 0; border-color: var(--border-focus); }
 
   .missing-cell {
     background: repeating-linear-gradient(-45deg, var(--surface-raised) 0 4px, var(--surface) 4px 8px);

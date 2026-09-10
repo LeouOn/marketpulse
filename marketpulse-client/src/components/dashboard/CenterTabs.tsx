@@ -81,20 +81,22 @@ export function CenterTabs({
     <div className="space-y-2.5">
       {/* Tab strip */}
       <div className="panel">
-        <div className="flex">
+        <div className="flex" role="tablist" aria-label="Dashboard views">
           {TABS.map((tab, i) => {
             const active = activeTab === tab.id;
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex-1 h-8 px-2 flex items-center justify-center gap-1.5 text-[11px] uppercase tracking-[0.08em] font-mono border-b-2 ${
                   active
                     ? 'text-teal border-teal'
                     : 'text-ink-muted hover:text-ink border-transparent'
                 }`}
-                aria-current={active ? 'page' : undefined}
               >
                 <Icon size={11} />
                 {tab.label}

@@ -31,7 +31,7 @@ export default function SymbolDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-canvas text-ink p-2.5">
+      <div className="bg-canvas text-ink p-2.5">
         <div className="max-w-5xl mx-auto space-y-2.5">
           <div className="h-24 bg-surface-raised rounded-[2px] animate-pulse" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
@@ -46,7 +46,7 @@ export default function SymbolDetailPage() {
 
   if (hasError) {
     return (
-      <div className="min-h-screen bg-canvas text-ink p-2.5">
+      <div className="bg-canvas text-ink p-2.5">
         <div className="max-w-5xl mx-auto flex flex-col items-center justify-center h-[60vh] text-ink-secondary">
           <AlertTriangle className="w-12 h-12 mb-4 text-neg" />
           <p className="text-lg mb-2 text-ink">Failed to load symbol data</p>
@@ -67,15 +67,16 @@ export default function SymbolDetailPage() {
   const changePct = detail?.change_pct;
 
   return (
-    <div className="min-h-screen bg-canvas text-ink p-2.5">
+    <div className="bg-canvas text-ink p-2.5">
       <div className="max-w-5xl mx-auto space-y-2.5">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-2.5">
             <Link
               href="/"
               className="btn mt-1"
+              aria-label="Back to dashboard"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4" aria-hidden />
             </Link>
             <div>
               <div className="flex items-center gap-2">

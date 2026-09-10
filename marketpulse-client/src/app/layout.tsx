@@ -11,6 +11,7 @@ const jbMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jbmono" })
 export const metadata: Metadata = {
   title: "MarketPulse - Real-time Market Analysis",
   description: "Professional market internals analysis with macro economic insights",
+  other: { "theme-color": "#17181b" },
 };
 
 const noFlashScript = `

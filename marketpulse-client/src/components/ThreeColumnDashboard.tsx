@@ -65,7 +65,7 @@ export function ThreeColumnDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-canvas flex items-center justify-center">
+      <div className="flex items-center justify-center py-16">
         <div className="text-center">
           <RefreshCw className="w-10 h-10 text-sel animate-spin mx-auto mb-3" />
           <p className="text-[13px] text-ink-secondary">Loading market data...</p>
@@ -88,9 +88,9 @@ export function ThreeColumnDashboard() {
   const llmMarketData = { ...dashboardData, symbols: dashboardData?.symbols || {}, sector_performance: sectorData, macro_data: macroData, breadth_data: breadthData };
 
   return (
-    <div className="min-h-screen bg-canvas p-2.5">
+    <div className="p-2.5">
       {error && (
-        <div className="mb-2.5 px-3 h-8 border border-neg bg-neg-dim rounded-[2px] flex items-center text-neg text-[12px]">
+        <div role="alert" aria-live="polite" className="mb-2.5 px-3 min-h-8 py-1.5 border border-neg bg-neg-dim rounded-[2px] flex items-center text-neg text-[12px]">
           {error}<button onClick={fetchData} className="ml-2 underline">Retry</button>
         </div>
       )}

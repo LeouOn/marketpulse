@@ -349,7 +349,8 @@ function ResearchChat({ asset, meta }: ResearchChatProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={busy}
-            placeholder={`Ask the research agent about ${meta.label}...`}
+            placeholder={`Ask the research agent about ${meta.label}…`}
+            aria-label={`Research chat for ${meta.label}`}
             className="input flex-1"
           />
           <button

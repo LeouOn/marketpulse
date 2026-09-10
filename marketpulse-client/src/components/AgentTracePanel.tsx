@@ -18,15 +18,18 @@ interface AgentTracePanelProps {
 export function AgentTracePanel({ agents, expanded, onToggle }: AgentTracePanelProps) {
   return (
     <div className="bg-surface border-l border-line-subtle h-full flex flex-col">
-      <div
-        className="flex items-center justify-between px-3 py-2 bg-surface-raised cursor-pointer"
+      <button
+        type="button"
+        className="flex items-center justify-between px-3 py-2 bg-surface-raised w-full text-left"
         onClick={onToggle}
+        aria-expanded={expanded}
+        aria-label="Toggle agent trace"
       >
         <span className="panel-title">
           Agent Trace ({agents.filter(a => a.status === 'done').length}/{agents.length})
         </span>
-        <span className="text-ink-muted text-xs">{expanded ? '\u25B2' : '\u25BC'}</span>
-      </div>
+        <span className="text-ink-muted text-xs" aria-hidden>{expanded ? '\u25B2' : '\u25BC'}</span>
+      </button>
 
       {expanded && (
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5">

@@ -26,6 +26,12 @@ export function LayoutShell({ children }: LayoutShellProps) {
 
   return (
     <div className="flex h-screen bg-canvas text-ink">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[200] focus:top-2 focus:left-2 focus:bg-surface focus:text-ink focus:px-3 focus:py-1.5 focus:border focus:border-line-focus"
+      >
+        Skip to content
+      </a>
       <div className="hidden lg:block">
         <Sidebar
           collapsed={sidebarCollapsed}
@@ -54,7 +60,7 @@ export function LayoutShell({ children }: LayoutShellProps) {
         <TopBar
           onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)}
         />
-        <main className="flex-1 min-h-0 overflow-y-auto bg-canvas">
+        <main id="main" className="flex-1 min-h-0 overflow-y-auto bg-canvas">
           {children}
         </main>
         <footer className="h-6 text-[10px] font-mono text-ink-muted border-t border-line-subtle flex items-center px-3 gap-2 shrink-0">

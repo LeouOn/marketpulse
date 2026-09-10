@@ -44,11 +44,12 @@ export function KbdHelp() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center"
+      className="fixed inset-0 z-[100] flex items-center justify-center overscroll-contain"
       role="dialog"
+      aria-modal="true"
       aria-label="Keyboard shortcuts"
     >
-      <div className="absolute inset-0 bg-canvas/70" onClick={close} />
+      <button type="button" className="absolute inset-0 bg-canvas/70" onClick={close} aria-label="Close keyboard shortcuts overlay" />
       <div className="relative w-[520px] max-w-[92vw] panel shadow-none">
         <div className="border-b border-line-subtle px-3 h-8 flex items-center justify-between">
           <span className="panel-title">KEYBOARD SHORTCUTS</span>
