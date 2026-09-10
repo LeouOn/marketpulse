@@ -33,9 +33,7 @@ export function Sidebar({ collapsed, onToggle, mobile, onClose }: SidebarProps) 
 
   return (
     <nav
-      className={`bg-surface border-r border-line-subtle h-full flex flex-col transition-all duration-200 ${
-        collapsed && !mobile ? 'w-12' : 'w-[180px]'
-      }`}
+      className={`mp-sidebar ${collapsed && !mobile ? 'is-collapsed' : ''}`}
     >
       {mobile && (
         <div className="flex items-center justify-between px-3 py-2 border-b border-line-subtle">

@@ -16,7 +16,7 @@ export function LayoutShell({ children }: LayoutShellProps) {
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 1024) {
+      if (window.innerWidth >= 900) {
         setMobileMenuOpen(false);
       }
     };
@@ -25,14 +25,14 @@ export function LayoutShell({ children }: LayoutShellProps) {
   }, []);
 
   return (
-    <div className="flex h-screen bg-canvas text-ink">
+    <div className="mp-shell">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:z-[200] focus:top-2 focus:left-2 focus:bg-surface focus:text-ink focus:px-3 focus:py-1.5 focus:border focus:border-line-focus"
       >
         Skip to content
       </a>
-      <div className="hidden lg:block">
+      <div className="mp-sidebar-slot">
         <Sidebar
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -40,12 +40,12 @@ export function LayoutShell({ children }: LayoutShellProps) {
       </div>
 
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
+        <div className="mp-mobile-nav">
           <div
-            className="absolute inset-0 bg-canvas/80"
+            className="mp-mobile-nav-backdrop"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="absolute left-0 top-0 bottom-0 w-[180px] z-10">
+          <div className="mp-mobile-nav-panel">
             <Sidebar
               collapsed={false}
               onToggle={() => setMobileMenuOpen(false)}
@@ -56,14 +56,14 @@ export function LayoutShell({ children }: LayoutShellProps) {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+      <div className="mp-col">
         <TopBar
           onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)}
         />
-        <main id="main" className="flex-1 min-h-0 overflow-y-auto bg-canvas">
+        <main id="main" className="mp-main">
           {children}
         </main>
-        <footer className="h-6 text-[10px] font-mono text-ink-muted border-t border-line-subtle flex items-center px-3 gap-2 shrink-0">
+        <footer className="mp-footer">
           <span>DATA YAHOO FINANCE · MARKETPULSE v0.3.0</span>
         </footer>
       </div>

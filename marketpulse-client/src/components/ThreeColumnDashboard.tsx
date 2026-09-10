@@ -94,7 +94,7 @@ export function ThreeColumnDashboard() {
           {error}<button onClick={fetchData} className="ml-2 underline">Retry</button>
         </div>
       )}
-      <div className="mb-2.5 flex items-center justify-between">
+      <div className="mp-dash-head">
         <div>
           <h1 className="font-mono text-[15px] font-bold tracking-[0.12em] text-ink">MarketPulse</h1>
           <p className="text-[11px] text-ink-muted tracking-[0.04em]">Professional Trading Dashboard</p>
@@ -111,17 +111,17 @@ export function ThreeColumnDashboard() {
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
-        <div className="lg:col-span-3">
+      <div className="mp-dash">
+        <div>
           <CommandCenter heroSymbol="NASDAQ 100" heroCode="QQQ"
             heroPrice={nqData?.price ?? 0} heroChange={nqData?.change ?? 0} heroChangePct={nqData?.change_pct ?? 0}
             breadth={breadthData} regime={regime} session={session} />
         </div>
-        <div className="lg:col-span-6">
+        <div>
           <CenterTabs majorIndices={sym as Record<string, MarketData>} indexLabels={INDEX_LABELS}
             commoditiesCrypto={commoditiesCrypto} macroLabels={MACRO_LABELS} sectorData={sectorData} />
         </div>
-        <div className="lg:col-span-3">
+        <div>
           <AiChatPanel marketData={llmMarketData} />
         </div>
       </div>

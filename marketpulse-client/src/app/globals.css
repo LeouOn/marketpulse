@@ -87,11 +87,167 @@ html[data-theme='light'] {
 
 body {
   height: 100%;
+  margin: 0;
   background: var(--canvas);
   color: var(--text-primary);
   font-size: 13px;
   font-family: var(--font-inter), system-ui, sans-serif;
   touch-action: manipulation;
+}
+
+/* Shell layout is unlayered on purpose: Tailwind utilities live in @layer
+   and vanish if PostCSS/Tailwind does not run. These classes keep the
+   chrome in a row even then. */
+.mp-shell {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--canvas);
+  color: var(--text-primary);
+}
+.mp-sidebar-slot {
+  display: none;
+  flex-shrink: 0;
+  height: 100%;
+}
+.mp-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 180px;
+  background: var(--surface);
+  border-right: 1px solid var(--border-subtle);
+}
+.mp-sidebar.is-collapsed { width: 48px; }
+.mp-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.mp-topbar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.mp-topbar-brand {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mp-topbar-brand > span[aria-hidden] {
+  width: 8px;
+  height: 8px;
+  background: var(--teal);
+  display: inline-block;
+}
+.mp-mobile-nav {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.mp-mobile-nav-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(23 24 27 / 0.8);
+}
+.mp-mobile-nav-panel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 180px;
+  z-index: 10;
+}
+.mp-topbar-search-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+.mp-topbar-search {
+  display: none;
+  width: 280px;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 6px 0 8px;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.mp-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  color: var(--text-secondary);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.mp-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--canvas);
+}
+.mp-footer {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 10px;
+}
+.mp-dash-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+.mp-dash {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 768px) {
+  .mp-topbar-search { display: flex; }
+}
+@media (min-width: 900px) {
+  .mp-sidebar-slot { display: block; }
+  .mp-menu-btn { display: none; }
+  .mp-dash {
+    grid-template-columns: minmax(220px, 3fr) minmax(340px, 6fr) minmax(220px, 3fr);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

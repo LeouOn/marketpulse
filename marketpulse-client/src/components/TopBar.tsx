@@ -41,22 +41,22 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
   const lastUpdate = dashQ.dataUpdatedAt ? new Date(dashQ.dataUpdatedAt) : null;
 
   return (
-    <header className="h-11 bg-surface border-b border-line-subtle px-3 flex items-center gap-3 shrink-0">
-      <button onClick={onMenuToggle} className="lg:hidden p-1 text-ink-secondary hover:text-ink" aria-label="Toggle menu">
+    <header className="mp-topbar">
+      <button onClick={onMenuToggle} className="mp-menu-btn" aria-label="Toggle menu">
         <Menu size={16} />
       </button>
 
-      <Link href="/" className="font-mono text-[13px] font-bold tracking-[0.12em] text-ink flex items-center gap-2">
+      <Link href="/" className="mp-topbar-brand">
         <span className="w-2 h-2 bg-teal inline-block" aria-hidden />
         MARKETPULSE
       </Link>
 
-      <div className="flex-1 flex justify-center">
+      <div className="mp-topbar-search-wrap">
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('mp:open-palette'))}
           data-testid="palette-trigger"
           aria-label="Open command palette"
-          className="hidden md:flex w-[280px] h-7 pl-2 pr-1.5 bg-surface-raised border border-line rounded-[3px] text-[12px] text-ink-muted text-left hover:border-line-strong items-center justify-between cursor-pointer"
+          className="mp-topbar-search"
         >
           <span className="flex items-center gap-1.5"><Search size={12} /> Search symbols, pages…</span>
           <span className="kbd">Ctrl K</span>
