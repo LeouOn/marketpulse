@@ -16,7 +16,11 @@ export default async function proxy(request: NextRequest) {
   if (pathname.startsWith('/api/')) {
     try {
       const url = `${BACKEND_URL}${pathname}${search}`;
+      const method = request.method;
+      const body = method !== 'GET' && method !== 'HEAD' ? await request.text() : undefined;
       const res = await fetch(url, {
+        method,
+        body,
         headers: {
           'Content-Type': 'application/json',
         },

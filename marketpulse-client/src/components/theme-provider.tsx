@@ -21,7 +21,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (isTheme(stored)) setTheme(stored);
+    if (isTheme(stored)) {
+      queueMicrotask(() => setTheme(stored));
+    }
   }, []);
 
   useEffect(() => {

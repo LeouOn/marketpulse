@@ -381,7 +381,7 @@ export default function BacktestTab() {
             <BarChart2 className="w-8 h-8 mx-auto text-ink-muted mb-3" />
             <div className="text-[13px] text-ink-secondary mb-1.5">No Backtest Results</div>
             <p className="text-[12px] text-ink-muted mb-3">
-              Configure your backtest parameters above and click "Run Backtest" to see results.
+              Configure your backtest parameters above and click &quot;Run Backtest&quot; to see results.
             </p>
             <p className="text-[11px] text-ink-muted font-mono">
               Strategy: FVG + Divergence | Timeframe: 5 minutes | Risk: 1:2 R/R

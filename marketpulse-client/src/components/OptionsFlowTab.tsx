@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, AlertCircle, Activity, Calendar } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { AlertCircle, Activity, Calendar } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 
 interface OptionsContract {
@@ -35,22 +35,11 @@ export default function OptionsFlowTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchExpirations();
-    fetchMacroContext();
-  }, [symbol]);
-
-  useEffect(() => {
-    if (selectedExpiration) {
-      fetchOptionsChain();
-    }
-  }, [selectedExpiration]);
-
-  const fetchExpirations = async () => {
+  const fetchExpirations = useCallback(async () => {
     try {
-      setError(null);
       const data = await apiFetch<any>(`/options/expirations/${symbol}`);
       if (data.success && data.data.expirations.length > 0) {
+        setError(null);
         setExpirations(data.data.expirations);
         setSelectedExpiration(data.data.expirations[0]);
       }
@@ -58,16 +47,17 @@ export default function OptionsFlowTab() {
       console.error('Failed to fetch expirations:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch expirations');
     }
-  };
+  }, [symbol]);
 
-  const fetchOptionsChain = async () => {
+  const fetchOptionsChain = useCallback(async () => {
+    if (!selectedExpiration) return;
     setLoading(true);
-    setError(null);
     try {
       const data = await apiFetch<{ success: boolean; data: { calls: OptionsContract[]; puts: OptionsContract[] } }>(
         `/options/chain/${symbol}/${selectedExpiration}?include_greeks=true`
       );
       if (data.success) {
+        setError(null);
         setOptionsChain(data.data);
       }
     } catch (err) {
@@ -76,9 +66,9 @@ export default function OptionsFlowTab() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [symbol, selectedExpiration]);
 
-  const fetchMacroContext = async () => {
+  const fetchMacroContext = useCallback(async () => {
     try {
       const data = await apiFetch<{ success: boolean; data: MacroContext }>('/options/macro-context');
       if (data.success) {
@@ -88,7 +78,16 @@ export default function OptionsFlowTab() {
       console.error('Failed to fetch macro context:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch macro context');
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchExpirations();
+    fetchMacroContext();
+  }, [fetchExpirations, fetchMacroContext]);
+
+  useEffect(() => {
+    fetchOptionsChain();
+  }, [fetchOptionsChain]);
 
   const findUnusualActivity = (contracts: OptionsContract[]) => {
     return contracts.filter(c => c.volume > c.open_interest * 2).slice(0, 5);

@@ -32,9 +32,12 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
   });
 
   useEffect(() => {
-    setNow(new Date());
+    const frame = requestAnimationFrame(() => setNow(new Date()));
     const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearInterval(timer);
+    };
   }, []);
 
   const isConnected = dashQ.isSuccess;
