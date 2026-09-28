@@ -60,7 +60,8 @@ class MarketPulseCollector:
                 logger.warning(f"Database initialization failed (continuing without database): {db_error}")
 
             # Initialize market data collector (Alpaca/Rithmic/Coinbase)
-            self.collector = await get_collector()
+            if not self.collector:
+                self.collector = await get_collector()
             logger.success("Market data collector initialized")
 
             return True
@@ -174,6 +175,29 @@ class MarketPulseCollector:
                 "total_volume_60min": sum(internals[sym].get("volume", 0) for sym in valid_volume_syms),
                 "symbols_tracked": len(valid_volume_syms),
             }
+
+        # Persist market internals if db_manager is available
+        if self.db_manager:
+            try:
+                raw_vol = internals.get("volume_flow")
+                vol_flow = (
+                    raw_vol.get("total_volume_60min", 0.0)
+                    if isinstance(raw_vol, dict)
+                    else float(raw_vol or 0.0)
+                )
+                internals_record = {
+                    "timestamp": datetime.now(),
+                    "advance_decline_ratio": self._calculate_ad_line(internals),
+                    "volume_flow": vol_flow,
+                    "momentum_score": self._calculate_momentum(internals),
+                    "volatility_regime": self._classify_volatility(internals),
+                    "correlation_strength": self._calculate_correlation(internals),
+                    "support_level": self._calculate_support(internals),
+                    "resistance_level": self._calculate_resistance(internals),
+                }
+                self.db_manager.save_market_internals("MARKET", internals_record)
+            except Exception as db_save_error:
+                logger.warning(f"Failed to persist market internals to database: {db_save_error}")
 
         logger.success("Market internals collected and validated successfully")
         return internals
