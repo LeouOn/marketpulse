@@ -2,6 +2,8 @@
 import sys
 import os
 
+import pandas as pd
+
 # ── 1. FRED smoke ──
 print("=" * 60)
 print("FRED DATA PROVIDER SMOKE TEST")
@@ -85,7 +87,8 @@ last_12m = probs.tail(252)  # approx 12 months of trading days
 monthly = last_12m.resample("ME").agg(lambda x: x.idxmax()).iloc[:, 0] if len(last_12m) > 0 else []
 # Simpler: just show the dominant regime per month
 last_12m_dates = probs.index[-252:]
-for month_start in pd_month_starts(last_12m_dates):
+month_starts = pd.DatetimeIndex(last_12m_dates).to_period("M").unique().to_timestamp()
+for month_start in month_starts:
     mask = (probs.index >= month_start) & (probs.index < month_start + pd.Timedelta(days=32))
     if mask.any():
         month_probs = probs[mask].mean()
