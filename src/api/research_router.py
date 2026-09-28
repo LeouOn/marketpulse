@@ -38,7 +38,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -618,6 +618,26 @@ async def list_assets():
     }
 
 
+# The rules classifier z-scores each factor over a trailing 5-year window
+# (RulesBasedClassifier.ZSCORE_WINDOW_DAYS), so regime endpoints pad their
+# fetch by 6 years to give that window full history -- the same approach as
+# ``src.research.cli._build_regime_tape``.
+_REGIME_LOOKBACK_PAD_DAYS = 365 * 6
+#: Default tape length when the caller gives no ``start``.
+_REGIME_DEFAULT_WINDOW_DAYS = 365 * 2
+
+
+def _parse_iso_date(value: str, param: str) -> date:
+    """Parse an ISO ``YYYY-MM-DD`` query param, 400 on malformed input."""
+    try:
+        return date.fromisoformat(value)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {param} {value!r}: expected ISO date YYYY-MM-DD",
+        ) from e
+
+
 @router.get("/regimes")
 async def regimes_tape(start: str | None = None, end: str | None = None):
     """Return the regime tape (dominant regime per day) over a date range.
@@ -626,6 +646,14 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
     frame cannot be loaded (e.g. FRED key missing in dev), returns HTTP 503
     with a clear message rather than crashing.
     """
+    end_d = _parse_iso_date(end, "end") if end else date.today()
+    start_d = (
+        _parse_iso_date(start, "start")
+        if start
+        else end_d - timedelta(days=_REGIME_DEFAULT_WINDOW_DAYS)
+    )
+    fetch_start = start_d - timedelta(days=_REGIME_LOOKBACK_PAD_DAYS)
+
     try:
         from src.research.macro.factors import MacroFactorProvider
         from src.research.macro.regimes import RulesBasedClassifier, generate_regime_tape
@@ -637,7 +665,7 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
 
     try:
         provider = MacroFactorProvider()
-        factor_df = provider.load_frame(start=start, end=end)
+        factor_df = provider.load_factors(fetch_start, end_d)
     except Exception as e:
         logger.warning(f"regimes tape: factor load failed: {e}")
         raise HTTPException(
@@ -653,17 +681,28 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
 
     tape = generate_regime_tape(factor_df, classifier=RulesBasedClassifier())
     # Serialize: index -> iso date, dominant_regime column + regime probs.
+    # Only rows inside the *requested* window are returned (the fetch was
+    # padded for z-score history; the padding is not part of the response).
     records = []
     for ts, row in tape.iterrows():
         if isinstance(ts, pd.Timestamp):
-            date_str = ts.date().isoformat()
+            d = ts.date()
+            date_str = d.isoformat()
         else:
+            d = None
             date_str = str(ts)
+        if d is not None and d < start_d:
+            continue
         rec = {"date": date_str, "dominant_regime": row["dominant_regime"]}
         for col in ("RISK_ON", "DEFLATION_SCARE", "INFLATION_ACCEL", "REAL_YIELD_SHOCK", "RECESSION"):
             if col in row:
                 rec[col] = float(row[col])
         records.append(rec)
+    if not records:
+        raise HTTPException(
+            status_code=503,
+            detail="No macro factor data in the requested range.",
+        )
     return {
         "success": True,
         "data": {
@@ -793,8 +832,20 @@ async def asset_regime(asset: str, date: str | None = None):
         )
 
     try:
+        asof = datetime.fromisoformat(date) if date else None
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid date {date!r}: expected ISO date YYYY-MM-DD",
+        ) from e
+    # Pad the fetch window so the 5y trailing z-scores have history (the
+    # classifier itself slices to at-or-before ``asof``).
+    end_d = asof.date() if asof else datetime.now().date()
+    fetch_start = end_d - timedelta(days=_REGIME_LOOKBACK_PAD_DAYS)
+
+    try:
         provider = MacroFactorProvider()
-        factor_df = provider.load_frame()
+        factor_df = provider.load_factors(fetch_start, end_d)
     except Exception as e:
         logger.warning(f"asset_regime: factor load failed: {e}")
         raise HTTPException(

@@ -8,6 +8,7 @@ tested with a mock ModelRouter.
 from __future__ import annotations
 
 import json
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -355,3 +356,166 @@ def test_chat_handles_llm_error(client):
         assert r.status_code == 200
         events = [json.loads(line) for line in r.text.splitlines() if line.strip()]
     assert any(e.get("type") == "error" for e in events)
+
+
+# ---------------------------------------------------------------------------
+# Macro regimes endpoints (T3a)
+#
+# Offline coverage for GET /api/research/regimes and
+# GET /api/research/{asset}/regime. The handlers import
+# MacroFactorProvider *inside* the function, so we patch the attribute on
+# src.research.macro.factors -- no network, no FRED key needed.
+# ---------------------------------------------------------------------------
+
+_REGIME_NAMES = {
+    "RISK_ON",
+    "DEFLATION_SCARE",
+    "INFLATION_ACCEL",
+    "REAL_YIELD_SHOCK",
+    "RECESSION",
+}
+
+#: Fetch-window padding the router must apply so the rules classifier's
+#: 5-year trailing z-score window has history (mirrors cli._build_regime_tape).
+_REGIME_PAD_DAYS = 365 * 6
+
+
+def _fake_factor_frame() -> pd.DataFrame:
+    """A realistic MacroFactorProvider.load_factors return value.
+
+    Daily index spanning ~9 years up to tomorrow, all 12 canonical factor
+    columns, mild slopes so rolling z-scores are defined.
+    """
+    from src.research.macro.factors import FACTOR_COLUMNS
+
+    end = date.today() + timedelta(days=1)
+    start = end - timedelta(days=365 * 9)
+    idx = pd.date_range(start, end, freq="D", name="date")
+    n = len(idx)
+    data = {}
+    for i, col in enumerate(FACTOR_COLUMNS):
+        if col == "sahm_recession":
+            data[col] = [False] * n
+        else:
+            base = 50.0 + 10.0 * i
+            data[col] = [base + 0.01 * j for j in range(n)]
+    return pd.DataFrame(data, index=idx)
+
+
+class _FakeMacroProvider:
+    """Offline MacroFactorProvider stand-in; records load_factors calls."""
+
+    def __init__(self, error: Exception | None = None):
+        self.frame = _fake_factor_frame()
+        self.error = error
+        self.calls: list[tuple[date, date]] = []
+
+    def load_factors(self, start: date, end: date) -> pd.DataFrame:
+        self.calls.append((start, end))
+        if self.error is not None:
+            raise self.error
+        mask = (self.frame.index.date >= start) & (self.frame.index.date <= end)
+        return self.frame.loc[mask].copy()
+
+
+def _patch_macro_provider(monkeypatch, fake: _FakeMacroProvider) -> None:
+    import src.research.macro.factors as factors_mod
+
+    monkeypatch.setattr(factors_mod, "MacroFactorProvider", lambda: fake)
+
+
+def test_regimes_endpoint_returns_tape_with_fake_provider(client, monkeypatch):
+    fake = _FakeMacroProvider()
+    _patch_macro_provider(monkeypatch, fake)
+
+    r = client.get("/api/research/regimes?start=2024-01-01&end=2024-01-31")
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["success"] is True
+    records = body["data"]["regimes"]
+    assert body["data"]["count"] == len(records) > 0
+    assert body["data"]["start"] == "2024-01-01"
+    assert body["data"]["end"] == "2024-01-31"
+    for rec in records:
+        assert "2024-01-01" <= rec["date"] <= "2024-01-31"
+        assert rec["dominant_regime"] in _REGIME_NAMES
+        assert sum(rec[name] for name in _REGIME_NAMES) == pytest.approx(1.0)
+    # The fetch must be padded so the 5y trailing z-score window has history.
+    assert fake.calls == [
+        (date(2024, 1, 1) - timedelta(days=_REGIME_PAD_DAYS), date(2024, 1, 31))
+    ]
+
+
+def test_regimes_endpoint_default_window(client, monkeypatch):
+    fake = _FakeMacroProvider()
+    _patch_macro_provider(monkeypatch, fake)
+
+    r = client.get("/api/research/regimes")
+
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["count"] > 0
+    # Defaults: end=today, start=today - 2y, fetch padded by 6 more years.
+    assert len(fake.calls) == 1
+    fetch_start, fetch_end = fake.calls[0]
+    assert fetch_end == date.today()
+    assert fetch_start == date.today() - timedelta(days=365 * 8)
+
+
+def test_regimes_endpoint_rejects_malformed_start(client):
+    r = client.get("/api/research/regimes?start=not-a-date")
+    assert r.status_code == 400
+    assert "start" in r.json()["detail"]
+
+
+def test_regimes_endpoint_surfaces_provider_error_as_503(client, monkeypatch):
+    fake = _FakeMacroProvider(error=RuntimeError("FRED_API_KEY not set"))
+    _patch_macro_provider(monkeypatch, fake)
+
+    r = client.get("/api/research/regimes")
+
+    assert r.status_code == 503
+    detail = r.json()["detail"]
+    assert "Macro factor data unavailable" in detail
+    assert "FRED_API_KEY not set" in detail
+
+
+def test_asset_regime_endpoint_returns_current_regime(client, monkeypatch):
+    fake = _FakeMacroProvider()
+    _patch_macro_provider(monkeypatch, fake)
+
+    r = client.get("/api/research/BTC/regime")
+
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data["asset"] == "BTC"
+    assert data["regime"] in _REGIME_NAMES
+    assert set(data["probs"]) == _REGIME_NAMES
+    assert sum(data["probs"].values()) == pytest.approx(1.0)
+    assert data["source"] == "rules"
+    assert data["timestamp"]
+    # One padded fetch ending today.
+    assert len(fake.calls) == 1
+    fetch_start, fetch_end = fake.calls[0]
+    assert fetch_end == date.today()
+    assert fetch_start == date.today() - timedelta(days=_REGIME_PAD_DAYS)
+
+
+def test_asset_regime_endpoint_asof_date(client, monkeypatch):
+    fake = _FakeMacroProvider()
+    _patch_macro_provider(monkeypatch, fake)
+
+    r = client.get("/api/research/BTC/regime?date=2024-06-15")
+
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data["timestamp"].startswith("2024-06-15")
+    fetch_start, fetch_end = fake.calls[0]
+    assert fetch_end == date(2024, 6, 15)
+    assert fetch_start == date(2024, 6, 15) - timedelta(days=_REGIME_PAD_DAYS)
+
+
+def test_asset_regime_endpoint_rejects_malformed_date(client):
+    r = client.get("/api/research/BTC/regime?date=oops")
+    assert r.status_code == 400
+    assert "date" in r.json()["detail"]
