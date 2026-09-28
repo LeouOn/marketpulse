@@ -108,6 +108,17 @@ class LLMSettings(BaseSettings):
         model_pro: str = "deepseek-v4-pro"
         model_flash: str = "deepseek-v4-flash"
 
+    class DS4Config(BaseSettings):
+        """Local ds4 server (DeepSeek V4 Flash, antirez build).
+
+        OpenAI-compatible, no auth (any bearer token accepted). The
+        default port is 8001 -- 8000 is the MarketPulse API itself.
+        """
+        base_url: str = "http://127.0.0.1:8001/v1"
+        api_key: str = "not-needed"
+        timeout: int = 300
+        model: str = "deepseek-v4-flash"
+
     class ModelRoutingConfig(BaseSettings):
         """Capability-based model routing preferences.
 
@@ -126,6 +137,7 @@ class LLMSettings(BaseSettings):
     fallback: FallbackConfig = Field(default_factory=FallbackConfig)
     minimax: MiniMaxConfig = Field(default_factory=MiniMaxConfig)
     deepseek: DeepSeekConfig = Field(default_factory=DeepSeekConfig)
+    ds4: DS4Config = Field(default_factory=DS4Config)
     model_routing: ModelRoutingConfig = Field(default_factory=ModelRoutingConfig)
 
 
@@ -301,6 +313,11 @@ class Settings(BaseSettings):
                         for key, value in llm_data["deepseek"].items():
                             if hasattr(self.llm.deepseek, key):
                                 setattr(self.llm.deepseek, key, value)
+
+                    if "ds4" in llm_data:
+                        for key, value in llm_data["ds4"].items():
+                            if hasattr(self.llm.ds4, key):
+                                setattr(self.llm.ds4, key, value)
 
                     if "model_routing" in llm_data:
                         for key, value in llm_data["model_routing"].items():
