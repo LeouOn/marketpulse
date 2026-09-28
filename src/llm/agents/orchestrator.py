@@ -18,7 +18,7 @@ from typing import Any, AsyncGenerator
 
 from loguru import logger
 
-from .base import AgentResult, MarketAgent
+from .base import AgentResult, strip_think, MarketAgent
 from .alert_agent import AlertAgent
 from .critique_agent import CritiqueAgent
 from .data_agent import DataAgent
@@ -36,6 +36,17 @@ from .technical_agent import TechnicalAgent
 # ---------------------------------------------------------------------------
 # Result types
 # ---------------------------------------------------------------------------
+
+
+def _answer_text(msg: dict) -> str:
+    """The model's answer, minus any inline <think> reasoning block.
+
+    MiniMax-M3 returns its chain of thought inside `content`; DeepSeek puts it in
+    `reasoning_content`. The synthesis is what the frontend shows, so it must be
+    the answer, not the model's scratchpad.
+    """
+    return strip_think(msg.get("content") or "") or strip_think(msg.get("reasoning_content") or "")
+
 
 @dataclass
 class OrchestratorResult:
@@ -255,6 +266,15 @@ trading-actionable."""
             data_context = result.data_result.content or ""
             await self._dispatch_agents(result, query, symbols, data_context)
         else:
+            # Every downstream agent is about to be skipped, so the pipeline
+            # produced no analysis. Say so instead of returning a synthesis of
+            # nothing under an optimistic `success` flag.
+            result.success = False
+            result.error = (
+                (result.data_result.error if result.data_result else None)
+                or "DataAgent returned no usable data; no analysis was performed"
+            )
+            logger.error(f"Orchestrator: {result.error}")
             for attr, _, _ in self.all_agents:
                 setattr(result, attr, AgentResult(
                     agent_name=attr,
@@ -684,7 +704,7 @@ trading-actionable."""
 
             if response and "choices" in response:
                 msg = response["choices"][0]["message"]
-                return msg.get("content") or msg.get("reasoning_content") or ""
+                return _answer_text(msg)
 
             return "Draft synthesis failed -- no model response."
 
@@ -710,7 +730,7 @@ trading-actionable."""
 
             if response and "choices" in response:
                 msg = response["choices"][0]["message"]
-                return msg.get("content") or msg.get("reasoning_content") or ""
+                return _answer_text(msg)
 
             return "Synthesis failed -- no model response."
 

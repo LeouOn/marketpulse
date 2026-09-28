@@ -135,6 +135,9 @@ class MarketAgent:
             # (the model still has an opinion worth showing) but do NOT report success:
             # a tool-less "success" reads as real analysis when it is model memory.
             client_name = type(client).__name__
+            # An agent with no tools of its own (e.g. CritiqueAgent) never wanted
+            # data, so a tool-less client is only a failure for agents that do.
+            expects_tools = bool(self._tools)
             logger.warning(
                 f"{self.AGENT_NAME}: client {client_name} "
                 f"lacks generate_with_tools -- no tools can be called"
@@ -149,7 +152,7 @@ class MarketAgent:
                 f"{client_name} does not support tool calling "
                 f"(no generate_with_tools), so {self.AGENT_NAME} could not fetch "
                 f"any data -- its answer is unverified model knowledge"
-            )
+            ) if expects_tools else None
             if response and "choices" in response:
                 msg = response["choices"][0]["message"]
                 content = strip_think(msg.get("content") or "")
@@ -159,14 +162,16 @@ class MarketAgent:
                     agent_name=self.AGENT_NAME,
                     content=content,
                     raw_response=response,
-                    success=False,
+                    success=not expects_tools,
                     error=error,
                 )
             return AgentResult(
                 agent_name=self.AGENT_NAME,
                 content="",
                 success=False,
-                error=f"{error}; also got no response from the model",
+                error=f"{error}; also got no response from the model"
+                if expects_tools
+                else "No response from model",
             )
 
         # Function-calling loop

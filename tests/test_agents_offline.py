@@ -1,20 +1,47 @@
 """Offline tests for the agent layer (src/llm/agents).
 
-These never call a provider: the ModelRouter is replaced by a fake, so they
-pin how ``MarketAgent.execute()`` behaves when the routed client does or does
-not support tool calling.
+No provider, no network, no local config: the ModelRouter, the tool registry and
+the settings are all fakes, so these pin how ``MarketAgent.execute()`` behaves
+when the routed client does or does not support tool calling.
 """
 
 from __future__ import annotations
 
 from src.llm.agents.base import AgentResult, MarketAgent, strip_think
 
+# ---------------------------------------------------------------------------
+# Fakes
+# ---------------------------------------------------------------------------
 
-class _ProbeAgent(MarketAgent):
-    AGENT_NAME = "probe"
-    SYSTEM_PROMPT = "You are a probe."
-    TOOL_NAMES = []
-    CAPABILITY = "standard"
+OHLCV_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_ohlcv",
+        "description": "Fetch OHLCV bars.",
+        "parameters": {"type": "object", "properties": {"symbol": {"type": "string"}}},
+    },
+}
+
+
+class _FakeRegistry:
+    """Stands in for ToolRegistry; records dispatches instead of calling Yahoo."""
+
+    def __init__(self, definitions=(OHLCV_TOOL,)):
+        self._definitions = list(definitions)
+        self.dispatched: list[tuple[str, dict]] = []
+
+    def list_definitions(self, names):
+        # The real registry filters by name; a fake that returned everything would
+        # make a tool-less agent look like it had tools.
+        wanted = set(names or ())
+        return [d for d in self._definitions if d["function"]["name"] in wanted]
+
+    def get_tool_names(self):
+        return [d["function"]["name"] for d in self._definitions]
+
+    async def dispatch(self, name, args):
+        self.dispatched.append((name, args))
+        return {"symbol": args.get("symbol"), "rows": 3}
 
 
 class _FakeRouter:
@@ -47,54 +74,71 @@ class _ToolCapableClient(_CompletionOnlyClient):
     def __init__(self, content="SPY is in an uptrend."):
         super().__init__(content)
         self.tools_requested = None
-        self.handler_calls = []
 
     async def generate_with_tools(
         self, messages, tools, tool_handler, model=None, max_turns=5, max_tokens=800, temperature=0.3
     ):
         self.tools_requested = tools
-        self.handler_calls.append(await tool_handler("get_ohlcv", {"symbol": "SPY"}))
+        await tool_handler("get_ohlcv", {"symbol": "SPY"})
         return {"choices": [{"message": {"content": self._content}}]}
 
 
-def _agent_with(client) -> _ProbeAgent:
-    agent = _ProbeAgent(registry=None, settings=None)
+class _DataProbeAgent(MarketAgent):
+    """An agent that expects to fetch data, like DataAgent."""
+
+    AGENT_NAME = "data_probe"
+    SYSTEM_PROMPT = "You are a data probe."
+    TOOL_NAMES = ["get_ohlcv"]
+    CAPABILITY = "standard"
+
+
+class _ReasoningProbeAgent(MarketAgent):
+    """An agent that never wanted data, like CritiqueAgent (TOOL_NAMES = [])."""
+
+    AGENT_NAME = "reasoning_probe"
+    SYSTEM_PROMPT = "You are a reasoning probe."
+    TOOL_NAMES = []
+    CAPABILITY = "reasoning"
+
+
+def _agent_with(agent_cls, client) -> MarketAgent:
+    agent = agent_cls(registry=_FakeRegistry(), settings=object())
     agent._router = _FakeRouter(client)
     agent._entered = True
     return agent
 
 
 # ---------------------------------------------------------------------------
-# Tool-capable clients keep working
+# Tool-capable clients get the agent's tools
 # ---------------------------------------------------------------------------
 
 
-async def test_tool_capable_client_is_given_the_tools():
+async def test_tool_capable_client_is_given_the_declared_tools():
     client = _ToolCapableClient()
-    agent = _agent_with(client)
+    agent = _agent_with(_DataProbeAgent, client)
 
-    result = await agent.execute("Analyse SPY")
+    result = await agent.execute("Fetch data for SPY")
 
-    assert isinstance(result, AgentResult)
+    names = [d["function"]["name"] for d in client.tools_requested]
+    assert names == ["get_ohlcv"], f"agent was offered the wrong tools: {names}"
     assert result.success
-    assert client.tools_requested is not None
-    assert client.handler_calls, "the tool handler was never called"
     assert result.tool_calls_made == ["get_ohlcv"]
+    assert agent.registry.dispatched == [("get_ohlcv", {"symbol": "SPY"})]
 
 
 # ---------------------------------------------------------------------------
-# Clients without tool support must not look like success
+# Clients without tool support
 # ---------------------------------------------------------------------------
 
 
-async def test_client_without_tool_support_does_not_report_success():
+async def test_data_agent_without_tool_support_does_not_report_success():
     """A tool-less client cannot fetch data, so the agent must not claim it did.
 
-    This is the default path today: the configured primary provider is MiniMax,
-    whose client has no ``generate_with_tools``, so every agent used to return a
+    This is the default path: the configured primary provider is MiniMax, whose
+    client has no ``generate_with_tools``, so every agent used to return a
     confident-looking answer built from model memory with ``success=True``.
     """
-    agent = _agent_with(_CompletionOnlyClient())
+    agent = _agent_with(_DataProbeAgent, _CompletionOnlyClient())
 
     result = await agent.execute("Fetch market data for SPY")
 
@@ -104,12 +148,23 @@ async def test_client_without_tool_support_does_not_report_success():
     )
     assert result.error, "a failed agent must say why"
     assert "generate_with_tools" in result.error
-    assert _CompletionOnlyClient.__name__ in result.error, "the error must name the client"
+    assert "_CompletionOnlyClient" in result.error, "the error must name the client"
 
 
-async def test_client_without_tool_support_still_returns_the_model_text():
+async def test_pure_reasoning_agent_without_tool_support_still_succeeds():
+    """CritiqueAgent wants no data, so having no tools is not a failure for it."""
+    agent = _agent_with(_ReasoningProbeAgent, _CompletionOnlyClient(content="The draft is thin."))
+
+    result = await agent.execute("Critique this draft")
+
+    assert result.success, "a tool-less pure-reasoning agent should still succeed"
+    assert result.error is None
+    assert result.content == "The draft is thin."
+
+
+async def test_data_agent_without_tool_support_still_returns_the_model_text():
     """The text is kept for debugging, it just is not presented as a good result."""
-    agent = _agent_with(_CompletionOnlyClient(content="SPY looks fine to me."))
+    agent = _agent_with(_DataProbeAgent, _CompletionOnlyClient(content="SPY looks fine to me."))
 
     result = await agent.execute("Fetch market data for SPY")
 
@@ -121,7 +176,7 @@ async def test_no_response_is_still_reported_as_a_failure():
         async def generate_completion(self, *args, **kwargs):
             return None
 
-    agent = _agent_with(_Silent())
+    agent = _agent_with(_DataProbeAgent, _Silent())
 
     result = await agent.execute("anything")
 
@@ -170,7 +225,7 @@ def test_strip_think_survives_empty_content():
 async def test_agent_content_has_no_leaked_reasoning():
     """Reasoning models answer with <think>..</think> inline; that is not the answer."""
     raw = "<think>I should call get_ohlcv for SPY.</think>\n\nSPY closed at 601.20."
-    agent = _agent_with(_ToolCapableClient(content=raw))
+    agent = _agent_with(_DataProbeAgent, _ToolCapableClient(content=raw))
 
     result = await agent.execute("Analyse SPY")
 

@@ -92,11 +92,16 @@ def test_config_exposes_a_usable_primary_provider(settings):
         "minimax": settings.llm.minimax.api_key,
         "deepseek": settings.llm.deepseek.api_key,
     }
-    key = key_blocks.get(routing.primary_provider)
+    assert routing.primary_provider in key_blocks, (
+        f"primary provider {routing.primary_provider!r} has no key block in this test; "
+        f"add one rather than skipping the check"
+    )
 
-    if key is not None:
-        assert key, f"{routing.primary_provider} selected but its key is empty"
-        assert "your_" not in key.lower(), f"{routing.primary_provider} key is still a placeholder"
+    # Report on booleans only -- never put the key itself in an assertion message.
+    key = key_blocks[routing.primary_provider]
+    assert bool(key), f"{routing.primary_provider} selected but its key is empty"
+    is_placeholder = "your_" in (key or "").lower()
+    assert not is_placeholder, f"{routing.primary_provider} key is still a placeholder"
 
     fallbacks = [p.strip() for p in routing.fallback_providers.split(",") if p.strip()]
     assert fallbacks, "no fallback providers configured"
@@ -121,7 +126,9 @@ async def test_primary_provider_completes_a_prompt(settings):
         response = await client.generate_completion(
             messages=[{"role": "user", "content": "Reply with exactly: OK"}],
             model=model_id or None,
-            max_tokens=10,
+            # Reasoning models emit <think> inline before the answer, so a tiny
+            # budget would be entirely consumed by the reasoning.
+            max_tokens=256,
             temperature=0.0,
         )
         elapsed = time.monotonic() - started
@@ -129,9 +136,12 @@ async def test_primary_provider_completes_a_prompt(settings):
     assert response, f"{type(client).__name__} returned no response"
     assert "choices" in response, f"unexpected response shape: {list(response)}"
 
-    content = response["choices"][0]["message"].get("content") or ""
-    assert content.strip(), "provider returned an empty completion"
-    print(f"\n{type(client).__name__} replied {content.strip()!r} in {elapsed:.1f}s")
+    from src.llm.agents.base import strip_think
+
+    answer = strip_think(response["choices"][0]["message"].get("content") or "")
+    assert answer.strip(), "provider returned an empty completion"
+    assert "OK" in answer.upper(), f"provider did not acknowledge the prompt: {answer.strip()[:80]!r}"
+    print(f"\n{type(client).__name__} replied {answer.strip()[:60]!r} in {elapsed:.1f}s")
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +217,10 @@ async def test_data_agent_uses_its_tools(data_result):
 async def test_technical_agent_analyses_the_data(data_result, settings, registry):
     from src.llm.agents.technical_agent import TechnicalAgent
 
+    assert data_result.success, (
+        "the DataAgent run this test depends on did not succeed -- with no data "
+        "there is nothing to analyse, so this would be a false pass"
+    )
     data_context = data_result.content or "SPY data unavailable; describe what you would need."
 
     async with TechnicalAgent(registry=registry, settings=settings) as agent:
@@ -242,11 +256,11 @@ async def test_orchestrator_produces_a_synthesis(settings):
     assert result.data_result.error is None, f"data agent errored: {result.data_result.error}"
     assert len(result.synthesis.strip()) > 20, "orchestrator produced no synthesis"
 
-    # MiniMax-M3 returns its reasoning inline in content; that must not be the
-    # whole answer.
-    assert "<think>" not in result.synthesis or len(result.synthesis) > len(
-        result.synthesis.split("</think>")[-1]
-    ), "synthesis is nothing but inline reasoning"
+    # MiniMax-M3 returns its reasoning inline in content; the synthesis is what
+    # the frontend shows, so none of it should be visible.
+    assert "<think>" not in result.synthesis, (
+        "synthesis leaked the model's inline reasoning to the user"
+    )
 
 
 # ---------------------------------------------------------------------------
