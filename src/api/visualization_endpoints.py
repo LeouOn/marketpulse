@@ -21,6 +21,18 @@ import pandas as pd
 from src.visualization.chart_generator import ChartGenerator
 from src.api.yahoo_client import YahooFinanceClient
 from src.analysis.technical_indicators import TechnicalIndicators, identify_trends, get_support_resistance
+from src.analysis.yahoo_bars import bars_frame
+
+
+def _json_float(value):
+    """Float for JSON. NaN and missing values become None."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:
+        return None
+    return number
 
 # Initialize router
 viz_router = APIRouter(prefix="/api/viz", tags=["Visualizations"])
@@ -56,7 +68,7 @@ async def get_candlestick_chart(request: ChartRequest):
     """
     try:
         # Get historical data
-        df = yahoo_client.get_historical_data(
+        df = bars_frame(yahoo_client, 
             symbol=request.symbol,
             period=request.period,
             interval=request.timeframe
@@ -82,6 +94,8 @@ async def get_candlestick_chart(request: ChartRequest):
 
         return HTMLResponse(content=html)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating candlestick chart: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -136,7 +150,7 @@ async def get_indicator_panel(
     """
     try:
         # Get historical data
-        df = yahoo_client.get_historical_data(
+        df = bars_frame(yahoo_client, 
             symbol=symbol,
             period=period,
             interval=timeframe
@@ -159,6 +173,8 @@ async def get_indicator_panel(
 
         return HTMLResponse(content=html)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating indicator panel: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -180,7 +196,7 @@ async def get_volume_profile(
     """
     try:
         # Get historical data
-        df = yahoo_client.get_historical_data(
+        df = bars_frame(yahoo_client, 
             symbol=symbol,
             period=period,
             interval=timeframe
@@ -204,6 +220,8 @@ async def get_volume_profile(
 
         return HTMLResponse(content=html)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating volume profile: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -240,12 +258,13 @@ async def get_market_heatmap(
             performance = {}
             for name, symbol in sector_etfs.items():
                 try:
-                    df = yahoo_client.get_historical_data(symbol, period='5d', interval='1d')
+                    df = bars_frame(yahoo_client, symbol, period='5d', interval='1d')
                     if not df.empty and len(df) >= 2:
                         # Calculate daily change
                         change = ((df['close'].iloc[-1] - df['close'].iloc[-2]) / df['close'].iloc[-2]) * 100
                         performance[name] = change
-                except:
+                except Exception as exc:
+                    logger.debug(f"Heatmap skipped {symbol}: {exc}")
                     continue
 
             title = "Sector Performance Heatmap"
@@ -262,17 +281,21 @@ async def get_market_heatmap(
             performance = {}
             for name, symbol in indices.items():
                 try:
-                    df = yahoo_client.get_historical_data(symbol, period='5d', interval='1d')
+                    df = bars_frame(yahoo_client, symbol, period='5d', interval='1d')
                     if not df.empty and len(df) >= 2:
                         change = ((df['close'].iloc[-1] - df['close'].iloc[-2]) / df['close'].iloc[-2]) * 100
                         performance[name] = change
-                except:
+                except Exception as exc:
+                    logger.debug(f"Heatmap skipped {symbol}: {exc}")
                     continue
 
             title = "Market Indices Heatmap"
 
         if not performance:
-            raise HTTPException(status_code=404, detail="No data available for heatmap")
+            raise HTTPException(
+                status_code=404,
+                detail="No data available for heatmap. Yahoo returned no usable bars for the requested symbols.",
+            )
 
         # Generate heatmap
         fig = chart_gen.create_market_heatmap(
@@ -288,6 +311,8 @@ async def get_market_heatmap(
 
         return HTMLResponse(content=html)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating market heatmap: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -312,7 +337,7 @@ async def get_technical_analysis(
     """
     try:
         # Get historical data
-        df = yahoo_client.get_historical_data(
+        df = bars_frame(yahoo_client, 
             symbol=symbol,
             period=period,
             interval=timeframe
@@ -337,24 +362,24 @@ async def get_technical_analysis(
         analysis = {
             'symbol': symbol,
             'timestamp': datetime.now().isoformat(),
-            'current_price': float(latest['close']),
+            'current_price': _json_float(latest['close']),
             'trends': trends,
             'support_resistance': {
-                'resistance': [float(x) for x in sr_levels['resistance']],
-                'support': [float(x) for x in sr_levels['support']]
+                'resistance': [_json_float(x) for x in sr_levels['resistance']],
+                'support': [_json_float(x) for x in sr_levels['support']]
             },
             'indicators': {
-                'sma_20': float(latest['sma_20']) if 'sma_20' in latest else None,
-                'sma_50': float(latest['sma_50']) if 'sma_50' in latest else None,
-                'sma_200': float(latest['sma_200']) if 'sma_200' in latest else None,
-                'ema_21': float(latest['ema_21']) if 'ema_21' in latest else None,
-                'rsi': float(latest['rsi']) if 'rsi' in latest else None,
-                'macd': float(latest['macd']) if 'macd' in latest else None,
-                'macd_signal': float(latest['macd_signal']) if 'macd_signal' in latest else None,
-                'bb_upper': float(latest['bb_upper']) if 'bb_upper' in latest else None,
-                'bb_lower': float(latest['bb_lower']) if 'bb_lower' in latest else None,
-                'atr': float(latest['atr']) if 'atr' in latest else None,
-                'adx': float(latest['adx']) if 'adx' in latest else None
+                'sma_20': _json_float(latest['sma_20']) if 'sma_20' in latest else None,
+                'sma_50': _json_float(latest['sma_50']) if 'sma_50' in latest else None,
+                'sma_200': _json_float(latest['sma_200']) if 'sma_200' in latest else None,
+                'ema_21': _json_float(latest['ema_21']) if 'ema_21' in latest else None,
+                'rsi': _json_float(latest['rsi']) if 'rsi' in latest else None,
+                'macd': _json_float(latest['macd']) if 'macd' in latest else None,
+                'macd_signal': _json_float(latest['macd_signal']) if 'macd_signal' in latest else None,
+                'bb_upper': _json_float(latest['bb_upper']) if 'bb_upper' in latest else None,
+                'bb_lower': _json_float(latest['bb_lower']) if 'bb_lower' in latest else None,
+                'atr': _json_float(latest['atr']) if 'atr' in latest else None,
+                'adx': _json_float(latest['adx']) if 'adx' in latest else None
             },
             'signals': {
                 'overall': 'bullish' if sum(1 for t in trends.values() if 'bullish' in t) > sum(1 for t in trends.values() if 'bearish' in t) else 'bearish',
@@ -364,6 +389,8 @@ async def get_technical_analysis(
 
         return JSONResponse(content={"success": True, "data": analysis})
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating technical analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -384,7 +411,7 @@ async def get_trading_dashboard(
     """
     try:
         # Get data
-        df = yahoo_client.get_historical_data(
+        df = bars_frame(yahoo_client, 
             symbol=symbol,
             period=period,
             interval=timeframe
@@ -560,6 +587,8 @@ async def get_trading_dashboard(
 
         return HTMLResponse(content=html_template)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating dashboard: {e}")
         raise HTTPException(status_code=500, detail=str(e))

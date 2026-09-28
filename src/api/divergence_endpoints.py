@@ -17,6 +17,7 @@ from loguru import logger
 from src.analysis.divergence_detector import DivergenceDetector, scan_for_divergences
 from src.visualization.chart_generator import ChartGenerator
 from src.api.yahoo_client import YahooFinanceClient
+from src.analysis.yahoo_bars import bars_frame
 
 # Initialize router
 divergence_router = APIRouter(prefix="/api/divergence", tags=["Divergence Detection"])
@@ -45,7 +46,7 @@ async def scan_divergences(request: DivergenceScanRequest):
     """
     try:
         # Get historical data
-        df = yahoo_client.get_historical_data(
+        df = bars_frame(yahoo_client, 
             symbol=request.symbol,
             period=request.period,
             interval=request.timeframe
@@ -63,6 +64,8 @@ async def scan_divergences(request: DivergenceScanRequest):
 
         return JSONResponse(content={"success": True, "data": result})
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error scanning divergences: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -120,7 +123,7 @@ async def get_divergence_chart(
     """
     try:
         # Get historical data
-        df = yahoo_client.get_historical_data(
+        df = bars_frame(yahoo_client, 
             symbol=symbol,
             period=period,
             interval=timeframe
@@ -178,6 +181,8 @@ async def get_divergence_chart(
 
         return HTMLResponse(content=html)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating divergence chart: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -202,7 +207,7 @@ async def get_divergence_dashboard(
     """
     try:
         # Get data
-        df = yahoo_client.get_historical_data(
+        df = bars_frame(yahoo_client, 
             symbol=symbol,
             period=period,
             interval=timeframe

@@ -21,21 +21,24 @@ class MacroRegime:
             yahoo_client: Instance of YahooFinanceClient
         """
         self.yahoo_client = yahoo_client
-
-        # Sector ETFs for tracking
         self.sector_etfs = {
-            'XLK': 'Technology',
-            'XLF': 'Financials',
-            'XLV': 'Healthcare',
-            'XLE': 'Energy',
-            'XLI': 'Industrials',
-            'XLC': 'Communication',
-            'XLY': 'Consumer Discretionary',
-            'XLP': 'Consumer Staples',
-            'XLB': 'Materials',
-            'XLU': 'Utilities',
-            'XLRE': 'Real Estate'
+            "XLK": "Technology",
+            "XLF": "Financials",
+            "XLV": "Healthcare",
+            "XLE": "Energy",
+            "XLI": "Industrials",
+            "XLC": "Communication",
+            "XLY": "Consumer Discretionary",
+            "XLP": "Consumer Staples",
+            "XLB": "Materials",
+            "XLU": "Utilities",
+            "XLRE": "Real Estate",
         }
+
+    def _load_bars(self, symbol: str, period: str, interval: str = "1d") -> pd.DataFrame:
+        from src.analysis.yahoo_bars import bars_frame
+
+        return bars_frame(self.yahoo_client, symbol, period=period, interval=interval)
 
     def get_vix_percentile(self, days_lookback: int = 252) -> Dict[str, Any]:
         """Calculate VIX percentile over lookback period
@@ -48,11 +51,7 @@ class MacroRegime:
         """
         try:
             # Get VIX historical data
-            vix_data = self.yahoo_client.get_bars(
-                '^VIX',
-                period='1y',
-                interval='1d'
-            )
+            vix_data = self._load_bars("^VIX", period="1y", interval="1d")
 
             if vix_data is None or vix_data.empty:
                 logger.warning("Could not fetch VIX data")
@@ -203,7 +202,7 @@ class MacroRegime:
         """
         try:
             # Get SPY performance as benchmark
-            spy_data = self.yahoo_client.get_bars('SPY', period=period, interval='1d')
+            spy_data = self._load_bars("SPY", period=period, interval="1d")
 
             if spy_data is None or spy_data.empty:
                 logger.warning("Could not fetch SPY data")
@@ -216,7 +215,7 @@ class MacroRegime:
 
             for etf, sector_name in self.sector_etfs.items():
                 try:
-                    sector_data = self.yahoo_client.get_bars(etf, period=period, interval='1d')
+                    sector_data = self._load_bars(etf, period=period, interval="1d")
 
                     if sector_data is None or sector_data.empty:
                         continue
@@ -278,7 +277,7 @@ class MacroRegime:
             returns_dict = {}
 
             for symbol in symbols:
-                data = self.yahoo_client.get_bars(symbol, period=period, interval='1d')
+                data = self._load_bars(symbol, period=period, interval="1d")
 
                 if data is not None and not data.empty:
                     # Calculate daily returns
@@ -316,7 +315,7 @@ class MacroRegime:
             breadth_data = {}
 
             for symbol, name in indices.items():
-                data = self.yahoo_client.get_bars(symbol, period='5d', interval='1d')
+                data = self._load_bars(symbol, period="5d", interval="1d")
 
                 if data is not None and not data.empty:
                     current = float(data['close'].iloc[-1])

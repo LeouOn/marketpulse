@@ -182,6 +182,19 @@ class MarketRegimeClassifier:
     def _build_classification_prompt(self, market_data: MarketData) -> str:
         """Build prompt for LLM classification"""
 
+        def _px(value: float | None) -> str:
+            return f"{value:.2f}" if value is not None else "N/A"
+
+        sma_20 = _px(market_data.sma_20)
+        sma_50 = _px(market_data.sma_50)
+        ema_21 = _px(market_data.ema_21)
+        btc_corr = _px(market_data.nq_btc_corr)
+        versus_sma = (
+            "Above"
+            if market_data.sma_20 is not None and market_data.current_price > market_data.sma_20
+            else "Below"
+        )
+
         prompt = f"""Analyze the current {market_data.symbol} market regime and provide classification.
 
 **Current Market Data:**
@@ -197,14 +210,14 @@ Volatility Metrics:
 - ATR(14): {market_data.atr:.2f}
 
 Trend Indicators:
-- SMA(20): ${market_data.sma_20:.2f if market_data.sma_20 else 'N/A'}
-- SMA(50): ${market_data.sma_50:.2f if market_data.sma_50 else 'N/A'}
-- EMA(21): ${market_data.ema_21:.2f if market_data.ema_21 else 'N/A'}
-- Price vs SMA(20): {'Above' if market_data.sma_20 and market_data.current_price > market_data.sma_20 else 'Below'}
+- SMA(20): ${sma_20}
+- SMA(50): ${sma_50}
+- EMA(21): ${ema_21}
+- Price vs SMA(20): {versus_sma}
 
 Correlations:
 - {market_data.symbol} vs SPY: {market_data.nq_spy_corr:.2f}
-- {market_data.symbol} vs BTC: {market_data.nq_btc_corr:.2f if market_data.nq_btc_corr else 'N/A'}
+- {market_data.symbol} vs BTC: {btc_corr}
 
 Session: {market_data.session}
 
@@ -375,10 +388,12 @@ async def classify_current_regime(symbol: str = "NQ") -> RegimeAnalysis:
         Regime analysis
     """
     # Get current market data
+    from src.analysis.yahoo_bars import bars_frame
     from src.api.yahoo_client import YahooFinanceClient
+
     client = YahooFinanceClient()
 
-    df = client.get_historical_data(symbol, period='1d', interval='5m')
+    df = bars_frame(client, symbol, period="5d", interval="5m")
 
     if df.empty:
         raise ValueError(f"No data available for {symbol}")
@@ -394,7 +409,7 @@ async def classify_current_regime(symbol: str = "NQ") -> RegimeAnalysis:
     avg_volume = int(df['volume'].mean())
 
     # Get VIX
-    vix_df = client.get_historical_data('^VIX', period='1d', interval='1d')
+    vix_df = bars_frame(client, "^VIX", period="5d", interval="1d")
     vix = float(vix_df['close'].iloc[-1]) if not vix_df.empty else 20.0
 
     # Calculate indicators
@@ -407,7 +422,7 @@ async def classify_current_regime(symbol: str = "NQ") -> RegimeAnalysis:
     atr = float(df_with_ind['atr'].iloc[-1])
 
     # Correlation with SPY
-    spy_df = client.get_historical_data('SPY', period='1d', interval='5m')
+    spy_df = bars_frame(client, "SPY", period="5d", interval="5m")
     if not spy_df.empty:
         nq_returns = df['close'].pct_change().dropna()
         spy_returns = spy_df['close'].pct_change().dropna()

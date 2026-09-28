@@ -12,6 +12,7 @@ from datetime import datetime
 from loguru import logger
 
 from ..analysis.ict_signal_generator import ICTSignalGenerator
+from ..analysis.yahoo_bars import bars_frame
 from ..api.yahoo_client import YahooFinanceClient
 
 # Create router for ICT endpoints
@@ -73,7 +74,7 @@ async def analyze_ict_concepts(request: ICTAnalysisRequest):
         interval = interval_map.get(request.timeframe, '5m')
         period = period_map.get(request.timeframe, '5d')
 
-        candles = client.get_bars(request.symbol, period=period, interval=interval)
+        candles = bars_frame(client, request.symbol, period=period, interval=interval)
 
         if candles is None or candles.empty:
             return MarketResponse(
@@ -187,7 +188,7 @@ async def generate_ict_signals(request: ICTAnalysisRequest):
         interval = interval_map.get(request.timeframe, '5m')
         period = period_map.get(request.timeframe, '5d')
 
-        candles = client.get_bars(request.symbol, period=period, interval=interval)
+        candles = bars_frame(client, request.symbol, period=period, interval=interval)
 
         if candles is None or candles.empty:
             return MarketResponse(
@@ -269,7 +270,7 @@ async def quick_ict_scan(symbol: str):
     """
     try:
         client = YahooFinanceClient()
-        candles = client.get_bars(symbol, period='5d', interval='5m')
+        candles = bars_frame(client, symbol, period='5d', interval='5m')
 
         if candles is None or candles.empty:
             return MarketResponse(
