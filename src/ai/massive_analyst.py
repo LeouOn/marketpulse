@@ -1,8 +1,9 @@
 """
-AI Trading Analyst powered by Massive.com MCP + Claude 4
+AI Trading Analyst powered by Massive.com MCP + the app's configured LLM
 
-Combines institutional-grade market data from Massive.com with Claude 4's
-reasoning capabilities and MarketPulse's technical analysis systems.
+Combines institutional-grade market data from Massive.com with the reasoning
+capability of whichever provider the app is configured to use (MiniMax by
+default) and MarketPulse's technical analysis systems.
 
 Features:
 - Natural language queries for market analysis
@@ -22,6 +23,8 @@ from loguru import logger
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -49,6 +52,74 @@ def _flatten_yahoo_bars(df):
     if columns.duplicated().any():
         out = out.loc[:, ~columns.duplicated()]
     return out
+
+
+@dataclass(frozen=True)
+class ProviderSpec:
+    """The LLM the analyst should talk to, resolved from app configuration."""
+
+    name: str
+    base_url: str
+    api_key: str
+    model: str
+    env_var: str
+
+
+# OpenRouter's config block has no model field, so mirror the default the rest of
+# the app already uses for that provider.
+_OPENROUTER_DEFAULT_MODEL = "openai/gpt-4o-mini"
+
+
+def _resolve_provider(settings) -> ProviderSpec:
+    """Pick the LLM the analyst uses: whatever the app is configured to use.
+
+    Every provider the app supports speaks the OpenAI chat-completions API, so
+    they differ only in host, key and model id. Reading the choice from
+    ``llm.model_routing.primary_provider`` is what keeps the analyst from
+    drifting back to a hard-coded vendor when the app's default changes.
+    """
+    llm = settings.llm
+    name = (llm.model_routing.primary_provider or "").strip().lower()
+
+    if name == "minimax":
+        cfg = llm.minimax
+        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model, "MINIMAX_API_KEY")
+    elif name == "deepseek":
+        cfg = llm.deepseek
+        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model_pro, "DEEPSEEK_API_KEY")
+    elif name == "openrouter":
+        cfg = llm.fallback
+        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, _OPENROUTER_DEFAULT_MODEL, "OPENROUTER_API_KEY")
+    elif name in ("lm_studio", "local", "primary"):
+        cfg = llm.primary
+        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model, "(no key needed for a local model)")
+    else:
+        raise ValueError(
+            f"Unsupported llm.model_routing.primary_provider={name!r}; "
+            f"expected one of: minimax, deepseek, openrouter, lm_studio"
+        )
+
+    key = (spec.api_key or "").strip()
+    if not key or "your_" in key.lower():
+        raise ValueError(
+            f"{spec.name} API key required (set {spec.env_var}) -- the analyst now uses the "
+            f"app's configured LLM provider instead of a hard-coded Anthropic model"
+        )
+    if not (spec.model or "").strip():
+        raise ValueError(
+            f"No model id configured for provider {spec.name!r}; set the matching "
+            f"llm.<provider>.model value"
+        )
+
+    return spec
+
+
+def _build_model(spec: ProviderSpec) -> OpenAIChatModel:
+    """A pydantic-ai model bound to this provider's host and key."""
+    return OpenAIChatModel(
+        spec.model,
+        provider=OpenAIProvider(base_url=spec.base_url, api_key=spec.api_key),
+    )
 
 
 def _to_model_messages(history: list[dict[str, str]]) -> list[ModelMessage]:
@@ -85,34 +156,42 @@ class TradingContext:
 
 class MassiveAIAnalyst:
     """
-    AI Trading Analyst using Massive.com data + Claude 4
+    AI Trading Analyst using Massive.com data + the configured LLM provider
 
     Combines:
     - Massive.com's institutional-grade market data (via MCP server)
-    - Claude 4's advanced reasoning
+    - the configured provider's reasoning (MiniMax by default)
     - MarketPulse's technical analysis (divergences, ICT, risk management)
     """
 
     def __init__(
         self,
         massive_api_key: Optional[str] = None,
-        anthropic_api_key: Optional[str] = None
+        settings: Optional[Any] = None,
+        provider: Optional[ProviderSpec] = None,
     ):
         """
         Initialize AI analyst
 
         Args:
             massive_api_key: Massive.com API key (or from env MASSIVE_API_KEY)
-            anthropic_api_key: Anthropic API key (or from env ANTHROPIC_API_KEY)
+            settings: App settings; read from get_settings() when omitted
+            provider: Override the resolved provider (mainly for tests)
         """
+        from src.core.config import get_settings
+
+        self.settings = settings or get_settings()
+
+        # Follow the app's configured provider instead of demanding an Anthropic key.
+        self.provider = provider or _resolve_provider(self.settings)
+        self.model = _build_model(self.provider)
+
         self.massive_api_key = massive_api_key or os.getenv('MASSIVE_API_KEY')
-        self.anthropic_api_key = anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
 
         if not self.massive_api_key:
             logger.warning("No Massive.com API key found - MCP server features disabled")
 
-        if not self.anthropic_api_key:
-            raise ValueError("Anthropic API key required (set ANTHROPIC_API_KEY)")
+        logger.info(f"AI analyst using {self.provider.name}/{self.provider.model}")
 
         # Initialize our technical analysis systems
         self.risk_manager = RiskManager()
@@ -210,7 +289,7 @@ class MassiveAIAnalyst:
 
         # Create agent
         self.agent = Agent(
-            model="anthropic:claude-sonnet-4-20250514",  # Claude 4 Sonnet
+            model=self.model,
             toolsets=toolsets,
             # `instructions=` is the pydantic-ai 2.x parameter. The legacy
             # `system_prompt=` still reaches the model, but as a separate
@@ -218,7 +297,7 @@ class MassiveAIAnalyst:
             instructions=system_prompt
         )
 
-        logger.info("AI agent created with Claude 4")
+        logger.info(f"AI agent created on {self.provider.name}/{self.provider.model}")
         return self.agent
 
     async def analyze_with_marketpulse(
@@ -506,7 +585,7 @@ class MassiveAIAnalyst:
         """Run interactive Q&A session"""
         console.print(Panel(
             "[bold green]AI Trading Analyst[/bold green]\n\n"
-            "Powered by Massive.com + Claude 4 + MarketPulse\n\n"
+            f"Powered by Massive.com + {self.provider.name} + MarketPulse\n\n"
             "Ask questions about markets, get trade recommendations, or analyze symbols.\n"
             "Type 'exit' to quit.",
             border_style="green"

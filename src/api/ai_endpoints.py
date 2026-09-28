@@ -241,9 +241,14 @@ async def get_ai_status():
 
         import os
         status = {
-            "massive_api_configured": bool(os.getenv('MASSIVE_API_KEY')),
+            # The provider the analyst actually talks to, resolved from app config.
+            "provider": analyst.provider.name,
+            "model": analyst.provider.model,
+            "base_url": analyst.provider.base_url,
+            "provider_api_configured": bool(analyst.provider.api_key),
+            # Kept so anything still reading the old field keeps working.
             "anthropic_api_configured": bool(os.getenv('ANTHROPIC_API_KEY')),
-            "agent_initialized": analyst.agent is not None,
+            "massive_api_configured": bool(os.getenv('MASSIVE_API_KEY')),
             "message_history_length": len(analyst.message_history),
             "features": {
                 "divergence_detection": True,
@@ -269,77 +274,84 @@ async def ai_home():
     """AI Trading Analyst home page"""
     from fastapi.responses import HTMLResponse
 
-    html = """
+    # Name the configured provider rather than a vendor that may not be in use.
+    try:
+        provider_spec = get_analyst().provider
+        provider, env_var = provider_spec.name, provider_spec.env_var
+    except Exception:
+        provider, env_var = "the configured LLM provider", "MINIMAX_API_KEY"
+
+    html = f"""
 <!DOCTYPE html>
 <html>
 <head>
     <title>AI Trading Analyst</title>
     <style>
-        body {
+        body {{
             font-family: Arial, sans-serif;
             background-color: #1e1e1e;
             color: #e0e0e0;
             padding: 40px;
-        }
-        .container {
+        }}
+        .container {{
             max-width: 1200px;
             margin: 0 auto;
-        }
-        h1 {
+        }}
+        h1 {{
             color: #26a69a;
             text-align: center;
-        }
-        .description {
+        }}
+        .description {{
             text-align: center;
             color: #888;
             margin-bottom: 40px;
-        }
-        .feature-grid {
+        }}
+        .feature-grid {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 20px;
             margin-top: 30px;
-        }
-        .feature-card {
+        }}
+        .feature-card {{
             background-color: #2d2d2d;
             padding: 25px;
             border-radius: 10px;
             border-left: 4px solid #26a69a;
-        }
-        .feature-card h3 {
+        }}
+        .feature-card h3 {{
             color: #26a69a;
             margin-top: 0;
-        }
-        .endpoint {
+        }}
+        .endpoint {{
             background-color: #1e1e1e;
             padding: 12px;
             border-radius: 5px;
             margin-top: 12px;
             font-family: monospace;
             font-size: 13px;
-        }
-        .endpoint a {
+        }}
+        .endpoint a {{
             color: #64b5f6;
             text-decoration: none;
-        }
-        .info-box {
+        }}
+        .info-box {{
             background-color: #2d2d2d;
             padding: 25px;
             border-radius: 10px;
             margin-top: 30px;
             border-left: 4px solid #FFD700;
-        }
-        .info-box h3 {
+        }}
+        .info-box h3 {{
             color: #FFD700;
             margin-top: 0;
-        }
+        }}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🤖 AI Trading Analyst</h1>
         <div class="description">
-            <p>Powered by Massive.com + Claude 4 + MarketPulse</p>
+            <p>Powered by Massive.com + {provider} + MarketPulse</p>
             <p>Natural language interface for institutional-grade market analysis</p>
         </div>
 
@@ -350,7 +362,7 @@ async def ai_home():
                 <div class="endpoint">
                     POST /api/ai/query<br>
                     <a href="/api/ai/query/AAPL?question=Should I buy this stock?" target="_blank">
-                        GET /api/ai/query/{symbol}
+                        GET /api/ai/query/{{symbol}}
                     </a>
                 </div>
             </div>
@@ -360,7 +372,7 @@ async def ai_home():
                 <p>Get complete trade setups with entry, stop, and target</p>
                 <div class="endpoint">
                     <a href="/api/ai/recommend/AAPL" target="_blank">
-                        GET /api/ai/recommend/{symbol}
+                        GET /api/ai/recommend/{{symbol}}
                     </a>
                 </div>
             </div>
@@ -424,7 +436,7 @@ async def ai_home():
             <ol>
                 <li>Set environment variables:
                     <pre>MASSIVE_API_KEY=your_key
-ANTHROPIC_API_KEY=your_key</pre>
+{env_var}=your_key</pre>
                 </li>
                 <li>Query the AI:
                     <pre>curl "http://localhost:8000/api/ai/query/AAPL?question=Should+I+buy+this?"</pre>

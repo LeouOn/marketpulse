@@ -7,6 +7,8 @@ constructed (never spawned) so its command/args/env stay asserted.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -30,15 +32,27 @@ def _no_ambient_keys(monkeypatch):
         monkeypatch.delenv(var, raising=False)
 
 
+def _settings(primary_provider: str = "minimax", **overrides):
+    """Real LLMSettings with the provider bits pinned, so nothing leaks in from .env."""
+    from src.core.config import get_settings
+
+    settings = get_settings()
+    settings.llm.model_routing.primary_provider = primary_provider
+    for dotted, value in overrides.items():
+        section, _, field = dotted.partition("__")
+        setattr(getattr(settings.llm, section), field, value)
+    return settings
+
+
 def _analyst(**kwargs) -> MassiveAIAnalyst:
-    return MassiveAIAnalyst(anthropic_api_key="test-anthropic-key", **kwargs)
+    """An analyst on a fake-keyed provider, so tests never touch a real endpoint."""
+    return MassiveAIAnalyst(settings=_settings(minimax__api_key="minimax-key"), **kwargs)
 
 
 @pytest.fixture
 def anthropic_env(monkeypatch):
-    """pydantic-ai builds the Anthropic provider eagerly, so the key must be in the env."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
-    return "test-anthropic-key"
+    """Kept for tests that assert the Anthropic path is no longer required."""
+    return None
 
 
 def _capture_model_requests(agent) -> list[ModelRequest]:
@@ -67,10 +81,12 @@ def _user_prompt_text(requests) -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_analyst_requires_anthropic_key():
-    """Without an Anthropic key the analyst refuses to build, naming the env var."""
-    with pytest.raises(ValueError, match="Anthropic API key required"):
-        MassiveAIAnalyst()
+def test_analyst_requires_a_key_for_its_configured_provider():
+    """No usable key for the provider it resolved -> refuse, and say which var to set."""
+    settings = _settings("minimax", minimax__api_key="")
+
+    with pytest.raises(ValueError, match="minimax API key required"):
+        MassiveAIAnalyst(settings=settings)
 
 
 def test_analyst_builds_without_massive_key():
@@ -82,15 +98,13 @@ def test_analyst_builds_without_massive_key():
     assert analyst.ict_analyzer is not None
 
 
-def test_analyst_reads_keys_from_environment(monkeypatch):
-    """Keys may come from the environment instead of constructor arguments."""
+def test_analyst_reads_the_massive_key_from_the_environment(monkeypatch):
+    """The Massive key stays an env concern; only the LLM moved to app settings."""
     monkeypatch.setenv("MASSIVE_API_KEY", "env-massive-key")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "env-anthropic-key")
 
-    analyst = MassiveAIAnalyst()
+    analyst = MassiveAIAnalyst(settings=_settings(minimax__api_key="minimax-key"))
 
     assert analyst.massive_api_key == "env-massive-key"
-    assert analyst.anthropic_api_key == "env-anthropic-key"
 
 
 # ---------------------------------------------------------------------------
@@ -287,23 +301,14 @@ def status_client(monkeypatch):
     return TestClient(app, raise_server_exceptions=False)
 
 
-def test_status_endpoint_explains_the_missing_anthropic_key(status_client):
-    """`/api/ai/status` must tell the operator exactly which key is missing."""
-    response = status_client.get("/api/ai/status")
-
-    assert response.status_code == 500
-    assert "Anthropic API key required" in response.json()["detail"]
-
-
 def test_status_endpoint_reports_configured_state(status_client, monkeypatch):
     monkeypatch.setenv("MASSIVE_API_KEY", "massive-key-123")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key-123")
 
     response = status_client.get("/api/ai/status")
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["anthropic_api_configured"] is True
+    assert data["provider_api_configured"] is True
     assert data["massive_api_configured"] is True
     assert data["features"]["massive_mcp_server"] is True
 
@@ -350,3 +355,210 @@ def test_trading_context_defaults():
 
     assert context.symbol == "AAPL"
     assert context.risk_per_trade == 0.02
+
+
+# ===========================================================================
+# Provider selection: the analyst follows the app's configured default
+# ===========================================================================
+
+
+def test_analyst_uses_the_configured_primary_provider():
+    """No Anthropic key involved: MiniMax is the configured default and it is used."""
+    analyst = MassiveAIAnalyst(
+        settings=_settings("minimax", minimax__api_key="minimax-key", minimax__model="MiniMax-M3")
+    )
+
+    assert analyst.provider.name == "minimax"
+    assert analyst.provider.model == "MiniMax-M3"
+
+
+def test_analyst_needs_no_anthropic_key(monkeypatch):
+    """The old hard blocker is gone: a MiniMax key is enough to build the analyst."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    analyst = MassiveAIAnalyst(
+        settings=_settings("minimax", minimax__api_key="minimax-key")
+    )
+
+    assert analyst.provider.api_key == "minimax-key"
+
+
+def test_analyst_model_targets_the_configured_base_url():
+    """The model must point at the provider's own host, not api.anthropic.com."""
+    analyst = MassiveAIAnalyst(
+        settings=_settings(
+            "minimax", minimax__api_key="k", minimax__base_url="https://api.minimax.io/v1"
+        )
+    )
+
+    assert analyst.model.base_url.startswith("https://api.minimax.io/v1")
+    assert analyst.model.model_name == "MiniMax-M3"
+
+
+def test_analyst_follows_a_different_configured_provider():
+    """If the app's default changes, the analyst must follow it, not stay hard-coded."""
+    analyst = MassiveAIAnalyst(
+        settings=_settings("deepseek", deepseek__api_key="ds-key", deepseek__model_pro="deepseek-v4-pro")
+    )
+
+    assert analyst.provider.name == "deepseek"
+    assert analyst.provider.model == "deepseek-v4-pro"
+    assert analyst.model.base_url.startswith("https://api.deepseek.com")
+
+
+def test_analyst_rejects_an_unknown_provider():
+    with pytest.raises(ValueError, match="primary_provider"):
+        MassiveAIAnalyst(settings=_settings("not-a-provider", minimax__api_key="k"))
+
+
+@pytest.mark.parametrize(
+    "provider,env_var",
+    [("minimax", "MINIMAX_API_KEY"), ("deepseek", "DEEPSEEK_API_KEY")],
+)
+def test_missing_key_names_the_provider_and_its_env_var(provider, env_var):
+    """The error must say which provider failed and which variable to set."""
+    settings = _settings(provider)
+    settings.llm.minimax.api_key = ""
+    settings.llm.deepseek.api_key = ""
+
+    with pytest.raises(ValueError) as exc:
+        MassiveAIAnalyst(settings=settings)
+
+    message = str(exc.value)
+    assert provider in message
+    assert env_var in message
+
+
+def test_placeholder_key_is_treated_as_missing():
+    settings = _settings("minimax", minimax__api_key="your_minimax_api_key")
+
+    with pytest.raises(ValueError, match="MINIMAX_API_KEY"):
+        MassiveAIAnalyst(settings=settings)
+
+
+async def test_agent_runs_on_the_configured_model():
+    """The agent is wired to the provider model, not to a Claude string."""
+    analyst = MassiveAIAnalyst(
+        settings=_settings("minimax", minimax__api_key="minimax-key")
+    )
+
+    agent = await analyst.create_agent()
+
+    assert agent.model is analyst.model
+    requests = _capture_model_requests(agent)
+    await analyst.query("Anything", include_technical_analysis=False)
+    assert requests, "the configured model should have been called"
+
+
+# ===========================================================================
+# /api/ai/status must describe the provider actually in use
+# ===========================================================================
+
+
+def test_status_reports_the_provider_in_use(status_client):
+    from src.api import ai_endpoints
+
+    analyst = MassiveAIAnalyst(
+        settings=_settings("minimax", minimax__api_key="minimax-key")
+    )
+    ai_endpoints.analyst = analyst
+
+    data = status_client.get("/api/ai/status").json()["data"]
+
+    assert data["provider"] == "minimax"
+    assert data["model"] == "MiniMax-M3"
+    assert data["provider_api_configured"] is True
+
+
+def test_status_works_without_an_anthropic_key(status_client):
+    """The endpoint must not be dark when only the app's default provider is keyed."""
+    data = status_client.get("/api/ai/status").json()["data"]
+
+    assert data["provider"] == "minimax"
+    assert data["provider_api_configured"] is True
+    # Kept for anything still reading the old field.
+    assert "anthropic_api_configured" in data
+
+
+def test_status_explains_a_missing_key_for_the_configured_provider(status_client):
+    """Same job as before -- name the variable to set -- but for the real provider."""
+    from src.api import ai_endpoints
+
+    ai_endpoints.analyst = None
+    settings = _settings("minimax")
+    settings.llm.minimax.api_key = ""
+    settings.llm.deepseek.api_key = ""
+
+    import src.core.config as config_mod
+
+    original = config_mod.get_settings
+    config_mod.get_settings = lambda: settings
+    try:
+        response = status_client.get("/api/ai/status")
+    finally:
+        config_mod.get_settings = original
+
+    assert response.status_code == 500
+    assert "minimax" in response.json()["detail"]
+    assert "MINIMAX_API_KEY" in response.json()["detail"]
+
+
+# ===========================================================================
+# Live: the whole point of the switch is that it actually works
+# ===========================================================================
+
+
+_LIVE = os.getenv("RUN_LIVE_TESTS", "") == "1"
+_skip_live = pytest.mark.skipif(not _LIVE, reason="Set RUN_LIVE_TESTS=1 to run live provider calls.")
+
+
+@_skip_live
+@pytest.mark.live
+async def test_live_analyst_answers_on_the_configured_provider():
+    """A real call on the app's default provider -- no Anthropic key anywhere."""
+    from src.core.config import get_settings
+
+    analyst = MassiveAIAnalyst(settings=get_settings())
+
+    # query() builds the agent on first use, which is the real path.
+    answer = await analyst.query("In one short sentence: what is a stop loss?", include_technical_analysis=False)
+
+    assert isinstance(answer, str)
+    assert answer.strip()
+    assert "<think>" not in answer, "the answer leaked the model's inline reasoning"
+    assert "API key required" not in answer
+
+
+@_skip_live
+@pytest.mark.live
+async def test_live_analyst_can_call_a_tool():
+    """Tool calling is the reason to switch: the Massive MCP data tools need it.
+
+    The model comes from the analyst so this exercises the exact object the
+    production endpoints use; only the toolset is supplied here, standing in for
+    the Massive MCP server, which needs a key and a github.com fetch.
+    """
+    from pydantic_ai import Agent
+    from pydantic_ai.toolsets.function import FunctionToolset
+
+    from src.ai.massive_analyst import MassiveAIAnalyst
+    from src.core.config import get_settings
+
+    analyst = MassiveAIAnalyst(settings=get_settings())
+
+    called = {}
+
+    def get_quote(symbol: str) -> str:
+        """Return the latest price for a symbol."""
+        called["symbol"] = symbol
+        return "SPY 601.20"
+
+    toolset = FunctionToolset()
+    toolset.tool_plain(get_quote)
+
+    agent = Agent(analyst.model, toolsets=[toolset], instructions="You are a market analyst.")
+
+    result = await agent.run("What is the latest price for SPY?")
+
+    assert called.get("symbol") == "SPY", f"the model never called the tool (said: {result.output[:120]!r})"
+    assert "601" in result.output
