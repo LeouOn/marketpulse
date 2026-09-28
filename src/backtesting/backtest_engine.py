@@ -235,7 +235,12 @@ class BacktestEngine:
             else:
                 period = '1y'
 
-            df = client.get_historical_data(symbol, period=period, interval=yf_interval)
+            from src.analysis.yahoo_bars import bars_frame
+
+            df = bars_frame(client, symbol, period=period, interval=yf_interval)
+            if df.empty:
+                logger.error(f"No Yahoo bars for {symbol} ({period} {yf_interval})")
+                return pd.DataFrame()
 
             # Filter to date range
             df = df.loc[start_date:end_date]
