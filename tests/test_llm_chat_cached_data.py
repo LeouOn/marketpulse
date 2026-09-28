@@ -4,18 +4,43 @@ Verifies that:
 1. _get_cached_market_context() properly formats market internals
 2. chat_with_llm includes cached market data in messages
 3. Frontend context generation maps dashboard data correctly (conceptual)
+
+Seams (updated for the deps refactor, T2b):
+- the collector lives on ``src.api.routers.deps.collector`` (no longer a
+  module global ``_collector`` in ``routers/llm.py``)
+- ``chat_with_llm`` obtains its LLM client via ``_get_router()`` +
+  ``router.route("standard")`` (not the legacy ``_get_llm_client`` helper)
 """
 
 import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 async def _run(fn, *args):
     return await fn(*args)
+
+
+def _capture_client(captured_messages, reply="Analysis here"):
+    """Build a fake router whose routed client records every request."""
+    client = AsyncMock()
+
+    def capture_completion(**kwargs):
+        captured_messages.extend(kwargs.get("messages", []))
+        return {"choices": [{"message": {"content": reply}}]}
+
+    client.generate_completion.side_effect = capture_completion
+
+    router = AsyncMock()
+    router.route.return_value = (client, "test-model")
+
+    async def _fake_get_router():
+        return router
+
+    return _fake_get_router
 
 
 def test_get_cached_market_context_formats_internals():
@@ -34,7 +59,7 @@ def test_get_cached_market_context_formats_internals():
         "data_quality": "good",
     }
 
-    with patch("src.api.routers.llm._collector", mock_collector):
+    with patch("src.api.routers.deps.collector", mock_collector):
         result = asyncio.run(_get_cached_market_context())
 
     assert "[LIVE MARKET DATA from cache]" in result
@@ -57,7 +82,7 @@ def test_get_cached_market_context_returns_empty_when_no_collector():
     """Should return empty string if collector is None."""
     from src.api.routers.llm import _get_cached_market_context
 
-    with patch("src.api.routers.llm._collector", None):
+    with patch("src.api.routers.deps.collector", None):
         result = asyncio.run(_get_cached_market_context())
 
     assert result == ""
@@ -71,7 +96,7 @@ def test_get_cached_market_context_handles_empty_internals():
     mock_collector = AsyncMock()
     mock_collector.collect_market_internals.return_value = None
 
-    with patch("src.api.routers.llm._collector", mock_collector):
+    with patch("src.api.routers.deps.collector", mock_collector):
         result = asyncio.run(_get_cached_market_context())
 
     assert result == ""
@@ -88,7 +113,7 @@ def test_get_cached_market_context_handles_partial_data():
         "vix": {"price": 18.50, "change": -0.75, "change_pct": -3.89, "volume": 0},
     }
 
-    with patch("src.api.routers.llm._collector", mock_collector):
+    with patch("src.api.routers.deps.collector", mock_collector):
         result = asyncio.run(_get_cached_market_context())
 
     assert "SPY (S&P 500)" in result
@@ -104,7 +129,7 @@ def test_get_cached_market_context_handles_exception():
     mock_collector = AsyncMock()
     mock_collector.collect_market_internals.side_effect = Exception("Redis connection failed")
 
-    with patch("src.api.routers.llm._collector", mock_collector):
+    with patch("src.api.routers.deps.collector", mock_collector):
         result = asyncio.run(_get_cached_market_context())
 
     assert result == ""
@@ -126,20 +151,14 @@ def test_chat_endpoint_includes_cached_market_data():
 
     captured_messages = []
 
-    mock_client_instance = AsyncMock()
-    mock_client_instance.get_active_model.return_value = "test-model"
-    mock_client_instance.session = MagicMock()
-    mock_client_instance.session.closed = False
-
-    def capture_completion(**kwargs):
-        captured_messages.extend(kwargs.get("messages", []))
-        return {"choices": [{"message": {"content": "SPY is at $450.25, up 0.48%"}}]}
-
-    mock_client_instance.generate_completion.side_effect = capture_completion
+    get_router = _capture_client(
+        captured_messages, reply="SPY is at $450.25, up 0.48%"
+    )
 
     with (
-        patch("src.api.routers.llm._collector", mock_collector),
-        patch("src.api.routers.llm._get_llm_client", return_value=mock_client_instance),
+        patch("src.api.routers.deps.collector", mock_collector),
+        patch("src.api.routers.llm._get_router", new=get_router),
+        patch("src.api.routers.llm._selected_model", None),
     ):
         request = ChatRequest(
             message="What is SPY doing today?",
@@ -175,16 +194,7 @@ def test_chat_endpoint_includes_frontend_context_plus_cached():
 
     captured_messages = []
 
-    mock_client_instance = AsyncMock()
-    mock_client_instance.get_active_model.return_value = "test-model"
-    mock_client_instance.session = MagicMock()
-    mock_client_instance.session.closed = False
-
-    def capture_completion(**kwargs):
-        captured_messages.extend(kwargs.get("messages", []))
-        return {"choices": [{"message": {"content": "Analysis here"}}]}
-
-    mock_client_instance.generate_completion.side_effect = capture_completion
+    get_router = _capture_client(captured_messages, reply="Analysis here")
 
     frontend_context = {
         "market_bias": "BULLISH",
@@ -195,8 +205,9 @@ def test_chat_endpoint_includes_frontend_context_plus_cached():
     }
 
     with (
-        patch("src.api.routers.llm._collector", mock_collector),
-        patch("src.api.routers.llm._get_llm_client", return_value=mock_client_instance),
+        patch("src.api.routers.deps.collector", mock_collector),
+        patch("src.api.routers.llm._get_router", new=get_router),
+        patch("src.api.routers.llm._selected_model", None),
     ):
         request = ChatRequest(
             message="How is SPY trending?",
@@ -223,20 +234,12 @@ def test_chat_endpoint_works_without_collector():
 
     captured_messages = []
 
-    mock_client_instance = AsyncMock()
-    mock_client_instance.get_active_model.return_value = "test-model"
-    mock_client_instance.session = MagicMock()
-    mock_client_instance.session.closed = False
-
-    def capture_completion(**kwargs):
-        captured_messages.extend(kwargs.get("messages", []))
-        return {"choices": [{"message": {"content": "General response"}}]}
-
-    mock_client_instance.generate_completion.side_effect = capture_completion
+    get_router = _capture_client(captured_messages, reply="General response")
 
     with (
-        patch("src.api.routers.llm._collector", None),
-        patch("src.api.routers.llm._get_llm_client", return_value=mock_client_instance),
+        patch("src.api.routers.deps.collector", None),
+        patch("src.api.routers.llm._get_router", new=get_router),
+        patch("src.api.routers.llm._selected_model", None),
     ):
         request = ChatRequest(
             message="What is a moving average?",
