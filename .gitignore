@@ -91,6 +91,13 @@ data/yahoo_cache/
 data/eia_cache/
 data/rag_cache/
 
+# Writable data cache root (T3b): tracked data/ files are read-only seeds;
+# all runtime writes land under data/cache/ so the repo stays clean.
+data/cache/
+
+# Generated research reports (T3b)
+reports/
+
 # Docker
 .omo/
 

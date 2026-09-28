@@ -35,6 +35,8 @@ from tenacity import (
 
 from src.research.data import DataPipelineError, DataProvider
 from src.research.data._eia_key import get_eia_api_key
+from src.research.data._paths import cache_dir as _cache_dir
+from src.research.data._paths import seed_file as _seed_file
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -85,7 +87,7 @@ class EiaProvider(DataProvider):
     def __init__(
         self,
         api_key: str | None = None,
-        cache_dir: Path = EIA_DEFAULT_CACHE_DIR,
+        cache_dir: Path | None = None,
         max_staleness_days: int = 7,
         series_id: str = "PET.RWTC.D",
         timeout: int = EIA_TIMEOUT,
@@ -95,7 +97,13 @@ class EiaProvider(DataProvider):
     ) -> None:
         # Fail fast on missing API key — mirrors _fred_key.py (T1 pattern).
         self.api_key: str = api_key if api_key is not None else get_eia_api_key()
-        self.cache_dir: Path = Path(cache_dir)
+        # Default cache lives under the writable cache root (T3b), seeded
+        # from the tracked data/eia_cache parquets on first use; an
+        # explicit cache_dir is caller-managed and never seeded.
+        self._seeded_cache_root: bool = cache_dir is None
+        self.cache_dir: Path = (
+            _cache_dir("eia_cache") if cache_dir is None else Path(cache_dir)
+        )
         self.max_staleness_days: int = max_staleness_days
         # Default series used by load_daily() — WTI spot daily.
         self.series_id: str = series_id
@@ -105,6 +113,12 @@ class EiaProvider(DataProvider):
         self.retry_max_wait: float = retry_max_wait
         # Ensure cache dir exists for writes; reads tolerate missing files.
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _cache_path(self, series_id: str) -> Path:
+        """Cache file for a series; seeded from the tracked twin if default."""
+        if self._seeded_cache_root:
+            return _seed_file(f"eia_cache/{series_id}.parquet")
+        return self.cache_dir / f"{series_id}.parquet"
 
     # ------------------------------------------------------------------
     # DataProvider ABC contract
@@ -150,7 +164,7 @@ class EiaProvider(DataProvider):
                 f"Supported (oil only): {sorted(self.SUPPORTED_SERIES)}"
             )
 
-        cache_path = self.cache_dir / f"{series_id}.parquet"
+        cache_path = self._cache_path(series_id)
 
         # Fresh cache → serve without network.
         if self._cache_is_fresh(cache_path):

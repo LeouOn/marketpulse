@@ -5,7 +5,8 @@ Source: https://alternative.me/crypto/fear-and-greed-index/
 The API endpoint ``https://api.alternative.me/fng/?limit=0`` returns ALL
 available daily FGI values (≈2 000+ days, starting from 2018-02-01).
 
-Output: local CSV at ``data/btc/fear_greed.csv`` with columns
+Output: cached CSV under ``data/cache/btc/fear_greed.csv`` (T3b; the
+tracked ``data/btc/fear_greed.csv`` is a read-only seed) with columns
 ``ts, fgi_value, classification``.
 """
 
@@ -18,14 +19,22 @@ import pandas as pd
 import requests
 from loguru import logger
 
+from src.research.data._paths import cache_dir as _cache_dir
+from src.research.data._paths import seed_file as _seed_cache_file
+
 # ---------------------------------------------------------------------------
 # Paths and constants
 # ---------------------------------------------------------------------------
 
-DATA_DIR = Path("data/btc")
+DATA_DIR = _cache_dir("btc")  # writable cache (T3b); tracked twin is a seed
 FGI_CSV = DATA_DIR / "fear_greed.csv"
 FGI_API_URL = "https://api.alternative.me/fng/?limit=0"
 REQ_TIMEOUT = 30
+
+
+def _seed_fgi_cache() -> None:
+    """Copy the tracked ``data/btc/fear_greed.csv`` seed on first use (T3b)."""
+    _seed_cache_file("btc/fear_greed.csv")
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +83,7 @@ def fetch_fear_greed(force: bool = False) -> pd.DataFrame:
         ``classification`` (string).
     """
     # Return cached data if available and not forced.
+    _seed_fgi_cache()
     if not force and FGI_CSV.exists():
         cached = _read_cache(FGI_CSV)
         if not cached.empty:

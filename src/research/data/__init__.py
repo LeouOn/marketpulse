@@ -13,7 +13,9 @@ The loader is **idempotent**: each run only fetches bars newer than the
 last cached bar (or fills gaps). All network calls are wrapped in a
 ``tenacity`` retry with exponential backoff + jitter.
 
-Output: local CSV at ``data/btc/{daily,hourly}.csv``.
+Output: cached CSV under ``data/cache/btc/`` (T3b; the tracked
+``data/btc/daily.csv`` is a read-only seed copied into the cache on
+first use, so running the app never dirties the repo).
 """
 
 from __future__ import annotations
@@ -35,6 +37,9 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential_jitter,
 )
+
+from src.research.data._paths import cache_dir as _cache_dir
+from src.research.data._paths import seed_file as _seed_cache_file
 
 # ---------------------------------------------------------------------------
 # Multi-asset foundation: DataProvider ABC + AssetConfig + AssetRegistry (T2)
@@ -107,7 +112,7 @@ class AssetConfig:
     """Static configuration for one tradeable asset (Metis spec, T2).
 
     Frozen so registry entries are immutable at runtime. T10 populates
-    the 5 assets (BTC, SP500-equivalent, XAU, DCOILWTICO, Case-Shiller).
+    the 5 assets (BTC, SPY, GLD gold-ETF proxy, DCOILWTICO, Case-Shiller).
 
     Field names are part of the public API -- downstream tasks read them
     directly (e.g. ``cfg.indicator_whitelist`` in T5, ``cfg.publication_lag_days``
@@ -151,9 +156,19 @@ class DataPipelineError(RuntimeError):
 # Paths and constants
 # ---------------------------------------------------------------------------
 
-DATA_DIR = Path("data/btc")
+# Writable cache location (T3b): the tracked ``data/btc/daily.csv`` is a
+# read-only seed, copied into the cache on first use so a fresh checkout
+# works offline; all refreshes write to the cache, never to the seed.
+# Override the cache root with MARKETPULSE_DATA_DIR (see _paths.py).
+DATA_DIR = _cache_dir("btc")
 DAILY_CSV = DATA_DIR / "daily.csv"
-HOURLY_CSV = DATA_DIR / "hourly.csv"
+HOURLY_CSV = DATA_DIR / "hourly.csv"  # never tracked; plain cache path
+
+
+def _seed_btc_caches() -> None:
+    """Copy tracked ``data/btc`` seeds into the writable cache (first use)."""
+    _seed_cache_file("btc/daily.csv")
+    _seed_cache_file("btc/hourly.csv")
 
 # Source-of-record labels stored in CSV ``source`` column.
 SRC_LOCAL = "local"
@@ -655,6 +670,7 @@ def load_daily(
     Raises:
         DataPipelineError: If the fetch fails and no usable cache exists.
     """
+    _seed_btc_caches()
     if force_refresh or not DAILY_CSV.exists():
         try:
             new = fetch_daily_yahoo()
@@ -701,6 +717,7 @@ def load_hourly(
     Raises:
         DataPipelineError: If the fetch fails and no usable cache exists.
     """
+    _seed_btc_caches()
     if force_refresh or not HOURLY_CSV.exists():
         try:
             summary = update_cache(daily=False, hourly=True)

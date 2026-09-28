@@ -17,8 +17,9 @@ Metrics
 
 Output
 ------
-- ``data/btc/mvrv.csv``  — columns ``ts, mvrv_z``
-- ``data/btc/puell.csv``  — columns ``ts, puell``
+- ``data/cache/btc/mvrv.csv``  — columns ``ts, mvrv_z`` (T3b cache; the
+  tracked ``data/btc/mvrv.csv``, if any, is a read-only seed)
+- ``data/cache/btc/puell.csv``  — columns ``ts, puell``
 
 Both fetchers also return a ``source`` column on the in-memory DataFrame
 tagging each row's provenance: ``"real"`` (API-fetched), ``"cache"``
@@ -38,13 +39,22 @@ import pandas as pd
 import requests
 from loguru import logger
 
+from src.research.data._paths import cache_dir as _cache_dir
+from src.research.data._paths import seed_file as _seed_cache_file
+
 # ---------------------------------------------------------------------------
 # Paths and constants
 # ---------------------------------------------------------------------------
 
-DATA_DIR = Path("data/btc")
+DATA_DIR = _cache_dir("btc")  # writable cache (T3b); tracked twin is a seed
 MVRV_CSV = DATA_DIR / "mvrv.csv"
 PUELL_CSV = DATA_DIR / "puell.csv"
+
+
+def _seed_onchain_caches() -> None:
+    """Copy tracked ``data/btc`` on-chain seeds on first use (T3b)."""
+    _seed_cache_file("btc/mvrv.csv")
+    _seed_cache_file("btc/puell.csv")
 
 MVRV_API_URL = (
     "https://api.glassnode.com/v1/metrics/market/mvrv_z_score?a=BTC&i=24h"
@@ -161,6 +171,7 @@ def fetch_mvrv(force: bool = False) -> pd.DataFrame:
         running on synthetic noise.
     """
     # Return cached data if available and not forced.
+    _seed_onchain_caches()
     if not force and MVRV_CSV.exists():
         cached = _read_mvrv_cache(MVRV_CSV)
         if not cached.empty:
@@ -251,6 +262,7 @@ def fetch_puell(force: bool = False) -> pd.DataFrame:
         running on synthetic noise.
     """
     # Return cached data if available and not forced.
+    _seed_onchain_caches()
     if not force and PUELL_CSV.exists():
         cached = _read_puell_cache(PUELL_CSV)
         if not cached.empty:
