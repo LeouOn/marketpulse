@@ -1,8 +1,9 @@
 """
-AI Trading Analyst powered by Massive.com MCP + Claude 4
+AI Trading Analyst powered by Massive.com MCP + the app's configured LLM
 
-Combines institutional-grade market data from Massive.com with Claude 4's
-reasoning capabilities and MarketPulse's technical analysis systems.
+Combines institutional-grade market data from Massive.com with the reasoning
+capability of whichever provider the app is configured to use (MiniMax by
+default) and MarketPulse's technical analysis systems.
 
 Features:
 - Natural language queries for market analysis
@@ -11,20 +12,23 @@ Features:
 - AI-powered trade recommendations with risk validation
 """
 
-import os
 import asyncio
-from typing import Optional, Dict, Any, List
-from datetime import datetime
+import os
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, Optional
 
-from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.mcp import MCPServerStdio
-from rich.console import Console
-from rich.panel import Panel
-from rich.markdown import Markdown
-from rich.table import Table
+from fastmcp.client.transports import StdioTransport
 from loguru import logger
+from pydantic_ai import Agent
+from pydantic_ai.mcp import MCPToolset
+from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.table import Table
 
 # Import our existing analysis systems
 from src.analysis.divergence_detector import scan_for_divergences
@@ -32,8 +36,112 @@ from src.analysis.ict_concepts import ICTAnalyzer
 from src.analysis.risk_manager import RiskManager
 from src.analysis.technical_indicators import TechnicalIndicators, identify_trends
 
-
 console = Console()
+
+
+def _flatten_yahoo_bars(df):
+    """Drop yfinance's ticker column level. Empty in, empty out."""
+    if df is None or getattr(df, "empty", True):
+        return df
+    out = df
+    columns = out.columns
+    if getattr(columns, "nlevels", 1) > 1:
+        out = out.copy()
+        out.columns = [col[0] if isinstance(col, tuple) else col for col in out.columns]
+        columns = out.columns
+    if columns.duplicated().any():
+        out = out.loc[:, ~columns.duplicated()]
+    return out
+
+
+@dataclass(frozen=True)
+class ProviderSpec:
+    """The LLM the analyst should talk to, resolved from app configuration."""
+
+    name: str
+    base_url: str
+    api_key: str
+    model: str
+    env_var: str
+
+
+# OpenRouter's config block has no model field, so mirror the default the rest of
+# the app already uses for that provider.
+_OPENROUTER_DEFAULT_MODEL = "openai/gpt-4o-mini"
+
+
+def _resolve_provider(settings) -> ProviderSpec:
+    """Pick the LLM the analyst uses: whatever the app is configured to use.
+
+    Every provider the app supports speaks the OpenAI chat-completions API, so
+    they differ only in host, key and model id. Reading the choice from
+    ``llm.model_routing.primary_provider`` is what keeps the analyst from
+    drifting back to a hard-coded vendor when the app's default changes.
+    """
+    llm = settings.llm
+    name = (llm.model_routing.primary_provider or "").strip().lower()
+
+    if name == "minimax":
+        cfg = llm.minimax
+        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model, "MINIMAX_API_KEY")
+    elif name == "deepseek":
+        cfg = llm.deepseek
+        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model_pro, "DEEPSEEK_API_KEY")
+    elif name == "openrouter":
+        cfg = llm.fallback
+        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, _OPENROUTER_DEFAULT_MODEL, "OPENROUTER_API_KEY")
+    elif name in ("lm_studio", "local", "primary"):
+        cfg = llm.primary
+        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model, "(no key needed for a local model)")
+    else:
+        raise ValueError(
+            f"Unsupported llm.model_routing.primary_provider={name!r}; "
+            f"expected one of: minimax, deepseek, openrouter, lm_studio"
+        )
+
+    key = (spec.api_key or "").strip()
+    if not key or "your_" in key.lower():
+        raise ValueError(
+            f"{spec.name} API key required (set {spec.env_var}) -- the analyst now uses the "
+            f"app's configured LLM provider instead of a hard-coded Anthropic model"
+        )
+    if not (spec.model or "").strip():
+        raise ValueError(
+            f"No model id configured for provider {spec.name!r}; set the matching "
+            f"llm.<provider>.model value"
+        )
+
+    return spec
+
+
+def _build_model(spec: ProviderSpec) -> OpenAIChatModel:
+    """A pydantic-ai model bound to this provider's host and key."""
+    return OpenAIChatModel(
+        spec.model,
+        provider=OpenAIProvider(base_url=spec.base_url, api_key=spec.api_key),
+    )
+
+
+def _to_model_messages(history: list[dict[str, str]]) -> list[ModelMessage]:
+    """
+    Rebuild pydantic-ai messages from the stored conversation history.
+
+    pydantic-ai validates every history entry as a ModelMessage, so the plain
+    dicts we keep between calls must be converted before being replayed.
+    """
+    messages: list[ModelMessage] = []
+    for entry in history:
+        role = entry['role']
+        content = entry['content']
+        if role == 'user':
+            messages.append(ModelRequest(parts=[UserPromptPart(content)]))
+        elif role == 'assistant':
+            messages.append(ModelResponse(parts=[TextPart(content)]))
+        else:
+            # Never guess: a system or tool entry replayed as the wrong kind of
+            # turn desyncs provider-side validation in ways that are hard to trace.
+            raise ValueError(f"unexpected role in conversation history: {role!r}")
+    return messages
 
 
 @dataclass
@@ -48,34 +156,42 @@ class TradingContext:
 
 class MassiveAIAnalyst:
     """
-    AI Trading Analyst using Massive.com data + Claude 4
+    AI Trading Analyst using Massive.com data + the configured LLM provider
 
     Combines:
     - Massive.com's institutional-grade market data (via MCP server)
-    - Claude 4's advanced reasoning
+    - the configured provider's reasoning (MiniMax by default)
     - MarketPulse's technical analysis (divergences, ICT, risk management)
     """
 
     def __init__(
         self,
         massive_api_key: Optional[str] = None,
-        anthropic_api_key: Optional[str] = None
+        settings: Optional[Any] = None,
+        provider: Optional[ProviderSpec] = None,
     ):
         """
         Initialize AI analyst
 
         Args:
             massive_api_key: Massive.com API key (or from env MASSIVE_API_KEY)
-            anthropic_api_key: Anthropic API key (or from env ANTHROPIC_API_KEY)
+            settings: App settings; read from get_settings() when omitted
+            provider: Override the resolved provider (mainly for tests)
         """
+        from src.core.config import get_settings
+
+        self.settings = settings or get_settings()
+
+        # Follow the app's configured provider instead of demanding an Anthropic key.
+        self.provider = provider or _resolve_provider(self.settings)
+        self.model = _build_model(self.provider)
+
         self.massive_api_key = massive_api_key or os.getenv('MASSIVE_API_KEY')
-        self.anthropic_api_key = anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
 
         if not self.massive_api_key:
             logger.warning("No Massive.com API key found - MCP server features disabled")
 
-        if not self.anthropic_api_key:
-            raise ValueError("Anthropic API key required (set ANTHROPIC_API_KEY)")
+        logger.info(f"AI analyst using {self.provider.name}/{self.provider.model}")
 
         # Initialize our technical analysis systems
         self.risk_manager = RiskManager()
@@ -89,12 +205,12 @@ class MassiveAIAnalyst:
 
         logger.info("MassiveAIAnalyst initialized")
 
-    def create_massive_mcp_server(self) -> Optional[MCPServerStdio]:
+    def create_massive_mcp_server(self) -> Optional[MCPToolset]:
         """
         Create Massive.com MCP server connection
 
         Returns:
-            MCP server instance or None if API key missing
+            MCP toolset instance or None if API key missing
         """
         if not self.massive_api_key:
             return None
@@ -105,14 +221,16 @@ class MassiveAIAnalyst:
 
         logger.info("Creating Massive.com MCP server connection")
 
-        return MCPServerStdio(
-            command="uvx",
-            args=[
-                "--from",
-                "git+https://github.com/massive-com/mcp_massive@v0.4.0",
-                "mcp_massive"
-            ],
-            env=env
+        return MCPToolset(
+            StdioTransport(
+                command="uvx",
+                args=[
+                    "--from",
+                    "git+https://github.com/massive-com/mcp_massive@v0.4.0",
+                    "mcp_massive"
+                ],
+                env=env
+            )
         )
 
     async def create_agent(self) -> Agent:
@@ -122,11 +240,11 @@ class MassiveAIAnalyst:
         Returns:
             Configured AI agent
         """
-        # Create MCP server if we have API key
-        mcp_servers = []
+        # Create MCP toolset if we have API key
+        toolsets = []
         server = self.create_massive_mcp_server()
         if server:
-            mcp_servers.append(server)
+            toolsets.append(server)
             logger.info("Massive.com MCP server enabled")
         else:
             logger.warning("Massive.com MCP server disabled (no API key)")
@@ -171,12 +289,15 @@ class MassiveAIAnalyst:
 
         # Create agent
         self.agent = Agent(
-            model="anthropic:claude-sonnet-4-20250514",  # Claude 4 Sonnet
-            mcp_servers=mcp_servers,
-            system_prompt=system_prompt
+            model=self.model,
+            toolsets=toolsets,
+            # `instructions=` is the pydantic-ai 2.x parameter. The legacy
+            # `system_prompt=` still reaches the model, but as a separate
+            # SystemPromptPart that bypasses instruction ids and caching.
+            instructions=system_prompt
         )
 
-        logger.info("AI agent created with Claude 4")
+        logger.info(f"AI agent created on {self.provider.name}/{self.provider.model}")
         return self.agent
 
     async def analyze_with_marketpulse(
@@ -197,12 +318,14 @@ class MassiveAIAnalyst:
         logger.info(f"Running MarketPulse analysis for {symbol}")
 
         try:
-            # Get historical data (using yfinance for now, will be replaced by Massive.com)
+            # Yahoo bars. get_bars keeps a ticker level on the columns; flatten
+            # it so close/high/low are Series. There is no get_historical_data.
             from src.api.yahoo_client import YahooFinanceClient
-            client = YahooFinanceClient()
-            df = client.get_historical_data(symbol, period=context.period, interval=context.timeframe)
 
-            if df.empty:
+            client = YahooFinanceClient()
+            df = _flatten_yahoo_bars(client.get_bars(symbol, period=context.period, interval=context.timeframe))
+
+            if df is None or df.empty:
                 return {"error": f"No data found for {symbol}"}
 
             # 1. Divergence Detection
@@ -378,7 +501,7 @@ class MassiveAIAnalyst:
             # Run agent
             response = await self.agent.run(
                 question,
-                message_history=self.message_history
+                message_history=_to_model_messages(self.message_history)
             )
 
             # Update message history
@@ -388,14 +511,14 @@ class MassiveAIAnalyst:
             })
             self.message_history.append({
                 'role': 'assistant',
-                'content': response.data
+                'content': response.output
             })
 
             # Keep only last 10 messages
             if len(self.message_history) > 10:
                 self.message_history = self.message_history[-10:]
 
-            return response.data
+            return response.output
 
         except Exception as e:
             logger.error(f"Error querying AI analyst: {e}")
@@ -462,7 +585,7 @@ class MassiveAIAnalyst:
         """Run interactive Q&A session"""
         console.print(Panel(
             "[bold green]AI Trading Analyst[/bold green]\n\n"
-            "Powered by Massive.com + Claude 4 + MarketPulse\n\n"
+            f"Powered by Massive.com + {self.provider.name} + MarketPulse\n\n"
             "Ask questions about markets, get trade recommendations, or analyze symbols.\n"
             "Type 'exit' to quit.",
             border_style="green"
