@@ -45,6 +45,8 @@ from tenacity import (
 
 from src.research.data import DataPipelineError, DataProvider
 from src.research.data._fred_key import get_fred_api_key
+from src.research.data._paths import cache_dir as _cache_dir
+from src.research.data._paths import seed_file as _seed_file
 
 # ---------------------------------------------------------------------------
 # Metis-contract column order (must match src/research/data.DataProvider docstring)
@@ -105,14 +107,20 @@ class FredProvider(DataProvider):
     def __init__(
         self,
         api_key: str | None = None,
-        cache_dir: Path = Path("data/macro"),
+        cache_dir: Path | None = None,
         max_staleness_days: int = 60,
         series_id: str = "DFF",  # default to a working series (gold LBMA removed from FRED)
     ) -> None:
         # Resolve the API key first so a missing key fails fast before any
         # filesystem work (T1 fail-fast helper).
         self.api_key: str = api_key or get_fred_api_key()
-        self.cache_dir: Path = Path(cache_dir)
+        # Default cache lives under the writable cache root (T3b), seeded
+        # from the tracked data/macro parquets on first use; an explicit
+        # cache_dir is caller-managed and never seeded.
+        self._seeded_cache_root: bool = cache_dir is None
+        self.cache_dir: Path = (
+            _cache_dir("macro") if cache_dir is None else Path(cache_dir)
+        )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.max_staleness_days: int = int(max_staleness_days)
         if series_id not in self.SUPPORTED_SERIES:
@@ -124,6 +132,12 @@ class FredProvider(DataProvider):
         # Lazy-init: the real Fred client is only built when first needed,
         # so tests can inject a mock via `provider._client = ...`.
         self._client: Fred | None = None
+
+    def _cache_path(self, series_id: str) -> Path:
+        """Cache file for a series; seeded from the tracked twin if default."""
+        if self._seeded_cache_root:
+            return _seed_file(f"macro/{series_id}.parquet")
+        return self.cache_dir / f"{series_id}.parquet"
 
     # ------------------------------------------------------------------
     # DataProvider ABC
@@ -180,7 +194,7 @@ class FredProvider(DataProvider):
                 f"Supported: {sorted(self.SUPPORTED_SERIES)}"
             )
 
-        cache_path = self.cache_dir / f"{series_id}.parquet"
+        cache_path = self._cache_path(series_id)
 
         # 1. Serve from cache if it covers the requested range (Metis EC9:
         #    "never re-fetch if cache is fresh").

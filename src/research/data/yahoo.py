@@ -28,6 +28,8 @@ from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 
 from src.research.data import DataPipelineError, DataProvider
+from src.research.data._paths import cache_dir as _cache_dir
+from src.research.data._paths import seed_file as _seed_file
 
 # Grace window (calendar days) applied to cache coverage checks. Daily macro
 # data has weekends + holidays at boundaries, and yfinance's ``end`` is
@@ -101,14 +103,26 @@ class YahooProvider(DataProvider):
 
     def __init__(
         self,
-        cache_dir: Path = Path("data/yahoo_cache"),
+        cache_dir: Path | None = None,
         cache_ttl_days: int = 1,
         ticker: str = "GLD",
     ) -> None:
-        self.cache_dir = Path(cache_dir)
+        # Default cache lives under the writable cache root (T3b), seeded
+        # from the tracked data/yahoo_cache parquets on first use; an
+        # explicit cache_dir is caller-managed and never seeded.
+        self._seeded_cache_root: bool = cache_dir is None
+        self.cache_dir = (
+            _cache_dir("yahoo_cache") if cache_dir is None else Path(cache_dir)
+        )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_ttl_days = cache_ttl_days
         self.ticker = ticker
+
+    def _cache_path(self, ticker: str) -> Path:
+        """Cache file for a ticker; seeded from the tracked twin if default."""
+        if self._seeded_cache_root:
+            return _seed_file(f"yahoo_cache/{ticker}.parquet")
+        return self.cache_dir / f"{ticker}.parquet"
 
     # ------------------------------------------------------------------
     # DataProvider ABC
@@ -140,7 +154,7 @@ class YahooProvider(DataProvider):
         """
         start = _coerce_date(start)
         end = _coerce_date(end)
-        cache_path = self.cache_dir / f"{ticker}.parquet"
+        cache_path = self._cache_path(ticker)
         cached = self._read_cache(cache_path)
         if cached is not None and self._cache_is_fresh(cache_path) and self._cache_covers(cached, start, end):
             logger.debug(f"[yahoo] cache hit for {ticker} [{start}..{end}]")

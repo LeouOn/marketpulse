@@ -34,6 +34,7 @@ from loguru import logger
 
 from src.api.alpaca_client import AlpacaClient
 from src.research.data import DataProvider
+from src.research.data._paths import cache_dir as _cache_dir
 
 # Sentinel values from ``src/core/config.py:AlpacaConfig`` defaults. If the
 # client was built with these (creds never set in credentials.yaml), fail
@@ -64,13 +65,18 @@ class AlpacaProvider(DataProvider):
     def __init__(
         self,
         client: AlpacaClient | None = None,
-        cache_dir: Path = Path("data/alpaca_cache"),
+        cache_dir: Path | None = None,
         symbol: str = "SPY",
     ) -> None:
         self._client: AlpacaClient = client if client is not None else AlpacaClient()
         self._validate_credentials(self._client)
 
-        self.cache_dir = Path(cache_dir)
+        # Default cache lives under the writable cache root (T3b); an
+        # explicit cache_dir is caller-managed. (No tracked seeds exist
+        # for alpaca_cache, so there is nothing to seed.)
+        self.cache_dir = (
+            _cache_dir("alpaca_cache") if cache_dir is None else Path(cache_dir)
+        )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.symbol = symbol
 
