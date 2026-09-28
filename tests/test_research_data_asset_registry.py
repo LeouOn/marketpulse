@@ -225,21 +225,35 @@ def test_btc_provider_load_intraday_returns_none_on_failure() -> None:
 
 
 def test_registry_entries_use_distinct_providers_where_expected() -> None:
-    """BTC -> BtcProvider; EQUITIES -> AlpacaProvider; the FRED-served trio
-    (GOLD, OIL, HOUSING) -> FredProvider."""
+    """BTC -> BtcProvider; EQUITIES -> AlpacaProvider; OIL and HOUSING
+    (FRED series) -> FredProvider; GOLD -> YahooProvider.
+
+    GOLD decision (T3b, 2026-09-28): the Metis spec originally served gold
+    from FRED (LBMA fix ``GOLDAMGBD228NLBM``), but FRED no longer hosts the
+    series (verified live: "The series does not exist"), so GOLD uses the
+    GLD ETF proxy via YahooProvider -- see commit 22b7313 and the registry
+    entry's research_notes.
+    """
     from src.research.data.alpaca import AlpacaProvider
     from src.research.data.btc import BtcProvider
     from src.research.data.fred import FredProvider
+    from src.research.data.yahoo import YahooProvider
 
     assert AssetRegistry["BTC"].data_provider is BtcProvider
     assert AssetRegistry["EQUITIES"].data_provider is AlpacaProvider
-    assert AssetRegistry["GOLD"].data_provider is FredProvider
+    assert AssetRegistry["GOLD"].data_provider is YahooProvider
     assert AssetRegistry["OIL"].data_provider is FredProvider
     assert AssetRegistry["HOUSING"].data_provider is FredProvider
 
 
 def test_oil_ticker_is_dcoilwtico_and_housing_is_case_shiller() -> None:
-    """Spot-check the FRED series ids are locked to Metis SC4."""
+    """Spot-check the data-source tickers.
+
+    OIL and HOUSING are locked to Metis SC4 FRED series ids. GOLD is the
+    GLD ETF proxy: the original LBMA series ``GOLDAMGBD228NLBM`` was
+    discontinued on FRED (verified live 2026-09-28), so the registry
+    deliberately tracks the ETF instead (decision T3b).
+    """
     assert AssetRegistry["OIL"].ticker == "DCOILWTICO"
     assert AssetRegistry["HOUSING"].ticker == "CSUSHPINSA"
-    assert AssetRegistry["GOLD"].ticker == "GOLDAMGBD228NLBM"
+    assert AssetRegistry["GOLD"].ticker == "GLD"
