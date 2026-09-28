@@ -1,12 +1,9 @@
-"""EIA API key helper. Fail-fast if not configured."""
-import os
+"""EIA API key helper. Fail-fast if not configured.
+
+Lookup order (env -> .env -> config/credentials.yaml) lives in ``src.core.keys``.
+"""
+from src.core.keys import require_macro_key
 
 
 def get_eia_api_key() -> str:
-    key = os.environ.get("EIA_API_KEY")
-    if not key:
-        raise RuntimeError(
-            "EIA_API_KEY not set. Register free at "
-            "https://www.eia.gov/opendata/register"
-        )
-    return key
+    return require_macro_key("EIA_API_KEY")

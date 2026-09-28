@@ -8,6 +8,12 @@ import pytest
 from src.yield_curve.fetcher import FredCurveFetcher
 
 
+@pytest.fixture(autouse=True)
+def _env_only_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Key lookups consult only os.environ, so a developer's real .env/credentials.yaml can't leak in."""
+    monkeypatch.setenv("MARKETPULSE_KEYS_ENV_ONLY", "1")
+
+
 def _fake_fred_response(series_id: str, d: date, value: float) -> dict:
     return {
         "observations": [

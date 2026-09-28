@@ -34,6 +34,12 @@ from src.research.data._eia_key import get_eia_api_key
 from src.research.data.eia import EiaProvider
 
 
+@pytest.fixture(autouse=True)
+def _env_only_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Key lookups consult only os.environ, so a developer's real .env/credentials.yaml can't leak in."""
+    monkeypatch.setenv("MARKETPULSE_KEYS_ENV_ONLY", "1")
+
+
 # ---------------------------------------------------------------------------
 # EIA v2 response builders
 # ---------------------------------------------------------------------------

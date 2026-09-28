@@ -1,5 +1,7 @@
-"""FRED API key helper. Fail-fast if not configured."""
-import os
+"""FRED API key helper. Fail-fast if not configured.
+
+Lookup order (env -> .env -> config/credentials.yaml) lives in ``src.core.keys``.
+"""
 
 try:
     from dotenv import load_dotenv
@@ -7,12 +9,8 @@ try:
 except ImportError:
     pass
 
+from src.core.keys import require_macro_key  # noqa: E402
+
 
 def get_fred_api_key() -> str:
-    key = os.environ.get("FRED_API_KEY")
-    if not key:
-        raise RuntimeError(
-            "FRED_API_KEY not set. Register free at "
-            "https://fredaccount.stlouisfed.org/apikeys"
-        )
-    return key
+    return require_macro_key("FRED_API_KEY")

@@ -6,7 +6,6 @@ scripts/yield_curve_monitor.py: direct requests.get + parquet cache.
 """
 from __future__ import annotations
 
-import os
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -20,6 +19,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
+from src.core.keys import require_macro_key
 from src.yield_curve.config import TENORS
 
 _FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
@@ -30,13 +30,7 @@ _CACHE_COLS = ["ts", "open", "high", "low", "close", "volume", "source"]
 
 
 def _require_key() -> str:
-    key = os.getenv("FRED_API_KEY")
-    if not key:
-        raise RuntimeError(
-            "FRED_API_KEY not set. Register free at "
-            "https://fredaccount.stlouisfed.org/apikeys"
-        )
-    return key
+    return require_macro_key("FRED_API_KEY")
 
 
 class FredCurveFetcher:

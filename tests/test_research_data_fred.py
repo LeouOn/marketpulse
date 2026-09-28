@@ -28,6 +28,12 @@ from src.research.data import DataPipelineError
 from src.research.data.fred import FredProvider
 
 
+@pytest.fixture(autouse=True)
+def _env_only_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Key lookups consult only os.environ, so a developer's real .env/credentials.yaml can't leak in."""
+    monkeypatch.setenv("MARKETPULSE_KEYS_ENV_ONLY", "1")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
