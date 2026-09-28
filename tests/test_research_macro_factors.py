@@ -145,7 +145,10 @@ def _full_fred_response() -> dict[str, pd.DataFrame]:
             # 24 months at 100 + i: lets cpi_yoy be hand-computed
             [100.0 + i for i in range(24)],
         ),
-        "ISM_MANUFACTURING": _monthly_series("ISM_MANUFACTURING", 2020, [50.0] * 24),
+        # IPMAN stands in for the ISM PMI: FRED no longer hosts ISM survey
+        # data (removed ~2016; verified 2026-09-28 -- ISM_MANUFACTURING is
+        # not even a valid FRED series ID). See factors.py docstring.
+        "IPMAN": _monthly_series("IPMAN", 2020, [50.0] * 24),
     }
 
 
@@ -206,7 +209,9 @@ class TestHappyPath:
         assert "MORTGAGE30US" in fetched_ids
         assert "UNRATE" in fetched_ids
         assert "CPIAUCSL" in fetched_ids
-        assert "ISM_MANUFACTURING" in fetched_ids
+        # ISM PMI is proxied by IPMAN (FRED no longer hosts ISM survey data;
+        # verified live 2026-09-28). A true PMI needs a licensed ISM feed.
+        assert "IPMAN" in fetched_ids
 
 
 # ---------------------------------------------------------------------------

@@ -230,8 +230,10 @@ class MacroRegimeModel:
                     f"timestamp {timestamp} is before the start of factor_df "
                     f"(first index: {rules_probs_df.index[0]})."
                 )
-            rules_probs = rules_probs_df.loc[mask].iloc[-1].to_dict()
+            used_idx = rules_probs_df.index[mask][-1]
+            rules_probs = rules_probs_df.loc[used_idx].to_dict()
         else:
+            used_idx = rules_probs_df.index[-1]
             rules_probs = rules_probs_df.iloc[-1].to_dict()
 
         # ----- Decide whether to consult the LLM -----------------------
@@ -263,7 +265,10 @@ class MacroRegimeModel:
             alpha=alpha,
             narrative=narrative,
             source=source,
-            timestamp=timestamp,
+            # The classification is *as of* the factor row actually used --
+            # the last row at-or-before ``timestamp`` (or the final row when
+            # no timestamp was requested). Never None for a successful call.
+            timestamp=used_idx,
         )
 
     # ------------------------------------------------------------------
