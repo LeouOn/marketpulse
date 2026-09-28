@@ -4,6 +4,7 @@ Primary reasoning engine for MarketPulse agentic workflows.
 """
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 import aiohttp
@@ -174,7 +175,7 @@ class DeepSeekClient:
         self,
         messages: list[dict[str, str]],
         tools: list[ToolDefinition],
-        tool_handler: callable,
+        tool_handler: Callable[..., Any],
         model: str | None = None,
         max_turns: int = 5,
         max_tokens: int = 800,
@@ -277,7 +278,7 @@ class DeepSeekClient:
         model: str | None = None,
         max_tokens: int = 800,
         temperature: float = 0.3,
-        on_chunk: callable | None = None,
+        on_chunk: Callable[[str], Any] | None = None,
     ):
         """Stream completion tokens as an async generator.
 

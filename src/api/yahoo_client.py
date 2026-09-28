@@ -418,7 +418,7 @@ class YahooFinanceClient:
             logger.error(f"Error fetching data for {symbol}: {e}")
             return None
 
-    def get_options_expirations(self, symbol: str) -> List[str]:
+    def get_options_expirations(self, symbol: str) -> list[str]:
         """Get available options expiration dates for a symbol
 
         Args:
@@ -436,7 +436,7 @@ class YahooFinanceClient:
             logger.error(f"Error fetching options expirations for {symbol}: {e}")
             return []
 
-    def get_options_chain(self, symbol: str, expiration: str) -> Dict[str, Any]:
+    def get_options_chain(self, symbol: str, expiration: str) -> dict[str, Any]:
         """Get options chain for a specific symbol and expiration date
 
         Args:
@@ -530,7 +530,7 @@ class YahooFinanceClient:
             logger.error(f"Error fetching dividend yield for {symbol}: {e}")
             return 0.0
 
-    def get_bars(self, symbol: str, period: str = '1mo', interval: str = '1d') -> Optional[pd.DataFrame]:
+    def get_bars(self, symbol: str, period: str = '1mo', interval: str = '1d') -> pd.DataFrame | None:
         """Get historical OHLC data for a symbol
 
         Args:
