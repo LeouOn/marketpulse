@@ -446,6 +446,11 @@ Provide technical analysis focusing on actionable insights."""
         }
 
 
+def _key_configured(api_key: str | None, placeholder: str) -> bool:
+    """True for a real key: not empty, not the default placeholder, not an unresolved ${...}."""
+    return bool(api_key) and api_key != placeholder and not api_key.startswith("${")
+
+
 class OpenRouterClient:
     """OpenRouter API client for cloud LLM fallback"""
 
@@ -468,6 +473,24 @@ class OpenRouterClient:
         """Async context manager exit"""
         if self.session:
             await self.session.close()
+
+    async def check_health(self) -> bool:
+        """Healthy only with a real key that OpenRouter accepts.
+
+        Without this the router treats the provider as "unknown -- assume healthy",
+        so a missing key looked healthy. ``/models`` is public and would not validate
+        the key, so probe ``/auth/key`` instead (200 only for a valid key).
+        """
+        try:
+            key = self.api_key or ""
+            if not key or key == "your_openrouter_api_key" or key.startswith("${"):
+                return False
+            if not self.session:
+                return True  # key looks set; validated on the first real request
+            async with self.session.get(f"{self.base_url}/auth/key") as r:
+                return r.status == 200 and "json" in r.headers.get("Content-Type", "")
+        except Exception:
+            return False
 
     async def generate_completion(
         self,
@@ -606,10 +629,7 @@ class LLMManager:
         """Get status of all LLM services."""
         return {
             "deepseek": {
-                "available": bool(
-                    self.settings.llm.deepseek.api_key
-                    and self.settings.llm.deepseek.api_key != "your_deepseek_api_key"
-                ),
+                "available": _key_configured(self.settings.llm.deepseek.api_key, "your_deepseek_api_key"),
                 "endpoint": self.settings.llm.deepseek.base_url,
                 "model_pro": self.settings.llm.deepseek.model_pro,
                 "model_flash": self.settings.llm.deepseek.model_flash,
@@ -619,17 +639,11 @@ class LLMManager:
                 "endpoint": self.settings.llm.primary.base_url,
             },
             "openrouter": {
-                "available": bool(
-                    self.settings.llm.fallback.api_key
-                    and self.settings.llm.fallback.api_key != "your_openrouter_api_key"
-                ),
+                "available": _key_configured(self.settings.llm.fallback.api_key, "your_openrouter_api_key"),
                 "endpoint": self.settings.llm.fallback.base_url,
             },
             "minimax": {
-                "available": bool(
-                    self.settings.llm.minimax.api_key
-                    and self.settings.llm.minimax.api_key != "your_minimax_api_key"
-                ),
+                "available": _key_configured(self.settings.llm.minimax.api_key, "your_minimax_api_key"),
                 "endpoint": self.settings.llm.minimax.base_url,
                 "model": self.settings.llm.minimax.model,
             },
