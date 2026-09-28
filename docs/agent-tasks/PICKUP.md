@@ -1,29 +1,30 @@
-# Pickup note — 2026-09-28
+# Pickup note — 2026-09-28 (updated after integration)
 
-**State:** only T0 is merged into `main`. T1, T2a–c, T3a–b, T4, T5, T6, T7a–b, T8 and T9 are committed on `task/*` branches and
-**not merged**. A trial merge of all of them (`scratch/eval`, kept for reference, not on `main`) had **0 conflicts**:
-1069 pass / 3 fail (baseline 919 pass / 20 fail / 6 errors), identical in a clean-room run (no `.env`, no `credentials.yaml`).
-Nothing is pushed. T10 (CI + format pass) and T11 (docs) have not started.
+**State:** everything is merged into `main` (`66b8ff5`): T0–T9 (T2a–c, T3a–b, T7a–b included). No conflicts. Nothing is pushed.
+Suite: **1075 pass / 0 fail** (baseline was 919 pass / 20 fail / 6 errors), identical in a clean room (no `.env`, no `credentials.yaml`)
+and on pydantic-ai 1.x and 2.x. Live smoke on the merged app: 11/11 previously broken or key-dependent endpoints return 200
+(regimes, yield curve, DXY, backtest regime, heatmap, options macro-context, AI status on MiniMax…), 121 routes, every router loads.
 
-## Fix before merging
-1. **T9 conftest vs T4/T3b tests** — the 3 failures: `test_ds4_wiring.py::TestDS4Config::test_yaml_loads_ds4_block` and two in
-   `test_research_data_cache_paths.py`. Each passes alone and with `main`'s `conftest.py`; T9's session guards redirect paths/config under them.
-   Fix in `tests/conftest.py` (or let those tests opt out).
-2. **`GET /api/options/macro-context` → 500** `Unable to serialize unknown type: numpy.bool` (T7b; VIX data now loads but isn't JSON-safe).
-3. **T5** had uncommitted edits when last checked (an agent was live). Don't merge until it is committed.
+Two integration fixes were needed on top of the agent branches:
+- `tests/conftest.py` (T9) masked *any* path ending in `config/credentials.yaml` and always redirected the research data paths, which broke T4's and T3b's
+  self-isolating tests. Now it masks only the developer's real file (by resolved path) and honours a `real_data_paths` marker.
+- `/api/options/macro-context` returned 500 on `numpy.bool`; added `src/api/json_utils.to_builtin` (regression test fails without the fix).
 
-## Then
-Merge in this order (T2a is already inside T9's branch): `T1 T2a T2b T2c T3a T3b T4 T5 T7a T7b T8 T9 T6` →
-run the full suite, normal and clean-room (`env -i`, no `.env`/`credentials.yaml`) → **T10** (last: it reformats ~158 files) → **T11**.
+## Still to do
+1. **T10 — CI green + one format pass** (`T10-ci-green.md`). Last, and merge immediately (it reformats ~158 files). Needs your call on the ruff rule set.
+2. **T11 — docs + `docs/STATUS.md`** (`T11-docs-accuracy.md`), after T10.
+3. Frontend: adopt the new additive fields from T7a (`symbol`, `instrument`, `is_proxy`) so DXY/gold are labelled as the real instruments.
+   Also note T7a now **withholds fabricated internals unless `MARKETPULSE_ALLOW_MOCK=1`**, so panels that showed made-up numbers will show nothing.
 
 ## Loose ends
-- The shared checkout `/home/yl/proj/marketpulse` was left on `task/T9`; put it back on `main` when no agent is using it.
-- Stray: empty `../marketpulse-wt/marketpulse-wt/`, and `scratch/merge-check` + its worktree `mergecheck` (someone's earlier dry run).
-- Rotate the EIA key if you care: a failing test once printed most of it (T0 session). Fixed for tests; see T9 notes.
-- Frontend label changes for the corrected DXY/gold values (T7a) still need doing in `marketpulse-client/`.
-- `ds4` is built (T4) but the owner's local server still listens on :8000, the API's own port — use :8001.
+- Shared venv is on pydantic-ai 1.x while `requirements.txt` now says `>=2,<3` (works on both). Upgrade: `uv pip install --python .venv/bin/python -r requirements.txt`.
+- 11 agent worktrees (`../marketpulse-wt/T*`) and their `task/*` branches are merged and can go:
+  `for t in T1 T2b T2c T3a T3b T4 T5 T6 T7a T7b; do git worktree remove --force ../marketpulse-wt/$t; done` then `git branch -d task/<id>`
+  (T5's worktree holds a ~GB `.venv`). Not removed automatically in case an agent session is idle in one.
+- Strays from earlier: empty `../marketpulse-wt/marketpulse-wt/`, and `scratch/merge-check` + its `mergecheck` worktree.
+- Rotate the EIA key if you care: a failing test once printed most of it (fixed for tests).
+- `ds4` is built (T4); the local server listens on :8000, the API's own port, so run it on :8001.
 
 ## Workflow that worked (keep it)
-One git worktree per task (`docs/agent-tasks/new-worktree.sh <ID> [base]`), disjoint file ownership per task, dependencies gated (T0 → T6; T10 last),
-integrate in a scratch branch and run the suite before touching `main`. **Never work in the shared checkout**, and check `git branch --show-current`
-before any merge (an agent once switched it under me). Never `git add -A`; never print key values.
+One git worktree per task (`docs/agent-tasks/new-worktree.sh <ID> [base]`), disjoint file ownership, dependencies gated, integrate on a scratch branch and run the
+suite (normal **and** clean-room) before moving `main`. Never work in the shared checkout; check `git branch --show-current` before merging. Never `git add -A`; never print key values.
