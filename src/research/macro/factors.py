@@ -18,13 +18,23 @@ Factor name        Source          FRED series / Yahoo ticker         Cadence
 ``dxy``            FRED            ``DTWEXBGS``                       Daily
 ``vix``            FRED            ``VIXCLS``                         Daily
 ``fed_funds``      FRED            ``DFF``                            Daily
-``ism_pmi``        FRED            ``ISM_MANUFACTURING``              Monthly
+``ism_pmi``        FRED            ``IPMAN`` (proxy, see note)        Monthly
 ``unemployment``   FRED            ``UNRATE``                         Monthly
 ``cpi_yoy``        Derived         YoY pct change of ``CPIAUCSL``    Monthly
 ``sahm_recession`` Derived         Sahm rule on ``unemployment``     Monthly
 ``oil_term_structure`` Yahoo       ``CL=F`` - 12M forward             Daily
 ``mortgage_30y``   FRED            ``MORTGAGE30US``                   Weekly
 ================== =============== ================================= =========
+
+.. note:: ``ism_pmi`` is *not* the ISM Manufacturing PMI. FRED stopped
+   hosting ISM survey data around 2016 (verified live 2026-09-28:
+   ``ISM_MANUFACTURING`` is not a valid FRED series ID and no ISM PMI
+   series is discoverable via ``series/search``), so the factor uses
+   ``IPMAN`` (Industrial Production: Manufacturing, NAICS) as a
+   deliberate proxy -- same monthly cadence, correlated cyclical signal.
+   If a licensed ISM feed (ismworld.org) is added later, swap the series
+   in ``_FRED_DIRECT`` and re-anchor the z-scores; the ``ism_pmi``
+   column name stays stable for downstream consumers.
 
 Behaviour notes
 ---------------
