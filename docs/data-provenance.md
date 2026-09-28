@@ -74,7 +74,7 @@ Built in `get_dashboard_data` from `MarketPulseCollector.collect_market_internal
 | `dataQuality` | `flag_data_quality` | derived | `good` / `partial` / `poor` / `unknown`. |
 | `qualityIssues` | `flag_data_quality` issues | derived | |
 | `synthetic` | collector / mock provider | derived | True on the mock fallback. |
-| `freshnessStatus` | `internals["freshness_status"]` | derived | Usually `unknown`. `flag_data_quality` computes `fresh` / `stale` from `spy.data_age_seconds` but `collect_market_internals` never copies that key onto the payload. |
+| `freshnessStatus` | `_freshness_status` in the market router | derived | `fresh` when `spy.data_age_seconds` is within 15 minutes, `stale` after that, `unknown` when the quote has no age. The collector still drops the flag `flag_data_quality` computes; the router fills it back in from the same threshold. |
 | `dataAgeSeconds` | `spy.data_age_seconds` | derived | Present on Yahoo quotes. Missing on some Alpaca quotes, so this is often null. |
 | `breadth` | same object as `/api/market/breadth` | derived | Omitted when the breadth collector returns the hardcoded mock and mock is not allowed. |
 | `screener_summary.top_gainers`, `top_losers` | Redis keys `screener:gainers` / `screener:losers`, else `[]` | live | Empty when the cache is down. Not fabricated names. |
@@ -92,6 +92,7 @@ Passthrough of `collect_market_internals`.
 | `volume_flow.total_volume_60min`, `symbols_tracked` | sum of available core symbols | derived | Added when the collector did not supply one. |
 | `data_quality`, `quality_issues`, `missing_symbols` | `flag_data_quality` | derived | |
 | `synthetic` | mock provider | mock | Set only on the collector's mock fallback. See Follow-ups for the missing opt-in. |
+| `freshness_status` | `_freshness_status` | derived | Same rule as the dashboard `freshnessStatus`. |
 
 ## `/api/market/breadth`
 
@@ -128,37 +129,29 @@ Symbols requested: `SPY`, `QQQ`, `BTC`, `ETH`, `VIX`. `get_bars` maps `BTC` and 
 
 ## `/api/market/data-quality`
 
-This router is not owned by the symbol fix. Behavior below is what the code does today.
-
 | Field | Source | Class | Notes |
 | --- | --- | --- | --- |
 | `timestamp` | request time | derived | Summary route. |
 | `cache_status` | `YahooFinanceClient._get_cache` | live | `redis_connected` or `redis_unavailable`. |
-| `scheduler_running` | literal `True` | mock | Not read from the scheduler. Always true. |
+| `scheduler_running` | constant `false` | derived | The API lifespan does not start `MarketScheduler`. |
+| `scheduler_reason` | constant string | derived | Says the API process does not start the scheduler. |
 | `{symbol}.symbol` | path echo | derived | |
-| `{symbol}.has_data` | `get_single_symbol_data` after `macro_symbols` remap | live | `DXY` now checks `DX-Y.NYB`. `GC` checks `GC=F`. |
-| `{symbol}.last_fetch` | request time | derived | Not the bar timestamp. |
-| `{symbol}.source` | literal `yahoo` | derived | Stays `yahoo` even when `has_data` is false. |
+| `{symbol}.yahoo_symbol` | `macro_symbols` remap | derived | `DXY` is `DX-Y.NYB`. `GC` is `GC=F`. |
+| `{symbol}.has_data` | `get_single_symbol_data` | live | |
+| `{symbol}.last_fetch` | request time | derived | When the handler ran. |
+| `{symbol}.bar_timestamp` | quote `timestamp` | live | Null when Yahoo has nothing. |
+| `{symbol}.source` | `yahoo` or `unavailable` | derived | `unavailable` when `has_data` is false. |
 | `{symbol}.data` | `get_single_symbol_data` | live | price, change, change_pct, volume, timestamp, high, low, open. Null when Yahoo has nothing. |
 
-## Follow-ups
+## Labels on the dashboard
 
-UI (`marketpulse-client/`, for T8). Do not keep the old labels on the new numbers.
+`marketpulse-client/src/components/dashboard/labels.ts` shows `DXY` as "US Dollar Index" and `GC` as "Gold futures". `CLF` is no longer a card. Oil stays `CL`, "Crude Oil (WTI)". The breadth tiles in `CommandCenter.tsx` read "ETF TICK", "ETF A/D", and "ETF VOLD".
 
-| Key | Current label | Recommended label | Why |
-| --- | --- | --- | --- |
-| `DXY` | US Dollar | US Dollar Index | The card now shows the ICE index near 100 (`DX-Y.NYB`), not the UUP ETF near 28. |
-| `GC` | Gold | Gold futures | The card now shows COMEX front-month gold (`GC=F`, thousands), not GLD (hundreds) and not spot. |
-| `CLF` | Crude Oil Future | drop the key, or alias it to `CL` | Live oil is `CL` / `CL=F`, already labelled Crude Oil (WTI). `CLF` was only on the mock payload. |
+The sector panel reads `sector_performance`. With mock off, that object is absent and the panel stays hidden until a real sector source exists.
 
-The sector panel reads `sector_performance`. With mock off, that object is absent and the panel stays hidden. Leave it hidden until a real sector source exists.
-
-Breadth tiles labelled `TICK`, `A/D`, and `VOLD` are the ETF sample. A truthful label is "ETF sample" (the payload's `universe` and `note` say so). `nyse_ad_ratio` is not NYSE advance/decline.
-
-Other code:
+## Still open
 
 - `src/data/market_collector.py` still substitutes mock internals when collection fails, without `MARKETPULSE_ALLOW_MOCK`. T2a owns that file. The payload is already marked `synthetic` / `data_source=mock`.
 - `src/data/market_breadth.py` `_get_mock_internals` does not set `source`. The router detects it by count. A `source` field on that dict would remove the heuristic.
-- `src/api/routers/data_quality.py` hardcodes `scheduler_running: True`.
-- `freshness_status` is computed in `flag_data_quality` and then dropped, so the dashboard field stays `unknown`.
+- `src/ai/massive_analyst.py` still calls `get_historical_data`. T5 owns that file.
 - `src/research/data/yahoo.py` `MACRO_SYMBOLS` is a required copy of `YahooFinanceClient.macro_symbols`. This change updates `DXY` and `GC` there so `tests/test_research_data_yahoo.py` stays green. `YahooProvider.load_daily` still defaults to the GLD ticker; that default is separate from the `GC` key.

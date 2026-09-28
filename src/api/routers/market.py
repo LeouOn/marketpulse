@@ -66,6 +66,30 @@ def _breadth_mock_blocked(breadth_data: dict | None) -> bool:
     return isinstance(breadth_data, dict) and breadth_data.get("source") == "mock" and not allow_mock()
 
 
+def _freshness_status(internals: dict | None) -> str:
+    """fresh/stale from the SPY quote age when the collector did not keep the flag.
+
+    ``flag_data_quality`` computes this, then ``collect_market_internals`` drops it,
+    so the dashboard used to stay "unknown" whenever a quote age was present.
+    """
+    if not isinstance(internals, dict):
+        return "unknown"
+    existing = internals.get("freshness_status")
+    if existing in ("fresh", "stale"):
+        return existing
+    spy = internals.get("spy")
+    age = spy.get("data_age_seconds") if isinstance(spy, dict) else None
+    if age is None:
+        return "unknown"
+    from src.core.validators import FRESHNESS_THRESHOLD_SECONDS
+
+    try:
+        age_seconds = float(age)
+    except (TypeError, ValueError):
+        return "unknown"
+    return "fresh" if age_seconds <= FRESHNESS_THRESHOLD_SECONDS else "stale"
+
+
 async def _refresh_ai_analysis(internals: dict):
     """Background task to refresh AI analysis cache"""
     global _cached_ai_analysis
@@ -97,6 +121,8 @@ async def get_market_internals():
 
         if internals:
             logger.info(f"Successfully collected {len(internals)} data items")
+            internals = dict(internals)
+            internals["freshness_status"] = _freshness_status(internals)
             return MarketResponse(success=True, data=internals, timestamp=datetime.now().isoformat())
         else:
             return MarketResponse(
@@ -144,7 +170,7 @@ async def get_dashboard_data(background_tasks: BackgroundTasks):
             "dataQuality": internals.get("data_quality", "unknown"),
             "qualityIssues": internals.get("quality_issues", []),
             "synthetic": internals.get("synthetic", False),
-            "freshnessStatus": internals.get("freshness_status", "unknown"),
+            "freshnessStatus": _freshness_status(internals),
             "dataAgeSeconds": internals.get("spy", {}).get("data_age_seconds") if "spy" in internals else None,
         }
 

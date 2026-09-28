@@ -220,6 +220,49 @@ async def test_yahoo_outage_omits_mock_unless_opted_in(yahoo_fake, monkeypatch):
     assert allowed.data["field_sources"]["sector_performance"] == "mock"
 
 
+def test_freshness_uses_spy_age_when_the_collector_dropped_the_flag():
+    from src.api.routers.market import _freshness_status
+
+    assert _freshness_status({"spy": {"data_age_seconds": 30}}) == "fresh"
+    assert _freshness_status({"spy": {"data_age_seconds": 901}}) == "stale"
+    assert _freshness_status({"spy": {}}) == "unknown"
+    assert _freshness_status({"freshness_status": "stale", "spy": {"data_age_seconds": 5}}) == "stale"
+
+
+@pytest.mark.asyncio
+async def test_data_quality_does_not_invent_a_running_scheduler(monkeypatch):
+    from src.api.yahoo_client import YahooFinanceClient
+
+    async def no_cache(self):
+        return None
+
+    monkeypatch.setattr(YahooFinanceClient, "_get_cache", no_cache)
+    monkeypatch.setattr(
+        YahooFinanceClient,
+        "get_single_symbol_data",
+        lambda self, symbol: {"price": 101.2, "timestamp": "2026-09-28T13:00:00"} if symbol == "DX-Y.NYB" else None,
+    )
+
+    from src.api.routers.data_quality import get_data_quality_summary, get_symbol_data_quality
+
+    summary = await get_data_quality_summary()
+    assert summary.success is True
+    assert summary.data["scheduler_running"] is False
+    assert "MarketScheduler" in summary.data["scheduler_reason"]
+    assert summary.data["cache_status"] == "redis_unavailable"
+
+    dxy = await get_symbol_data_quality("DXY")
+    assert dxy.data["yahoo_symbol"] == "DX-Y.NYB"
+    assert dxy.data["has_data"] is True
+    assert dxy.data["source"] == "yahoo"
+    assert dxy.data["bar_timestamp"] == "2026-09-28T13:00:00"
+
+    missing = await get_symbol_data_quality("NOPE")
+    assert missing.data["has_data"] is False
+    assert missing.data["source"] == "unavailable"
+    assert missing.data["bar_timestamp"] is None
+
+
 def test_breadth_sample_is_labelled_and_hardcoded_fallback_is_mock():
     from src.api.routers.market import _annotate_breadth, _breadth_mock_blocked, _ohlc_fetch_symbol
 

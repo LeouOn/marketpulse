@@ -12,15 +12,14 @@ export const INDEX_LABELS: Record<string, string> = {
 };
 
 export const MACRO_LABELS: Record<string, string> = {
-  DXY: 'US Dollar',
+  DXY: 'US Dollar Index',
   TNX: '10Y Treasury',
   CL: 'Crude Oil (WTI)',
-  CLF: 'Crude Oil Future',
-  GC: 'Gold',
+  GC: 'Gold futures',
   BTC: 'Bitcoin',
   ETH: 'Ethereum',
   SOL: 'Solana',
   XRP: 'Ripple',
 };
 
-export const MACRO_SYMBOLS = ['DXY', 'TNX', 'CL', 'CLF', 'GC', 'BTC', 'ETH', 'SOL', 'XRP'];
+export const MACRO_SYMBOLS = ['DXY', 'TNX', 'CL', 'GC', 'BTC', 'ETH', 'SOL', 'XRP'];

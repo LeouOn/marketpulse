@@ -17,7 +17,7 @@ export interface CommandCenterProps {
   heroPrice: number;
   heroChange: number;
   heroChangePct: number;
-  /** Breadth snapshot for the TICK / A:D / VOLD mini tiles. */
+  /** Breadth snapshot. The counts are an ETF sample, not exchange TICK / A/D / VOLD. */
   breadth: MarketBreadth | null;
   /** Computed market regime for the regime chip. */
   regime: MarketRegime;
@@ -96,10 +96,10 @@ export function CommandCenter({
             )}
           </div>
 
-          {/* Breadth mini tiles (TICK / A:D / VOLD) */}
+          {/* Breadth mini tiles. Values come from the ETF sample in /api/market/breadth. */}
           <div className="grid grid-cols-3 gap-1.5 mt-2">
             <StatTile
-              label="TICK"
+              label="ETF TICK"
               value={
                 breadth ? (
                   <span className={breadth.tick_30min_avg >= 0 ? 'text-pos' : 'text-neg'}>
@@ -112,12 +112,12 @@ export function CommandCenter({
               mono
             />
             <StatTile
-              label="A/D"
+              label="ETF A/D"
               value={breadth ? breadth.nyse_ad_ratio.toFixed(2) : '--'}
               mono
             />
             <StatTile
-              label="VOLD"
+              label="ETF VOLD"
               value={
                 breadth ? (
                   <span className={breadth.total_vold >= 0 ? 'text-pos' : 'text-neg'}>
