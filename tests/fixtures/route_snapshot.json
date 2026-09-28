@@ -115,6 +115,7 @@
     "POST /api/risk/reset-daily",
     "POST /api/risk/validate-trade",
     "POST /api/viz/candlestick",
+    "POST /api/yield-curve/refresh",
     "PUT /api/test/data-source",
     "PUT /api/test/yahoo-finance",
     "WS /ws/market",

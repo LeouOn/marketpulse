@@ -19,6 +19,10 @@ class _Envelope(BaseModel):
     success: bool
     data: Optional[Any] = None
     timestamp: Optional[str] = None
+    # T6: additive honesty fields -- present-but-null when there is data,
+    # so existing frontend consumers are unaffected.
+    no_data: Optional[str] = None
+    last_error: Optional[str] = None
 
 
 # --- session / DAO helpers -------------------------------------------------
@@ -31,6 +35,26 @@ def _get_history():
     db = DatabaseManager(get_settings().database_url)
     session = db.get_session()
     return YieldCurveHistory(session), session
+
+
+def _load_status() -> Optional[dict]:
+    """Last pipeline run status, if any (see src/yield_curve/status.py)."""
+    from src.yield_curve.status import PipelineStatusStore, default_status_path
+
+    return PipelineStatusStore(default_status_path()).load()
+
+
+def _no_data_reason(status: Optional[dict]) -> tuple[Optional[str], Optional[str]]:
+    """Explain an empty response from the pipeline status."""
+    if status is None:
+        return "pipeline has not run", None
+    if not status.get("last_success_at"):
+        # Never succeeded (or status predates the first success): surface
+        # whatever went wrong last.
+        return "pipeline has not run", status.get("last_error")
+    if status.get("last_error"):
+        return "pipeline has not run since the last failure", status["last_error"]
+    return "no snapshot in the requested window", None
 
 
 def _get_alerts():
@@ -58,7 +82,8 @@ async def get_current():
         try:
             rows = history.get_history(days=1)
             if not rows:
-                return _Envelope(success=True, data=None)
+                no_data, last_error = _no_data_reason(_load_status())
+                return _Envelope(success=True, data=None, no_data=no_data, last_error=last_error)
             snap = rows[0]
             stale, days_since = _compute_staleness(snap.date)
             return _Envelope(success=True, data={
@@ -89,6 +114,11 @@ async def get_history(days: int = 90):
         history, session = _get_history()
         try:
             rows = history.get_history(days=days)
+            if not rows:
+                no_data, last_error = _no_data_reason(_load_status())
+                return _Envelope(
+                    success=True, data={"snapshots": []}, no_data=no_data, last_error=last_error
+                )
             return _Envelope(success=True, data={
                 "snapshots": [{
                     "date": r.date.isoformat(),
@@ -155,3 +185,23 @@ async def get_config_endpoint():
             "stale_days": cfg.stale_days,
         }
     })
+
+
+@router.post("/refresh", response_model=_Envelope)
+async def refresh_pipeline(backfill_days: int = 0, force: bool = False):
+    """Manual trigger for the pipeline (T6).
+
+    ``backfill_days=0`` fetches today only; ``backfill_days=130`` rebuilds
+    ~6 months of business-day snapshots. Runs are recorded in the
+    pipeline status file regardless of outcome.
+    """
+    from src.scheduler.yield_curve_job import run_yield_curve_pipeline
+
+    try:
+        result = await run_yield_curve_pipeline(
+            backfill_days=max(0, min(backfill_days, 400)), force=force
+        )
+        return _Envelope(success=True, data=result, timestamp=result.get("date"))
+    except Exception as exc:
+        logger.error(f"yield-curve /refresh failed: {exc}")
+        return _Envelope(success=False, data={"error": str(exc)})
