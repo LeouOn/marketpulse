@@ -647,6 +647,13 @@ class LLMManager:
                 "endpoint": self.settings.llm.minimax.base_url,
                 "model": self.settings.llm.minimax.model,
             },
+            "ds4": {
+                # Local no-auth server: "available" here means configured;
+                # real reachability is the router's health check.
+                "available": bool(self.settings.llm.ds4.base_url),
+                "endpoint": self.settings.llm.ds4.base_url,
+                "model": self.settings.llm.ds4.model,
+            },
             "routing": {
                 "primary": self.settings.llm.model_routing.primary_provider,
                 "fallback": self.settings.llm.model_routing.fallback_providers,

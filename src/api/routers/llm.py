@@ -449,14 +449,34 @@ async def select_model(request: ModelSelectionRequest):
         return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
+async def _probe_url_json(url: str, timeout_s: float = 5.0) -> dict | None:
+    """GET ``url``; return the JSON body for HTTP 200 + JSON, else None.
+
+    Small helper so the model-status probes are mockable in tests and
+    every provider probe follows the same 200-and-JSON rule.
+    """
+    import aiohttp
+
+    async with (
+        aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout_s)) as session,
+        session.get(url) as response,
+    ):
+        if response.status == 200 and "json" in response.headers.get("Content-Type", ""):
+            return await response.json()
+        return None
+
+
 @router.get("/model-status", response_model=MarketResponse)
 async def get_model_status():
-    """Get multi-provider model status (DeepSeek + LM Studio + OpenRouter)."""
+    """Get multi-provider model status (all five providers + routing)."""
     try:
-        import aiohttp
-
         ds = settings.llm.deepseek
-        ds_configured = bool(ds.api_key and ds.api_key not in ("your_deepseek_api_key", ""))
+        ds_configured = bool(ds.api_key and ds.api_key not in ("your_deepseek_api_key", "") and not ds.api_key.startswith("${"))
+        mm = settings.llm.minimax
+        mm_configured = bool(mm.api_key and mm.api_key != "your_minimax_api_key" and not mm.api_key.startswith("${"))
+        orr = settings.llm.fallback
+        orr_configured = bool(orr.api_key and orr.api_key != "your_openrouter_api_key" and not orr.api_key.startswith("${"))
+        ds4 = settings.llm.ds4
 
         status_info = {
             "providers": {
@@ -471,6 +491,22 @@ async def get_model_status():
                     "endpoint": settings.llm.primary.base_url,
                     "loaded_models": [],
                 },
+                "minimax": {
+                    "configured": mm_configured,
+                    "endpoint": mm.base_url,
+                    "model": mm.model,
+                },
+                "openrouter": {
+                    "configured": orr_configured,
+                    "endpoint": orr.base_url,
+                },
+                "ds4": {
+                    # Local no-auth server; healthy only if it answers.
+                    "configured": bool(ds4.base_url),
+                    "healthy": False,
+                    "endpoint": ds4.base_url,
+                    "model": ds4.model,
+                },
             },
             "routing": {
                 "primary_provider": settings.llm.model_routing.primary_provider,
@@ -480,25 +516,29 @@ async def get_model_status():
             "last_check": datetime.now().isoformat(),
         }
 
-        # Probe LM Studio (non-blocking)
+        # Probe LM Studio (local; non-blocking best effort)
         try:
             start_time = datetime.now().timestamp()
-            async with (
-                aiohttp.ClientSession() as session,
-                session.get(
-                    f"{settings.llm.primary.base_url}/models",
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as response,
-            ):
-                if response.status == 200:
-                    status_info["providers"]["lm_studio"]["connected"] = True
-                    status_info["providers"]["lm_studio"]["response_time_ms"] = int(
-                        (datetime.now().timestamp() - start_time) * 1000
-                    )
-                    md = await response.json()
-                    status_info["providers"]["lm_studio"]["loaded_models"] = [m["id"] for m in md.get("data", [])]
+            md = await _probe_url_json(f"{settings.llm.primary.base_url}/models", timeout_s=5)
+            if md is not None:
+                lm = status_info["providers"]["lm_studio"]
+                lm["connected"] = True
+                lm["response_time_ms"] = int((datetime.now().timestamp() - start_time) * 1000)
+                lm["loaded_models"] = [m["id"] for m in md.get("data", [])]
         except Exception as e:
             logger.debug(f"LM Studio status probe: {e}")
+
+        # Probe ds4 (local, short timeout -- the server is on-host)
+        try:
+            start_time = datetime.now().timestamp()
+            ds4_md = await _probe_url_json(f"{ds4.base_url}/models", timeout_s=2)
+            if ds4_md is not None:
+                status_info["providers"]["ds4"]["healthy"] = True
+                status_info["providers"]["ds4"]["response_time_ms"] = int(
+                    (datetime.now().timestamp() - start_time) * 1000
+                )
+        except Exception as e:
+            logger.debug(f"ds4 status probe: {e}")
 
         return MarketResponse(success=True, data=status_info, timestamp=datetime.now().isoformat())
 

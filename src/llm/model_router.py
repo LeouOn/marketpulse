@@ -38,6 +38,7 @@ from loguru import logger
 
 from ..core.config import get_settings
 from .deepseek_client import DeepSeekClient
+from .ds4_client import DS4Client
 from .llm_client import LMStudioClient, OpenRouterClient
 from .minimax_client import MiniMaxClient
 
@@ -93,13 +94,44 @@ class ModelRouter:
                 continue
             # Determine provider from model id prefix or config
             provider = self._provider_for_model(model_id, primary)
+            # An explicitly prefixed id ("ds4/deepseek-v4-flash") names the
+            # provider; the client should receive the bare model id.
+            if "/" in model_id and model_id.split("/", 1)[0] == provider:
+                model_id = model_id.split("/", 1)[1]
             self._capability_map[cap] = (provider, model_id)
 
-        # Always register a "fallback" capability
-        self._capability_map["fallback"] = (primary, self._deepseek_cfg.model_pro)
+        # Always register a "fallback" capability on the primary provider,
+        # with that provider's own default model.
+        self._capability_map["fallback"] = (primary, self._default_model_for(primary))
+
+    def _default_model_for(self, provider: str) -> str:
+        """The default model id for a provider (used for unknown capabilities)."""
+        if provider == "minimax":
+            return self.settings.llm.minimax.model
+        if provider == "ds4":
+            return self.settings.llm.ds4.model
+        if provider == "deepseek":
+            return self._deepseek_cfg.model_pro
+        if provider == "openrouter":
+            return "openai/gpt-4o-mini"
+        return ""  # lm_studio auto-detects
 
     def _provider_for_model(self, model_id: str, default: str) -> str:
-        """Heuristic: which provider owns this model id?"""
+        """Heuristic: which provider owns this model id?
+
+        Explicit prefixes win ("ds4/deepseek-v4-flash" -> ds4), then an
+        exact match on the configured ds4 model when ds4 is primary (so
+        the local server's deepseek-v4-flash is not swallowed by the
+        cloud-DeepSeek substring rule), then the substring heuristics.
+        """
+        if "/" in model_id:
+            prefix = model_id.split("/", 1)[0]
+            if prefix in ("ds4", "minimax", "deepseek", "lm_studio", "openrouter"):
+                return prefix
+        if model_id == self.settings.llm.ds4.model and (
+            default == "ds4" or self._routing.primary_provider == "ds4"
+        ):
+            return "ds4"
         if "minimax" in model_id.lower() or "m3" in model_id.lower():
             return "minimax"
         if "deepseek" in model_id.lower():
@@ -136,6 +168,11 @@ class ModelRouter:
             name="openrouter",
             client=OpenRouterClient(self.settings),
             priority=3,
+        )
+        self._providers["ds4"] = ProviderEntry(
+            name="ds4",
+            client=DS4Client(self.settings),
+            priority=4,
         )
 
         # Enter clients that have async context managers
@@ -232,8 +269,10 @@ class ModelRouter:
         # Look up capability
         cap_entry = self._capability_map.get(capability)
         if cap_entry is None:
-            # Unknown capability -- use best available
-            cap_entry = ("minimax", self.settings.llm.minimax.model)
+            # Unknown capability -- best available on the primary provider
+            # (previously hard-coded to minimax).
+            primary = self._routing.primary_provider
+            cap_entry = (primary, self._default_model_for(primary))
 
         preferred_provider, model_id = cap_entry
 
@@ -282,6 +321,8 @@ class ModelRouter:
         """Pick a sensible model on a fallback provider."""
         if provider == "minimax":
             return self.settings.llm.minimax.model
+        if provider == "ds4":
+            return self.settings.llm.ds4.model
         if provider == "deepseek":
             if capability == "fast":
                 return self._deepseek_cfg.model_flash
@@ -372,6 +413,16 @@ class ModelRouter:
             "provider": "lm_studio",
             "capability": "fallback",
             "description": "Local model via LM Studio (auto-detected)",
+            "recommended": False,
+        })
+
+        # ds4 (local DeepSeek V4 Flash, antirez build)
+        ds4 = self.settings.llm.ds4
+        models.append({
+            "id": ds4.model,
+            "provider": "ds4",
+            "capability": "fast",
+            "description": "Local DeepSeek V4 Flash via ds4 (no auth, tool calling)",
             "recommended": False,
         })
 
