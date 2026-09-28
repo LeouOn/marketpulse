@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, TrendingUp, TrendingDown, Target, Shield } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 
@@ -81,9 +81,8 @@ export default function RiskManagerTab() {
       ? 'bg-warn'
       : 'bg-pos';
 
-  const fetchPositionSize = async () => {
+  const fetchPositionSize = useCallback(async () => {
     try {
-      setError(null);
       const data = await apiFetch<any>('/backtest/position-size', {
         method: 'POST',
         body: JSON.stringify({
@@ -96,6 +95,7 @@ export default function RiskManagerTab() {
       });
 
       if (data.success) {
+        setError(null);
         setRiskMetrics(prev => ({
           ...prev,
           recommended_contracts: data.data.recommended_contracts,
@@ -107,11 +107,11 @@ export default function RiskManagerTab() {
       console.error('Failed to fetch position size:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch position size');
     }
-  };
+  }, [recentTrades]);
 
   useEffect(() => {
     fetchPositionSize();
-  }, [recentTrades]);
+  }, [fetchPositionSize]);
 
   return (
     <div className="space-y-2.5">

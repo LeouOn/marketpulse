@@ -118,8 +118,26 @@ const SECTOR_CONTEXT_MAP: Record<string, { keywords: string[]; description: stri
   }
 };
 
+function createWelcomeMessage(sym: string): Message {
+  return {
+    id: '1',
+    role: 'assistant',
+    content: `Hello! I'm your AI trading assistant. I can help you analyze market conditions, discuss trading strategies, and provide insights about ${sym} and other assets.
+
+I have access to:
+• Real-time market data (indices, crypto, commodities)
+• Sector performance and analysis
+• Market breadth indicators (TICK, A/D ratio, McClellan)
+• Technical levels and patterns
+
+Try asking about specific sectors (e.g., "How's Real Estate performing?") or assets (e.g., "What's the trend for BTC?")`,
+    timestamp: new Date().toISOString()
+  };
+}
+
 export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => [createWelcomeMessage(symbol)]);
+  const prevSymbolRef = useRef(symbol);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
@@ -312,28 +330,48 @@ export function LLMChat({ symbol = 'SPY', marketData }: LLMChatProps) {
     scrollToBottom();
   }, [messages]);
 
+  const fetchAvailableModels = useCallback(async () => {
+    try {
+      const data = await apiFetch<any>('/llm/models');
+      const models = data?.models ?? data?.data?.models;
+      if (models) {
+        setError(null);
+        setAvailableModels(models);
+      }
+    } catch (error) {
+      console.error('Failed to fetch models:', error);
+    }
+  }, []);
+
+  const fetchModelStatus = useCallback(async () => {
+    try {
+      const data = await apiFetch<ModelStatus>('/llm/model-status');
+      const status = (data as ModelStatus & { data?: ModelStatus })?.current_model
+        ? data
+        : (data as { data?: ModelStatus }).data;
+      if (status) {
+        setModelStatus(status);
+        setSelectedModel(status.current_model);
+        setIsConnected(!!status.lm_studio_connected);
+      }
+    } catch (err) {
+      console.error('Failed to fetch model status:', err);
+      setIsConnected(false);
+    }
+  }, []);
+
   // Fetch available models on mount
   useEffect(() => {
     fetchAvailableModels();
     fetchModelStatus();
-  }, []);
+  }, [fetchAvailableModels, fetchModelStatus]);
 
-  // Add welcome message on mount
+  // Update welcome message if symbol changes
   useEffect(() => {
-    setMessages([{
-      id: '1',
-      role: 'assistant',
-      content: `Hello! I'm your AI trading assistant. I can help you analyze market conditions, discuss trading strategies, and provide insights about ${symbol} and other assets.
-
-I have access to:
-• Real-time market data (indices, crypto, commodities)
-• Sector performance and analysis
-• Market breadth indicators (TICK, A/D ratio, McClellan)
-• Technical levels and patterns
-
-Try asking about specific sectors (e.g., "How's Real Estate performing?") or assets (e.g., "What's the trend for BTC?")`,
-      timestamp: new Date().toISOString()
-    }]);
+    if (prevSymbolRef.current !== symbol) {
+      prevSymbolRef.current = symbol;
+      setMessages([createWelcomeMessage(symbol)]);
+    }
   }, [symbol]);
 
   // Close model selector when clicking outside
@@ -350,34 +388,6 @@ Try asking about specific sectors (e.g., "How's Real Estate performing?") or ass
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showModelSelector]);
-
-  const fetchAvailableModels = async () => {
-    try {
-      setError(null);
-      const data = await apiFetch<any>('/llm/models');
-      const models = data?.models ?? data?.data?.models;
-      if (models) setAvailableModels(models);
-    } catch (error) {
-      console.error('Failed to fetch models:', error);
-    }
-  };
-
-  const fetchModelStatus = async () => {
-    try {
-      const data = await apiFetch<ModelStatus>('/llm/model-status');
-      const status = (data as ModelStatus & { data?: ModelStatus })?.current_model
-        ? data
-        : (data as { data?: ModelStatus }).data;
-      if (status) {
-        setModelStatus(status);
-        setSelectedModel(status.current_model);
-        setIsConnected(!!status.lm_studio_connected);
-      }
-    } catch (err) {
-      console.error('Failed to fetch model status:', err);
-      setIsConnected(false);
-    }
-  };
 
   const selectModel = async (modelId: string) => {
     try {

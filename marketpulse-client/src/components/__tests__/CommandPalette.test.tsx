@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom';
 import { act, render, screen, fireEvent } from '@testing-library/react';
 import { CommandPalette } from '@/components/CommandPalette';
 import { ThemeProvider } from '@/components/theme-provider';

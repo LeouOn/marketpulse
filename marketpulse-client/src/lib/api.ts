@@ -124,28 +124,28 @@ class MarketPulseAPIClient {
   // ----------------------- Yield Curve Monitor (Task 11) -----------------------
 
   async getYieldCurve(): Promise<YieldCurveSnapshot | null> {
-    const r = await fetch(`${this.baseUrl}/api/yield-curve/current`);
+    const r = await fetch(`${this.baseUrl}/yield-curve/current`);
     if (!r.ok) return null;
     const body = await r.json();
     return body.success ? body.data : null;
   }
 
   async getYieldCurveHistory(days = 90): Promise<YieldCurveHistoryPoint[]> {
-    const r = await fetch(`${this.baseUrl}/api/yield-curve/history?days=${days}`);
+    const r = await fetch(`${this.baseUrl}/yield-curve/history?days=${days}`);
     if (!r.ok) return [];
     const body = await r.json();
     return body.success ? (body.data.snapshots ?? []) : [];
   }
 
   async getYieldCurveAlerts(days = 30): Promise<YieldCurveAlert[]> {
-    const r = await fetch(`${this.baseUrl}/api/yield-curve/alerts?days=${days}`);
+    const r = await fetch(`${this.baseUrl}/yield-curve/alerts?days=${days}`);
     if (!r.ok) return [];
     const body = await r.json();
     return body.success ? (body.data.alerts ?? []) : [];
   }
 
   async getYieldCurveConfig(): Promise<YieldCurveConfig | null> {
-    const r = await fetch(`${this.baseUrl}/api/yield-curve/config`);
+    const r = await fetch(`${this.baseUrl}/yield-curve/config`);
     if (!r.ok) return null;
     const body = await r.json();
     return body.success ? body.data : null;

@@ -338,7 +338,7 @@ export default function StrategyTab() {
             <Target className="w-8 h-8 mx-auto text-ink-muted mb-3" />
             <div className="text-[13px] text-ink-secondary mb-1.5">No Active Signals</div>
             <p className="text-[12px] text-ink-muted mb-3">
-              Select a strategy and click "Scan Market" to find trading opportunities
+              Select a strategy and click &quot;Scan Market&quot; to find trading opportunities
             </p>
             <p className="text-[11px] text-ink-muted font-mono">
               Strategies are automatically evaluated based on current market conditions
