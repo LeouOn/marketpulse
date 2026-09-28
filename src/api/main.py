@@ -13,6 +13,8 @@ sys.path.insert(0, str(project_root))
 
 from contextlib import asynccontextmanager
 from datetime import datetime
+import asyncio
+import os
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,15 +54,41 @@ except Exception as e:
 # Global variables (populated by lifespan; published to routers via deps.init_state)
 collector = None
 ohlc_analyzer = None
+_scheduler = None
+_startup_tasks = []
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle"""
     # Startup
     logger.info("Starting MarketPulse API...")
-    global collector, ohlc_analyzer
+    global collector, ohlc_analyzer, _scheduler, _startup_tasks
 
     logger.info("Initializing global components...")
+
+    # T6: background scheduler (yield-curve daily refresh at 16:30 ET).
+    # Opt out with MARKETPULSE_DISABLE_SCHEDULER=1 (tests, one-shot tools).
+    _scheduler = None
+    if os.getenv("MARKETPULSE_DISABLE_SCHEDULER", "") not in ("1", "true", "yes"):
+        try:
+            from src.scheduler.scheduler import MarketScheduler
+
+            _scheduler = MarketScheduler()
+            await _scheduler.start()
+            logger.success("MarketScheduler started")
+        except Exception as e:
+            logger.warning(f"MarketScheduler failed to start (yield-curve refresh disabled): {e}")
+
+    # T6: yield-curve self-start -- backfill once if the table is empty,
+    # non-blocking so startup never waits on FRED.
+    _startup_tasks = []
+    try:
+        from src.scheduler.yield_curve_job import ensure_yield_curve_populated
+
+        _startup_tasks.append(asyncio.create_task(ensure_yield_curve_populated()))
+    except Exception as e:
+        logger.warning(f"yield-curve startup population could not be scheduled: {e}")
+
 
     # Initialize components with error handling
     if MarketPulseCollector:
@@ -91,6 +119,13 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down MarketPulse API...")
+    for task in _startup_tasks:
+        task.cancel()
+    if _scheduler is not None:
+        try:
+            await _scheduler.stop()
+        except Exception as e:
+            logger.warning(f"MarketScheduler stop failed: {e}")
 
 app = FastAPI(
     title="MarketPulse API",
