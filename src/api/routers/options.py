@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from loguru import logger
 from pydantic import BaseModel
 
+from ..json_utils import to_builtin
 from .deps import MarketResponse, settings
 
 router = APIRouter(prefix="/api/options", tags=["options"])
@@ -520,7 +521,7 @@ async def get_macro_context():
 
         context = macro.get_comprehensive_context()
 
-        return MarketResponse(success=True, data=context, timestamp=datetime.now().isoformat())
+        return MarketResponse(success=True, data=to_builtin(context), timestamp=datetime.now().isoformat())
 
     except Exception as e:
         logger.error(f"Error getting macro context: {e}")
