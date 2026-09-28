@@ -24,6 +24,10 @@ import pytest
 from src.research.data import _paths
 
 
+# These tests check the real cache-path constants (isolating via chdir), so opt out of conftest's redirect.
+pytestmark = pytest.mark.real_data_paths
+
+
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 

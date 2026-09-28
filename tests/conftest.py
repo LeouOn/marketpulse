@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -15,6 +16,14 @@ import pytest
 #
 # The hook below attaches a skip marker to every `@pytest.mark.e2e` test
 # unless one of those opt-ins is active. Non-e2e tests are untouched.
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "real_data_paths: skip the autouse redirect of src.research.data path constants "
+        "(for tests that verify the real cache layout and isolate themselves via chdir(tmp_path))",
+    )
 
 
 def pytest_addoption(parser):
@@ -102,6 +111,9 @@ def pytest_sessionfinish(session, exitstatus):
 # Autouse hermetic test isolation fixture (T9)
 # ---------------------------------------------------------------------------
 
+# Resolved so that a worktree's symlinked config/credentials.yaml maps to the owner's real file.
+_REAL_CREDENTIALS = (Path(__file__).resolve().parent.parent / "config" / "credentials.yaml").resolve()
+
 _SENSITIVE_ENV_KEYS = [
     "OPENROUTER_API_KEY",
     "MINIMAX_API_KEY",
@@ -134,21 +146,23 @@ def isolate_test_environment(monkeypatch, tmp_path, request):
     tmp_reports.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr("src.research.tools.REPORTS_DIR", tmp_reports, raising=False)
 
-    # 2. Isolate research data directory and caches
-    tmp_data_dir = tmp_path / "data_btc"
-    tmp_data_dir.mkdir(parents=True, exist_ok=True)
+    # 2. Isolate research data directory and caches (unless the test verifies the real path
+    #    constants itself, e.g. the cache-layout tests, which isolate via chdir(tmp_path))
+    if request.node.get_closest_marker("real_data_paths") is None:
+        tmp_data_dir = tmp_path / "data_btc"
+        tmp_data_dir.mkdir(parents=True, exist_ok=True)
 
-    tracked_daily = Path("data/btc/daily.csv")
-    if tracked_daily.exists():
-        shutil.copy(tracked_daily, tmp_data_dir / "daily.csv")
+        tracked_daily = Path("data/btc/daily.csv")
+        if tracked_daily.exists():
+            shutil.copy(tracked_daily, tmp_data_dir / "daily.csv")
 
-    monkeypatch.setattr("src.research.data.DATA_DIR", tmp_data_dir, raising=False)
-    monkeypatch.setattr("src.research.data.DAILY_CSV", tmp_data_dir / "daily.csv", raising=False)
-    monkeypatch.setattr("src.research.data.HOURLY_CSV", tmp_data_dir / "hourly.csv", raising=False)
+        monkeypatch.setattr("src.research.data.DATA_DIR", tmp_data_dir, raising=False)
+        monkeypatch.setattr("src.research.data.DAILY_CSV", tmp_data_dir / "daily.csv", raising=False)
+        monkeypatch.setattr("src.research.data.HOURLY_CSV", tmp_data_dir / "hourly.csv", raising=False)
 
-    monkeypatch.setattr("src.research.data.on_chain.DATA_DIR", tmp_data_dir, raising=False)
-    monkeypatch.setattr("src.research.data.on_chain.MVRV_CSV", tmp_data_dir / "mvrv.csv", raising=False)
-    monkeypatch.setattr("src.research.data.on_chain.PUELL_CSV", tmp_data_dir / "puell.csv", raising=False)
+        monkeypatch.setattr("src.research.data.on_chain.DATA_DIR", tmp_data_dir, raising=False)
+        monkeypatch.setattr("src.research.data.on_chain.MVRV_CSV", tmp_data_dir / "mvrv.csv", raising=False)
+        monkeypatch.setattr("src.research.data.on_chain.PUELL_CSV", tmp_data_dir / "puell.csv", raising=False)
 
     # 3. Neutralize real credentials unless explicitly opted in
     allow_real_keys = (
@@ -162,13 +176,18 @@ def isolate_test_environment(monkeypatch, tmp_path, request):
         for key in _SENSITIVE_ENV_KEYS:
             monkeypatch.delenv(key, raising=False)
 
-        # Force Settings to load credentials.example.yaml rather than developer credentials.yaml
+        # Force Settings to load credentials.example.yaml rather than developer credentials.yaml.
+        # Only the developer's real file is hidden: a test that chdir()s into tmp_path and writes its
+        # own config/credentials.yaml must still see it, so compare resolved locations, not names.
         real_exists = Path.exists
+        real_credentials = _REAL_CREDENTIALS
 
         def _isolated_path_exists(path_self):
-            path_str = str(path_self)
-            if path_str.endswith("config/credentials.yaml") or path_str == "config/credentials.yaml":
-                return False
+            try:
+                if Path(path_self).resolve() == real_credentials:
+                    return False
+            except OSError:
+                pass
             return real_exists(path_self)
 
         monkeypatch.setattr(Path, "exists", _isolated_path_exists)
