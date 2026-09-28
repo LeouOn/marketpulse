@@ -1,7 +1,7 @@
 """Tests for the MiniMax LLM provider wiring.
 
 After the 2026-06-10 spec change, MiniMax is the DEFAULT primary LLM provider,
-targeting https://minimax.io with the MiniMax-M3 model. These tests verify:
+targeting https://api.minimax.io/v1 with the MiniMax-M3 model. These tests verify:
 
 1. The config defaults to the new endpoint + model.
 2. ModelRouter registers MiniMax as a provider and picks it first when healthy.
@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import patch
 
-from src.core.config import get_settings
+from src.core.config import LLMSettings, get_settings, interpolate_env_vars
 from src.llm.llm_client import LLMManager
 from src.llm.minimax_client import MiniMaxClient
 from src.llm.model_router import ModelRouter
@@ -25,26 +25,26 @@ from src.llm.model_router import ModelRouter
 
 
 def test_minimax_config_uses_minimax_io():
-    """Config must default to the minimax.io international coding plan endpoint."""
+    """Config must default to the api.minimax.io API host (minimax.io itself is the website)."""
     s = get_settings()
-    assert s.llm.minimax.base_url == "https://minimax.io"
+    assert s.llm.minimax.base_url == "https://api.minimax.io/v1"
     assert s.llm.minimax.model == "MiniMax-M3"
 
 
 def test_minimax_api_keys_config_uses_minimax_io():
     """The api_keys.minimax block (used by .env interpolation) must match."""
     s = get_settings()
-    assert s.api_keys.minimax.base_url == "https://minimax.io"
+    assert s.api_keys.minimax.base_url == "https://api.minimax.io/v1"
 
 
 def test_minimax_is_default_primary_provider():
-    """Model routing must default to minimax as the primary provider."""
-    s = get_settings()
-    assert s.llm.model_routing.primary_provider == "minimax"
-    assert "MiniMax-M3" in s.llm.model_routing.reasoning
-    assert "MiniMax-M3" in s.llm.model_routing.fast
-    assert "MiniMax-M3" in s.llm.model_routing.standard
-    assert "MiniMax-M3" in s.llm.model_routing.structured_output
+    """Code defaults (not the local credentials.yaml) must route to minimax first."""
+    routing = LLMSettings().model_routing
+    assert routing.primary_provider == "minimax"
+    assert "MiniMax-M3" in routing.reasoning
+    assert "MiniMax-M3" in routing.fast
+    assert "MiniMax-M3" in routing.standard
+    assert "MiniMax-M3" in routing.structured_output
 
 
 def test_minimax_fallback_chain_includes_legacy_providers():
@@ -64,7 +64,7 @@ def test_minimax_client_uses_configured_endpoint():
     """MiniMaxClient must read endpoint + model from the (new) config."""
     s = get_settings()
     client = MiniMaxClient(s)
-    assert client.base_url == "https://minimax.io"
+    assert client.base_url == "https://api.minimax.io/v1"
     assert client.model == "MiniMax-M3"
 
 
@@ -82,6 +82,68 @@ def test_minimax_client_reports_healthy_with_real_key():
     s.llm.minimax.api_key = "sk-real-key-123"
     client = MiniMaxClient(s)
     assert asyncio.run(client.check_health()) is True
+
+
+def test_minimax_client_reports_unhealthy_with_unresolved_placeholder():
+    """A ${...} YAML placeholder that never resolved must not count as a key."""
+    s = get_settings()
+    s.llm.minimax.api_key = "${api_keys:minimax:api_key}"
+    client = MiniMaxClient(s)
+    assert asyncio.run(client.check_health()) is False
+
+
+class _FakeResponse:
+    def __init__(self, status, content_type):
+        self.status = status
+        self.headers = {"Content-Type": content_type}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _FakeSession:
+    def __init__(self, response):
+        self._response = response
+
+    def get(self, url):
+        return self._response
+
+
+def _probe(status, content_type):
+    s = get_settings()
+    s.llm.minimax.api_key = "sk-real-key-123"
+    client = MiniMaxClient(s)
+    client.session = _FakeSession(_FakeResponse(status, content_type))
+    return asyncio.run(client.check_health())
+
+
+def test_minimax_probe_rejects_html_200():
+    """A wrong base_url can redirect to the marketing site (200 text/html)."""
+    assert _probe(200, "text/html; charset=utf-8") is False
+
+
+def test_minimax_probe_accepts_json_200_and_rejects_401():
+    assert _probe(200, "application/json") is True
+    assert _probe(401, "application/json") is False
+
+
+# ---------------------------------------------------------------------------
+# Env interpolation of the YAML ${...} placeholders
+# ---------------------------------------------------------------------------
+
+
+def test_interpolation_falls_back_to_section_less_env_name():
+    """${api_keys:minimax:api_key} must find MINIMAX_API_KEY, as .env.example names it."""
+    assert interpolate_env_vars("${api_keys:minimax:api_key}", {"MINIMAX_API_KEY": "abc"}) == "abc"
+
+
+def test_interpolation_prefers_full_path_name_and_leaves_unresolved():
+    env = {"API_KEYS_MINIMAX_API_KEY": "full", "MINIMAX_API_KEY": "short"}
+    assert interpolate_env_vars("${api_keys:minimax:api_key}", env) == "full"
+    assert interpolate_env_vars("${api_keys:minimax:api_key}", {}) == "${api_keys:minimax:api_key}"
 
 
 # ---------------------------------------------------------------------------
@@ -141,11 +203,12 @@ def test_model_router_registers_minimax_provider():
 # ---------------------------------------------------------------------------
 
 
-def test_llm_manager_status_uses_new_minimax_endpoint():
+def test_llm_manager_status_uses_new_minimax_endpoint(monkeypatch):
     s = get_settings()
-    s.llm.minimax.api_key = "sk-test-123"
+    monkeypatch.setattr(s.llm.minimax, "api_key", "sk-test-123")
+    monkeypatch.setattr(s.llm.model_routing, "primary_provider", "minimax")
     mgr = LLMManager()
     status = mgr.get_status()
-    assert status["minimax"]["endpoint"] == "https://minimax.io"
+    assert status["minimax"]["endpoint"] == "https://api.minimax.io/v1"
     assert status["minimax"]["model"] == "MiniMax-M3"
     assert status["routing"]["primary"] == "minimax"

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import dotenv_values
 from pydantic import ConfigDict, Field
 from pydantic_settings import BaseSettings
 
@@ -22,8 +23,17 @@ def interpolate_env_vars(value: str, env_vars: dict[str, str]) -> str:
 
     def replace_match(match):
         path = match.group(1)
-        env_key = path.replace(":", "_").upper()
-        return env_vars.get(env_key, match.group(0))
+        parts = path.upper().split(":")
+        # ``${api_keys:minimax:api_key}`` -> API_KEYS_MINIMAX_API_KEY, then the
+        # conventional MINIMAX_API_KEY (the section prefix dropped), so keys in .env
+        # named the way .env.example names them are found.
+        candidates = ["_".join(parts)]
+        if len(parts) > 1:
+            candidates.append("_".join(parts[1:]))
+        for env_key in candidates:
+            if env_vars.get(env_key):
+                return env_vars[env_key]
+        return match.group(0)
 
     return re.sub(pattern, replace_match, value)
 
@@ -62,7 +72,7 @@ class ApiKeys(BaseSettings):
 
     class MiniMaxConfig(BaseSettings):
         api_key: str = "your_minimax_api_key"
-        base_url: str = "https://minimax.io"
+        base_url: str = "https://api.minimax.io/v1"
 
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     rithmic: RithmicConfig = Field(default_factory=RithmicConfig)
@@ -86,7 +96,7 @@ class LLMSettings(BaseSettings):
         timeout: int = 60
 
     class MiniMaxConfig(BaseSettings):
-        base_url: str = "https://minimax.io"
+        base_url: str = "https://api.minimax.io/v1"
         api_key: str = "your_minimax_api_key"
         timeout: int = 60
         model: str = "MiniMax-M3"
@@ -225,8 +235,14 @@ class Settings(BaseSettings):
                 with open(yaml_path, encoding="utf-8") as f:
                     yaml_data = yaml.safe_load(f)
 
-                # Get environment variables for interpolation
-                env_vars = dict(os.environ)
+                # Environment for ``${...}`` interpolation: .env files first, real
+                # environment variables win. Settings only reads .env into its own
+                # fields, so without this .env keys never reach the YAML placeholders.
+                env_vars: dict[str, str] = {}
+                for env_file in ("config/.env", ".env"):
+                    if Path(env_file).exists():
+                        env_vars.update({k: v for k, v in dotenv_values(env_file).items() if v})
+                env_vars.update(os.environ)
 
                 # Update API keys section
                 if "api_keys" in yaml_data:

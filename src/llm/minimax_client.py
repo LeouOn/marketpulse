@@ -38,14 +38,16 @@ class MiniMaxClient:
         happens on the first real request.
         """
         try:
-            if not self.api_key or self.api_key == "your_minimax_api_key":
+            # An unresolved ``${...}`` YAML placeholder counts as "no key".
+            if not self.api_key or self.api_key == "your_minimax_api_key" or self.api_key.startswith("${"):
                 return False
             if not self.session:
                 return True  # key valid; session will be opened on first call
-            # Lightweight probe: hit /models (cheap, OpenAI-compatible).
+            # Lightweight probe: hit /models (cheap, OpenAI-compatible). A wrong
+            # base_url can redirect to an HTML page with a 200, so require JSON.
             url = f"{self.base_url}/models"
             async with self.session.get(url) as r:
-                return r.status == 200
+                return r.status == 200 and "json" in r.headers.get("Content-Type", "")
         except Exception:
             return False
 
