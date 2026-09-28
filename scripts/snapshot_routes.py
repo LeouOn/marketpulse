@@ -8,20 +8,18 @@ sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
 from pathlib import Path
 
 from src.api.main import app
+from src.api.route_utils import route_entries
 
 
 def route_set() -> list[str]:
     entries = set()
-    for route in app.routes:
-        path = getattr(route, "path", None)
-        if not path:
-            continue
-        methods = getattr(route, "methods", None)
-        if methods:
-            for m in sorted(methods - {"HEAD", "OPTIONS"}):
-                entries.add(f"{m} {path}")
-        else:  # websocket routes have no .methods
+    for path, methods in route_entries(app):
+        if methods == ["WebSocket"]:  # websocket routes have no .methods
             entries.add(f"WS {path}")
+        else:
+            for m in methods:
+                if m not in ("HEAD", "OPTIONS"):
+                    entries.add(f"{m} {path}")
     return sorted(entries)
 
 

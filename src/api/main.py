@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 # Module-scope (not lazy in lifespan) so circular imports surface at import time.
+from src.api.route_utils import route_entries
 from src.api.routers import deps as router_deps
 
 # Import with error handling for missing dependencies
@@ -139,21 +140,10 @@ async def root():
 @app.get("/api/debug/routes")
 async def debug_routes():
     """Debug endpoint to list all registered routes"""
-    routes = []
-    for route in app.routes:
-        if hasattr(route, 'path') and hasattr(route, 'methods'):
-            routes.append({
-                "path": route.path,
-                "methods": list(route.methods) if route.methods else []
-            })
-        elif hasattr(route, 'path'):
-            routes.append({
-                "path": route.path,
-                "methods": ["WebSocket" if "ws" in route.path else "Unknown"]
-            })
+    routes = [{"path": path, "methods": methods} for path, methods in route_entries(app)]
     return {
         "total_routes": len(routes),
-        "routes": sorted(routes, key=lambda x: x["path"]),
+        "routes": routes,
         "market_routes": [r for r in routes if "/api/market" in r["path"]],
         "llm_routes": [r for r in routes if "/api/llm" in r["path"]]
     }
