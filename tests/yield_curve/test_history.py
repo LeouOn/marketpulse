@@ -58,8 +58,9 @@ def test_save_is_idempotent_on_same_date(session):
 
 def test_get_history_returns_n_most_recent(session):
     h = YieldCurveHistory(session)
+    # get_history() filters relative to today, so anchor the fixtures to today.
     for i in range(40):
-        h.save_snapshot(_make_snapshot(date(2026, 6, 1) + timedelta(days=i), float(i)))
+        h.save_snapshot(_make_snapshot(date.today() - timedelta(days=39 - i), float(i)))
     out = h.get_history(days=30)
     assert len(out) == 30
     assert out[0].date >= out[-1].date  # descending
