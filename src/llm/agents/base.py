@@ -7,10 +7,26 @@ preference.  The ``execute()`` method runs the function-calling loop via
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from loguru import logger
+
+# Reasoning models (MiniMax-M3) return their chain of thought inline in the message
+# content as <think>...</think>, wrapped around the real answer.
+_THINK_BLOCK = re.compile(r"^\s*<think>.*?</think>\s*", re.DOTALL | re.IGNORECASE)
+
+
+def strip_think(content: str | None) -> str | None:
+    """Remove a leading inline ``<think>...</think>`` block from model output.
+
+    Only a complete block at the very start is removed, so an unterminated tag
+    leaves the content intact rather than deleting the answer.
+    """
+    if not content:
+        return content
+    return _THINK_BLOCK.sub("", content, count=1)
 
 
 @dataclass
@@ -115,10 +131,13 @@ class MarketAgent:
         client, model_id = await self._router.route(self.CAPABILITY)
 
         if not hasattr(client, "generate_with_tools"):
-            # Fallback: plain completion (no function calling)
+            # The client cannot call tools, so it cannot fetch any data. Answer anyway
+            # (the model still has an opinion worth showing) but do NOT report success:
+            # a tool-less "success" reads as real analysis when it is model memory.
+            client_name = type(client).__name__
             logger.warning(
-                f"{self.AGENT_NAME}: client {type(client).__name__} "
-                f"lacks generate_with_tools -- using plain completion"
+                f"{self.AGENT_NAME}: client {client_name} "
+                f"lacks generate_with_tools -- no tools can be called"
             )
             response = await client.generate_completion(
                 messages=messages,
@@ -126,19 +145,28 @@ class MarketAgent:
                 max_tokens=self.MAX_TOKENS,
                 temperature=self.TEMPERATURE,
             )
+            error = (
+                f"{client_name} does not support tool calling "
+                f"(no generate_with_tools), so {self.AGENT_NAME} could not fetch "
+                f"any data -- its answer is unverified model knowledge"
+            )
             if response and "choices" in response:
                 msg = response["choices"][0]["message"]
-                content = msg.get("content") or msg.get("reasoning_content") or ""
+                content = strip_think(msg.get("content") or "")
+                if not content:
+                    content = strip_think(msg.get("reasoning_content") or "")
                 return AgentResult(
                     agent_name=self.AGENT_NAME,
                     content=content,
                     raw_response=response,
+                    success=False,
+                    error=error,
                 )
             return AgentResult(
                 agent_name=self.AGENT_NAME,
                 content="",
                 success=False,
-                error="No response from model",
+                error=f"{error}; also got no response from the model",
             )
 
         # Function-calling loop
@@ -168,8 +196,11 @@ class MarketAgent:
 
         if response and "choices" in response:
             msg = response["choices"][0]["message"]
-            # DeepSeek reasoning models may put output in reasoning_content
-            content = msg.get("content") or msg.get("reasoning_content") or ""
+            # DeepSeek reasoning models may put output in reasoning_content;
+            # MiniMax-M3 returns its reasoning inline in content -- strip it.
+            content = strip_think(msg.get("content") or "")
+            if not content:
+                content = strip_think(msg.get("reasoning_content") or "")
             if not content and msg.get("tool_calls"):
                 content = f"[Agent invoked tools: {', '.join(tool_calls_made)} but produced no final text]"
 
