@@ -146,7 +146,7 @@ Respond with JSON containing: is_valid, issues, confidence, recommendations, sum
 
         if data_type == "market_internals":
             user_prompt = f"""Validate this market internals data:
-{internals_data}
+{data}
 
 Check for:
 - Reasonable price ranges

@@ -153,7 +153,7 @@ class TestBlackScholesPricing:
     def test_days_to_expiration(self):
         """Test days to expiration calculation"""
         from src.analysis.options_pricing import BlackScholesCalculator
-        from datetime import date, timedelta
+        from datetime import date
 
         # Test 30 days from now
         future_date = (date.today() + timedelta(days=30)).strftime('%Y-%m-%d')

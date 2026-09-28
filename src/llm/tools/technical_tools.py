@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 from loguru import logger
+
+if TYPE_CHECKING:  # only the quoted "np.ndarray" annotation needs numpy
+    import numpy as np
 
 # ---------------------------------------------------------------------------
 # Tool: analyze_symbol_technicals

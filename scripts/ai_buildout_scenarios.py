@@ -258,10 +258,11 @@ print("=" * 80)
 
 # Fetch from FRED what we can
 from src.research.data.fred import FredProvider
+from src.research.macro.factors import MacroFactorProvider
 fred = FredProvider()
 
 # Get latest macro indicators
-fdf = mfp.load_factors(date(2020,1,1), date(2025,6,19))
+fdf = MacroFactorProvider().load_factors(date(2020,1,1), date(2025,6,19))
 
 latest_real = fdf.real_yield_10y.dropna().iloc[-1]
 latest_nominal = fdf.nominal_10y.dropna().iloc[-1]
