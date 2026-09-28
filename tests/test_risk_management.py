@@ -314,15 +314,10 @@ class TestRiskManager:
 class TestPositionManager:
     """Test PositionManager class"""
 
-    def setup_method(self):
-        """Setup before each test"""
-        # Clean up any existing test state file
-        import os
-        test_state_file = "data/state/test_positions.json"
-        if os.path.exists(test_state_file):
-            os.remove(test_state_file)
-
-        # Use temporary state file
+    @pytest.fixture(autouse=True)
+    def setup_manager(self, tmp_path):
+        """Setup before each test using a temporary state file"""
+        test_state_file = str(tmp_path / "test_positions.json")
         self.position_manager = PositionManager(
             state_file=test_state_file
         )

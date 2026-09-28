@@ -24,6 +24,12 @@ def pytest_addoption(parser):
         default=False,
         help="Run end-to-end smoke tests (requires API + frontend servers running)",
     )
+    parser.addoption(
+        "--live-credentials",
+        action="store_true",
+        default=False,
+        help="Allow tests to load real credentials.yaml / private API keys",
+    )
 
 
 def _e2e_enabled(config) -> bool:
@@ -43,6 +49,139 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "e2e" in item.keywords:
             item.add_marker(skip_e2e)
+
+
+# ---------------------------------------------------------------------------
+# Tracked file dirtiness check at session finish (T9 hermetic guard)
+# ---------------------------------------------------------------------------
+
+_INITIAL_TRACKED_STATUS: str = ""
+
+
+def pytest_sessionstart(session):
+    global _INITIAL_TRACKED_STATUS
+    import subprocess
+
+    try:
+        res = subprocess.run(
+            ["git", "status", "--porcelain", "-uno"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        _INITIAL_TRACKED_STATUS = res.stdout.strip()
+    except Exception:
+        _INITIAL_TRACKED_STATUS = ""
+
+
+def pytest_sessionfinish(session, exitstatus):
+    import subprocess
+    import sys
+    import warnings
+
+    try:
+        res = subprocess.run(
+            ["git", "status", "--porcelain", "-uno"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        current = res.stdout.strip()
+        if current != _INITIAL_TRACKED_STATUS:
+            msg = (
+                f"\n[DIRTY TREE GUARD] Tracked files were modified during the test session!\n"
+                f"Status diff:\n{current}\n"
+            )
+            warnings.warn(msg, UserWarning)
+            sys.stderr.write(msg)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Autouse hermetic test isolation fixture (T9)
+# ---------------------------------------------------------------------------
+
+_SENSITIVE_ENV_KEYS = [
+    "OPENROUTER_API_KEY",
+    "MINIMAX_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "FRED_API_KEY",
+    "EIA_API_KEY",
+    "ALPACA_KEY_ID",
+    "ALPACA_SECRET_KEY",
+    "COINBASE_API_KEY",
+    "COINBASE_API_SECRET",
+    "RITHMIC_USERNAME",
+    "RITHMIC_PASSWORD",
+]
+
+
+@pytest.fixture(autouse=True)
+def isolate_test_environment(monkeypatch, tmp_path, request):
+    """Ensure every test runs in an isolated hermetic environment.
+
+    1. Points research reports and on-chain cache files to tmp_path.
+    2. Copies daily.csv into tmp_path so existing reads succeed but writes stay isolated.
+    3. Prevents loading private credentials.yaml and sensitive env vars unless opted in.
+    """
+    import shutil
+    from pathlib import Path
+
+    # 1. Isolate research reports directory
+    tmp_reports = tmp_path / "reports"
+    tmp_reports.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("src.research.tools.REPORTS_DIR", tmp_reports, raising=False)
+
+    # 2. Isolate research data directory and caches
+    tmp_data_dir = tmp_path / "data_btc"
+    tmp_data_dir.mkdir(parents=True, exist_ok=True)
+
+    tracked_daily = Path("data/btc/daily.csv")
+    if tracked_daily.exists():
+        shutil.copy(tracked_daily, tmp_data_dir / "daily.csv")
+
+    monkeypatch.setattr("src.research.data.DATA_DIR", tmp_data_dir, raising=False)
+    monkeypatch.setattr("src.research.data.DAILY_CSV", tmp_data_dir / "daily.csv", raising=False)
+    monkeypatch.setattr("src.research.data.HOURLY_CSV", tmp_data_dir / "hourly.csv", raising=False)
+
+    monkeypatch.setattr("src.research.data.on_chain.DATA_DIR", tmp_data_dir, raising=False)
+    monkeypatch.setattr("src.research.data.on_chain.MVRV_CSV", tmp_data_dir / "mvrv.csv", raising=False)
+    monkeypatch.setattr("src.research.data.on_chain.PUELL_CSV", tmp_data_dir / "puell.csv", raising=False)
+
+    # 3. Neutralize real credentials unless explicitly opted in
+    allow_real_keys = (
+        request.config.getoption("--live-credentials", default=False)
+        or os.getenv("MARKETPULSE_USE_REAL_CREDENTIALS") == "1"
+        or request.node.get_closest_marker("live_credentials") is not None
+    )
+
+    if not allow_real_keys:
+        # Strip live API keys from environment
+        for key in _SENSITIVE_ENV_KEYS:
+            monkeypatch.delenv(key, raising=False)
+
+        # Force Settings to load credentials.example.yaml rather than developer credentials.yaml
+        real_exists = Path.exists
+
+        def _isolated_path_exists(path_self):
+            path_str = str(path_self)
+            if path_str.endswith("config/credentials.yaml") or path_str == "config/credentials.yaml":
+                return False
+            return real_exists(path_self)
+
+        monkeypatch.setattr(Path, "exists", _isolated_path_exists)
+
+    # Reset cached singleton settings at end of test to prevent cross-contamination
+    yield
+
+    try:
+        from src.core import config as config_mod
+
+        config_mod._settings_instance = None
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
