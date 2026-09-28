@@ -71,8 +71,8 @@ class YahooProvider(DataProvider):
     # Parity is enforced by tests/test_research_data_yahoo.py.
     MACRO_SYMBOLS: dict[str, str] = {
         # Commodities & Indices
-        "DXY": "UUP",  # US Dollar Index ETF
-        "GC": "GLD",  # Gold ETF
+        "DXY": "DX-Y.NYB",  # ICE US Dollar Index (not the UUP ETF)
+        "GC": "GC=F",  # COMEX gold futures (not the GLD ETF)
         "CL": "CL=F",  # Crude Oil Futures (WTI) - Direct symbol
         "TNX": "^TNX",  # 10-Year Treasury Yield (^TNX)
         # Cryptocurrencies

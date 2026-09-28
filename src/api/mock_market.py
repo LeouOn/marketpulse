@@ -2,8 +2,12 @@
 Bootstraps base prices from Yahoo Finance when available,
 falls back to static defaults only if Yahoo is unreachable.
 Adds realistic variance around real prices with bounded drift.
+
+Fabricated fields are labelled ``source: mock``. Callers must omit them
+unless ``MARKETPULSE_ALLOW_MOCK`` is set (see ``allow_mock``).
 """
 
+import os
 import random
 from datetime import datetime
 from typing import Any
@@ -33,14 +37,57 @@ FALLBACK_PRICES = {
     "NVDA": 600.0,
 }
 
+# Last-resort levels for every MACRO_CATALOG key. Used only when Yahoo is
+# unreachable and the caller has opted into mock data. Not live quotes.
 FALLBACK_MACRO = {
-    "DXY": 103.0,
-    "TNX": 4.35,
-    "CLF": 62.0,
-    "GC": 3250.0,
+    "DXY": 101.0,
+    "TNX": 4.5,
+    "CL": 70.0,
+    "GC": 3300.0,
     "BTC": 94000.0,
     "ETH": 1800.0,
+    "SOL": 150.0,
+    "XRP": 0.5,
+    "NIKKEI": 38000.0,
+    "HSI": 18000.0,
+    "SSE": 3200.0,
+    "ASX": 8000.0,
+    "FTSE": 8300.0,
+    "DAX": 18000.0,
+    "CAC": 7500.0,
+    "STOXX": 4900.0,
+    "EURUSD": 1.08,
+    "GBPUSD": 1.27,
+    "USDJPY": 150.0,
+    "AUDUSD": 0.66,
+    "USDCAD": 1.36,
+    "USDCHF": 0.88,
 }
+
+
+def allow_mock() -> bool:
+    """True when fabricated series may be returned. Matches market_data_collector."""
+    return os.getenv("MARKETPULSE_ALLOW_MOCK", "").lower() in ("1", "true", "yes")
+
+
+def local_market_session(now: datetime | None = None) -> str:
+    """Coarse session label from the server's local hour. Not an exchange calendar."""
+    hour = (now or datetime.now()).hour
+    if 9 <= hour < 16:
+        return "US Regular"
+    if 16 <= hour < 20:
+        return "US After Hours"
+    if hour >= 20 or hour < 4:
+        return "Asian Session"
+    return "European Session"
+
+
+def macro_yahoo_map() -> dict[str, str]:
+    """Key -> Yahoo symbol. Same dict YahooFinanceClient.macro_symbols is built from."""
+    from src.api.yahoo_client import MACRO_CATALOG
+
+    return {name: meta["symbol"] for name, meta in MACRO_CATALOG.items()}
+
 
 # Maximum allowed single-day change percentage
 MAX_CHANGE_PCT = 5.0  # 5% max daily change in mock data
@@ -61,19 +108,12 @@ def _bootstrap_from_yahoo():
             "TSLA": "TSLA",
             "NVDA": "NVDA",
         }
-        macro_map = {
-            "DXY": "UUP",
-            "TNX": "^TNX",
-            "CLF": "CL=F",
-            "GC": "GLD",
-            "BTC": "BTC-USD",
-            "ETH": "ETH-USD",
-        }
+        macro_map = macro_yahoo_map()
         all_yahoo = {**symbols, **macro_map}
         ticker_list = list(all_yahoo.values())
         data = yf.download(ticker_list, period="1d", interval="1d", progress=False, auto_adjust=False)
         if data.empty or "Close" not in data:
-            return FALLBACK_PRICES, FALLBACK_MACRO
+            return dict(FALLBACK_PRICES), dict(FALLBACK_MACRO)
 
         prices = {}
         for name, ysym in symbols.items():
@@ -95,10 +135,12 @@ def _bootstrap_from_yahoo():
 
         if prices:
             logger.info(f"Bootstrapped mock base prices from Yahoo: {list(prices.keys())}")
-        return prices or FALLBACK_PRICES, macro or FALLBACK_MACRO
+        merged_macro = dict(FALLBACK_MACRO)
+        merged_macro.update(macro)
+        return prices or FALLBACK_PRICES, merged_macro
     except Exception as e:
         logger.warning(f"Could not bootstrap from Yahoo, using static defaults: {e}")
-        return FALLBACK_PRICES, FALLBACK_MACRO
+        return FALLBACK_PRICES, dict(FALLBACK_MACRO)
 
 
 class MockMarketDataProvider:
@@ -135,24 +177,43 @@ class MockMarketDataProvider:
         return internals
 
     async def get_macro_data(self) -> dict[str, Any]:
+        """Fabricated macro payload. Every series is tagged source=mock.
+
+        The market router must not serve this unless ``allow_mock()`` is true.
+        """
+        from src.api.yahoo_client import MACRO_CATALOG
+
         now = datetime.now()
         macro_data = {}
 
         for symbol, base_value in self.macro_base.items():
             change = self._generate_macro_change(symbol, base_value)
+            meta = MACRO_CATALOG.get(symbol, {})
             macro_data[symbol] = {
                 "price": change["price"],
                 "change": change["change"],
                 "change_pct": change["change_pct"],
                 "timestamp": now.isoformat(),
+                "symbol": meta.get("symbol", symbol),
+                "instrument": meta.get("instrument", symbol),
+                "is_proxy": bool(meta.get("is_proxy", False)),
+                "source": "mock",
             }
 
         macro_data.update(
             {
-                "market_session": self._get_market_session(),
+                "market_session": local_market_session(now),
+                "market_session_basis": "local_clock",
                 "economic_sentiment": self._get_sentiment_indicator(),
                 "sector_performance": self._get_sector_performance(),
                 "risk_appetite": self._get_risk_appetite(),
+                "source": "mock",
+                "field_sources": {
+                    "market_session": "derived",
+                    "economic_sentiment": "mock",
+                    "sector_performance": "mock",
+                    "risk_appetite": "mock",
+                },
             }
         )
         return macro_data
@@ -211,7 +272,7 @@ class MockMarketDataProvider:
         return int(base * random.uniform(0.5, 1.5))
 
     def _generate_macro_change(self, symbol: str, base_value: float) -> dict[str, float]:
-        volatilities = {"DXY": 0.005, "TNX": 0.02, "CLF": 0.025, "GC": 0.008, "BTC": 0.04, "ETH": 0.045}
+        volatilities = {"DXY": 0.005, "TNX": 0.02, "CL": 0.025, "GC": 0.008, "BTC": 0.04, "ETH": 0.045}
         volatility = volatilities.get(symbol, 0.01)
         change_pct = random.gauss(0, 1) * volatility
         change = base_value * change_pct
@@ -220,15 +281,7 @@ class MockMarketDataProvider:
         return {"price": new_price, "change": change, "change_pct": change_pct * 100}
 
     def _get_market_session(self) -> str:
-        hour = datetime.now().hour
-        if 9 <= hour < 16:
-            return "US Regular"
-        elif 16 <= hour < 20:
-            return "US After Hours"
-        elif hour >= 20 or hour < 4:
-            return "Asian Session"
-        else:
-            return "European Session"
+        return local_market_session()
 
     def _get_sentiment_indicator(self) -> str:
         s = random.gauss(0, 1)
