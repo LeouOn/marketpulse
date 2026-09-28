@@ -45,7 +45,7 @@ def _annotate_breadth(breadth_data: dict | None) -> dict | None:
     nyse_counted = (
         int(out.get("nyse_advancing") or 0) + int(out.get("nyse_declining") or 0) + int(out.get("nyse_unchanged") or 0)
     )
-    is_mock = nyse_counted > len(sample.nyse_symbols)
+    is_mock = out.get("source") == "mock" or nyse_counted > len(sample.nyse_symbols)
     out["universe"] = "etf_sample"
     out["nyse_symbols"] = list(sample.nyse_symbols)
     out["nasdaq_symbols"] = list(sample.nasdaq_symbols)

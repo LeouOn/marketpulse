@@ -121,27 +121,21 @@ class MarketPulseCollector:
             logger.warning(f"Market data collection error: {api_error}")
             internals = None
 
-        # Fallback to mock data if API fails
+        # Fallback to mock data only when the operator opts in. Otherwise the
+        # old path built a fabricated quote and then raised because it was synthetic.
         if not internals:
-            logger.info("Using mock market data")
-            from ..api.mock_market import mock_provider
+            from ..api.mock_market import allow_mock, mock_provider
 
+            if not allow_mock():
+                raise ValueError(
+                    "Market data unavailable and MARKETPULSE_ALLOW_MOCK is not set. "
+                    "Set MARKETPULSE_ALLOW_MOCK=1 to allow a labelled mock fallback."
+                )
+            logger.warning("Using mock market data (MARKETPULSE_ALLOW_MOCK)")
             mock_data = await mock_provider.get_market_internals()
             mock_data["data_source"] = "mock"
             mock_data["synthetic"] = True
             internals = mock_data
-
-            # Validate mock data - strict mode will reject if issues
-            validation = validate_market_internals(internals)
-            if not validation.is_valid:
-                logger.error(f"Mock data validation failed: {validation.issues}")
-                raise ValueError(f"Mock data validation failed: {'; '.join(validation.issues)}")
-
-            # Check usability
-            is_usable, reason = is_data_usable(internals)
-            if not is_usable:
-                logger.error(f"Mock data not usable: {reason}")
-                raise ValueError(f"Mock data not usable: {reason}")
 
         # Strict validation - if data fails, raise error instead of returning bad data
         required_symbols = ["spy", "qqq", "vix"]
@@ -149,12 +143,16 @@ class MarketPulseCollector:
 
         if not validation.is_valid:
             logger.error(f"Data validation failed: {validation.issues}")
-            # Instead of returning bad data with zeros, raise an error
             raise ValueError(f"Market data validation failed: {'; '.join(validation.issues)}")
 
-        # Check data usability
+        # Mock is not tradable, but an explicit opt-in may still return it, labelled.
         is_usable, reason = is_data_usable(internals)
-        if not is_usable:
+        labelled_mock = False
+        if internals.get("data_source") == "mock":
+            from ..api.mock_market import allow_mock
+
+            labelled_mock = allow_mock()
+        if not is_usable and not labelled_mock:
             logger.error(f"Data not usable for trading: {reason}")
             raise ValueError(f"Market data not usable: {reason}")
 

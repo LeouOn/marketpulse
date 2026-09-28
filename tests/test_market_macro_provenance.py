@@ -220,6 +220,54 @@ async def test_yahoo_outage_omits_mock_unless_opted_in(yahoo_fake, monkeypatch):
     assert allowed.data["field_sources"]["sector_performance"] == "mock"
 
 
+def test_breadth_honors_an_explicit_mock_source():
+    from src.api.routers.market import _annotate_breadth
+
+    flagged = _annotate_breadth(
+        {"source": "mock", "nyse_advancing": 1, "nyse_declining": 0, "nyse_unchanged": 0}
+    )
+    assert flagged["source"] == "mock"
+    assert flagged["classification"] == "mock"
+
+
+@pytest.mark.asyncio
+async def test_collector_skips_mock_internals_unless_opted_in(monkeypatch):
+    monkeypatch.delenv("MARKETPULSE_ALLOW_MOCK", raising=False)
+    monkeypatch.setattr("yfinance.download", lambda *args, **kwargs: pd.DataFrame())
+
+    class _EmptyFeed:
+        async def get_all_market_data(self, use_cache=True):
+            return {}
+
+    from src.data.market_collector import MarketPulseCollector
+
+    collector = MarketPulseCollector.__new__(MarketPulseCollector)
+    collector.collector = _EmptyFeed()
+    collector.symbols = {"SPY": "SPY", "QQQ": "QQQ", "VIX": "^VIX"}
+    collector.db_manager = None
+
+    with pytest.raises(ValueError, match="MARKETPULSE_ALLOW_MOCK"):
+        await collector.collect_market_internals()
+
+    monkeypatch.setenv("MARKETPULSE_ALLOW_MOCK", "1")
+
+    async def _labelled_mock():
+        quote = {"price": 500.0, "change": 1.0, "change_pct": 0.2, "volume": 1_000, "data_age_seconds": 5}
+        return {
+            "spy": dict(quote),
+            "qqq": dict(quote, price=450.0),
+            "vix": dict(quote, price=16.0, volume=0),
+        }
+
+    import src.api.mock_market as mock_market
+
+    monkeypatch.setattr(mock_market.mock_provider, "get_market_internals", _labelled_mock)
+    result = await collector.collect_market_internals()
+    assert result["data_source"] == "mock"
+    assert result["synthetic"] is True
+    assert result["spy"]["price"] == 500.0
+
+
 def test_freshness_uses_spy_age_when_the_collector_dropped_the_flag():
     from src.api.routers.market import _freshness_status
 

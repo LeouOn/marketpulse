@@ -151,7 +151,5 @@ The sector panel reads `sector_performance`. With mock off, that object is absen
 
 ## Still open
 
-- `src/data/market_collector.py` still substitutes mock internals when collection fails, without `MARKETPULSE_ALLOW_MOCK`. T2a owns that file. The payload is already marked `synthetic` / `data_source=mock`.
-- `src/data/market_breadth.py` `_get_mock_internals` does not set `source`. The router detects it by count. A `source` field on that dict would remove the heuristic.
-- `src/ai/massive_analyst.py` still calls `get_historical_data`. T5 owns that file.
+- `src/ai/massive_analyst.py` is fixed on `task/T5`: analysis uses `get_bars` and flattens the ticker column. Older copies of that file still call `get_historical_data` until that branch merges.
 - `src/research/data/yahoo.py` `MACRO_SYMBOLS` is a required copy of `YahooFinanceClient.macro_symbols`. This change updates `DXY` and `GC` there so `tests/test_research_data_yahoo.py` stays green. `YahooProvider.load_daily` still defaults to the GLD ticker; that default is separate from the `GC` key.

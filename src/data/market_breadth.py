@@ -350,8 +350,14 @@ class MarketBreadthCollector:
             return "Oversold"
 
     def _get_mock_internals(self) -> dict[str, Any]:
-        """Return mock data when real calculation fails"""
+        """Hardcoded exchange-scale counts used when the live sample throws.
+
+        ``source`` is set so callers can drop this payload unless mock data
+        was explicitly requested. The numbers are not a 10-ETF sample.
+        """
         return {
+            "source": "mock",
+            "classification": "mock",
             "nyse_advancing": 1520,
             "nyse_declining": 1380,
             "nyse_unchanged": 100,
