@@ -316,9 +316,14 @@ def test_macro_symbols_is_class_level_constant():
     assert isinstance(a, dict)
 
 
-def test_macro_symbols_contains_gld_and_clf():
-    """Spot-check the two symbols the plan depends on (T11 oil term structure)."""
-    assert YahooProvider.MACRO_SYMBOLS["GC"] == "GLD"
+def test_macro_symbols_use_listed_instruments():
+    """Dollar index and gold follow the listed instruments, not the ETF proxies.
+
+    CL stays on the WTI future. GLD remains YahooProvider's default load_daily
+    ticker; it is no longer the GC mapping.
+    """
+    assert YahooProvider.MACRO_SYMBOLS["DXY"] == "DX-Y.NYB"
+    assert YahooProvider.MACRO_SYMBOLS["GC"] == "GC=F"
     assert YahooProvider.MACRO_SYMBOLS["CL"] == "CL=F"
 
 

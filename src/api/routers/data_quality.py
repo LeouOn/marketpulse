@@ -26,7 +26,10 @@ async def get_data_quality_summary():
         return success_response({
             "timestamp": datetime.now().isoformat(),
             "cache_status": cache_status,
-            "scheduler_running": True,
+            # The API lifespan never constructs MarketScheduler, so this is false
+            # until some caller starts one and we grow a process-wide handle.
+            "scheduler_running": False,
+            "scheduler_reason": "The API process does not start MarketScheduler.",
         })
 
     except Exception as e:
@@ -44,12 +47,15 @@ async def get_symbol_data_quality(symbol: str):
         yahoo_symbol = client.macro_symbols.get(symbol.upper(), symbol)
 
         data = client.get_single_symbol_data(yahoo_symbol)
+        has_data = data is not None
 
         return success_response({
             "symbol": symbol,
-            "has_data": data is not None,
+            "yahoo_symbol": yahoo_symbol,
+            "has_data": has_data,
             "last_fetch": datetime.now().isoformat(),
-            "source": "yahoo",
+            "bar_timestamp": data.get("timestamp") if has_data else None,
+            "source": "yahoo" if has_data else "unavailable",
             "data": data,
         })
 

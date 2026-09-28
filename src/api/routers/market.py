@@ -15,6 +15,80 @@ router = APIRouter(prefix="/api/market", tags=["market"])
 _cached_ai_analysis: str | None = None
 _ai_analysis_lock = asyncio.Lock()
 
+# Random macro fields produced by MockMarketDataProvider. The session label is
+# not in this set: it is a local-clock heuristic, not a draw.
+_MOCK_MACRO_FIELDS = ("economic_sentiment", "risk_appetite", "sector_performance")
+
+
+def _ohlc_fetch_symbol(symbol: str) -> str:
+    """Yahoo ticker for a dashboard symbol. ``VIX`` is not a listed ticker; ``^VIX`` is."""
+    if symbol.upper() == "VIX":
+        return "^VIX"
+    return symbol
+
+
+def _annotate_breadth(breadth_data: dict | None) -> dict | None:
+    """Label breadth as an ETF sample, or as the hardcoded mock fallback.
+
+    Live counts cannot exceed the sample (10 NYSE names, 8 Nasdaq names).
+    The fallback in ``MarketBreadthCollector._get_mock_internals`` uses
+    exchange-scale integers (nyse_advancing=1520), which is how we tell it apart
+    without editing that module.
+    """
+    if not isinstance(breadth_data, dict) or not breadth_data:
+        return breadth_data
+
+    from src.data.market_breadth import MarketBreadthCollector
+
+    sample = MarketBreadthCollector()
+    out = dict(breadth_data)
+    nyse_counted = (
+        int(out.get("nyse_advancing") or 0) + int(out.get("nyse_declining") or 0) + int(out.get("nyse_unchanged") or 0)
+    )
+    is_mock = out.get("source") == "mock" or nyse_counted > len(sample.nyse_symbols)
+    out["universe"] = "etf_sample"
+    out["nyse_symbols"] = list(sample.nyse_symbols)
+    out["nasdaq_symbols"] = list(sample.nasdaq_symbols)
+    out["classification"] = "mock" if is_mock else "derived"
+    out["source"] = "mock" if is_mock else "yahoo"
+    out["note"] = (
+        "nyse_* and nasdaq_* count this ETF sample, not listed issues on the exchange. "
+        "tick_* is a normalized up-minus-down proxy. "
+        "new_highs/new_lows count sample names within 2% of their own 52-week extreme. "
+        "mcclellan_* stays 0 until this process has 39 net-advance samples."
+    )
+    return out
+
+
+def _breadth_mock_blocked(breadth_data: dict | None) -> bool:
+    from src.api.mock_market import allow_mock
+
+    return isinstance(breadth_data, dict) and breadth_data.get("source") == "mock" and not allow_mock()
+
+
+def _freshness_status(internals: dict | None) -> str:
+    """fresh/stale from the SPY quote age when the collector did not keep the flag.
+
+    ``flag_data_quality`` computes this, then ``collect_market_internals`` drops it,
+    so the dashboard used to stay "unknown" whenever a quote age was present.
+    """
+    if not isinstance(internals, dict):
+        return "unknown"
+    existing = internals.get("freshness_status")
+    if existing in ("fresh", "stale"):
+        return existing
+    spy = internals.get("spy")
+    age = spy.get("data_age_seconds") if isinstance(spy, dict) else None
+    if age is None:
+        return "unknown"
+    from src.core.validators import FRESHNESS_THRESHOLD_SECONDS
+
+    try:
+        age_seconds = float(age)
+    except (TypeError, ValueError):
+        return "unknown"
+    return "fresh" if age_seconds <= FRESHNESS_THRESHOLD_SECONDS else "stale"
+
 
 async def _refresh_ai_analysis(internals: dict):
     """Background task to refresh AI analysis cache"""
@@ -47,6 +121,8 @@ async def get_market_internals():
 
         if internals:
             logger.info(f"Successfully collected {len(internals)} data items")
+            internals = dict(internals)
+            internals["freshness_status"] = _freshness_status(internals)
             return MarketResponse(success=True, data=internals, timestamp=datetime.now().isoformat())
         else:
             return MarketResponse(
@@ -94,7 +170,7 @@ async def get_dashboard_data(background_tasks: BackgroundTasks):
             "dataQuality": internals.get("data_quality", "unknown"),
             "qualityIssues": internals.get("quality_issues", []),
             "synthetic": internals.get("synthetic", False),
-            "freshnessStatus": internals.get("freshness_status", "unknown"),
+            "freshnessStatus": _freshness_status(internals),
             "dataAgeSeconds": internals.get("spy", {}).get("data_age_seconds") if "spy" in internals else None,
         }
 
@@ -102,9 +178,9 @@ async def get_dashboard_data(background_tasks: BackgroundTasks):
             from src.data.market_breadth import MarketBreadthCollector
 
             breadth_collector = MarketBreadthCollector()
-            breadth = breadth_collector.get_market_internals()
+            breadth = _annotate_breadth(breadth_collector.get_market_internals())
 
-            if breadth:
+            if breadth and not _breadth_mock_blocked(breadth):
                 dashboard_data["breadth"] = breadth
         except Exception:
             pass
@@ -138,7 +214,7 @@ async def get_historical_data(symbol: str, timeframe: str = "1Min", limit: int =
         from src.api.yahoo_client import YahooFinanceClient
 
         client = YahooFinanceClient(settings)
-        data = client.get_bars(symbol, timeframe, limit)
+        data = client.get_bars(_ohlc_fetch_symbol(symbol), timeframe, limit)
 
         if data is not None:
             historical_data = []
@@ -173,7 +249,7 @@ async def get_historical_by_path(symbol: str, timeframe: str = "1d", period: str
         from src.api.yahoo_client import YahooFinanceClient
 
         client = YahooFinanceClient(settings)
-        data = client.get_bars(symbol, period, timeframe)
+        data = client.get_bars(_ohlc_fetch_symbol(symbol), period, timeframe)
 
         if data is not None:
             historical_data = []
@@ -217,19 +293,38 @@ async def get_ai_analysis():
 
 @router.get("/macro", response_model=MarketResponse)
 async def get_macro_data():
-    """Get important macro economic indicators"""
+    """Macro quotes from Yahoo. Fabricated sentiment/sector fields require MARKETPULSE_ALLOW_MOCK."""
     try:
-        from src.api.mock_market import mock_provider
+        from src.api.mock_market import allow_mock, local_market_session, mock_provider
         from src.api.yahoo_client import YahooFinanceClient
 
         client = YahooFinanceClient(settings)
         macro_data = client.get_macro_data()
 
-        mock_data = await mock_provider.get_macro_data()
-        macro_data["market_session"] = mock_data.get("market_session", "US Regular")
-        macro_data["economic_sentiment"] = mock_data.get("economic_sentiment", "Neutral")
-        macro_data["risk_appetite"] = mock_data.get("risk_appetite", "Balanced")
-        macro_data["sector_performance"] = mock_data.get("sector_performance", {})
+        if not macro_data:
+            if not allow_mock():
+                return MarketResponse(
+                    success=False,
+                    error=(
+                        "Yahoo Finance returned no macro data and MARKETPULSE_ALLOW_MOCK is not set. "
+                        "Set MARKETPULSE_ALLOW_MOCK=1 to allow a labelled mock fallback."
+                    ),
+                    timestamp=datetime.now().isoformat(),
+                )
+            mock_data = await mock_provider.get_macro_data()
+            return MarketResponse(success=True, data=mock_data, timestamp=datetime.now().isoformat())
+
+        macro_data["market_session"] = local_market_session()
+        macro_data["market_session_basis"] = "local_clock"
+        field_sources = {"market_session": "derived"}
+
+        if allow_mock():
+            mock_data = await mock_provider.get_macro_data()
+            for key in _MOCK_MACRO_FIELDS:
+                if key in mock_data:
+                    macro_data[key] = mock_data[key]
+                    field_sources[key] = "mock"
+        macro_data["field_sources"] = field_sources
 
         try:
             client_52w = YahooFinanceClient(settings)
@@ -246,6 +341,7 @@ async def get_macro_data():
                         macro_data[indicator]["high_52w"] = range_data.get("high_52w")
                         macro_data[indicator]["low_52w"] = range_data.get("low_52w")
                         macro_data[indicator]["pct_from_52w_high"] = range_data.get("pct_from_high")
+                        macro_data[indicator]["range_symbol"] = yahoo_sym
 
         except Exception as e:
             logger.debug(f"Could not enrich macro data with 52W ranges: {e}")
@@ -256,13 +352,14 @@ async def get_macro_data():
         logger.error(f"Error getting macro data: {e}")
 
         try:
-            from src.api.mock_market import mock_provider
+            from src.api.mock_market import allow_mock, mock_provider
 
-            mock_data = await mock_provider.get_macro_data()
-            return MarketResponse(success=True, data=mock_data, timestamp=datetime.now().isoformat())
-
+            if allow_mock():
+                mock_data = await mock_provider.get_macro_data()
+                return MarketResponse(success=True, data=mock_data, timestamp=datetime.now().isoformat())
         except Exception:
-            return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
+            pass
+        return MarketResponse(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
 @router.get("/breadth", response_model=MarketResponse)
@@ -276,12 +373,26 @@ async def get_market_breadth():
         if cache:
             cached = await cache.get("market:breadth")
             if cached:
+                cached = _annotate_breadth(cached)
+                if _breadth_mock_blocked(cached):
+                    return MarketResponse(
+                        success=False,
+                        error=("Cached breadth is the hardcoded mock and MARKETPULSE_ALLOW_MOCK is not set."),
+                        timestamp=datetime.now().isoformat(),
+                    )
                 return MarketResponse(success=True, data=cached, timestamp=datetime.now().isoformat())
 
         from src.data.market_breadth import MarketBreadthCollector
 
         breadth_collector = MarketBreadthCollector()
-        breadth_data = breadth_collector.get_market_internals()
+        breadth_data = _annotate_breadth(breadth_collector.get_market_internals())
+
+        if _breadth_mock_blocked(breadth_data):
+            return MarketResponse(
+                success=False,
+                error=("Breadth calculation fell back to hardcoded mock counts and MARKETPULSE_ALLOW_MOCK is not set."),
+                timestamp=datetime.now().isoformat(),
+            )
 
         if cache and breadth_data:
             await cache.set("market:breadth", breadth_data, 60)
@@ -305,7 +416,7 @@ async def get_ohlc_analysis(symbol: str):
 
         for tf_name, tf_config in ohlc_analyzer.timeframes.items():
             try:
-                data = client.get_bars(symbol, tf_config["period"], tf_config.get("interval", "1d"))
+                data = client.get_bars(_ohlc_fetch_symbol(symbol), tf_config["period"], tf_config.get("interval", "1d"))
 
                 if data is not None:
                     historical_data[tf_name] = {"symbol": symbol, "data": []}
@@ -358,7 +469,9 @@ async def get_ohlc_dashboard():
 
                 for tf_name, tf_config in ohlc_analyzer.timeframes.items():
                     try:
-                        data = client.get_bars(symbol, tf_config["period"], tf_config.get("interval", "1d"))
+                        data = client.get_bars(
+                            _ohlc_fetch_symbol(symbol), tf_config["period"], tf_config.get("interval", "1d")
+                        )
 
                         if data is not None:
                             historical_data[tf_name] = {"symbol": symbol, "data": []}
@@ -445,7 +558,7 @@ async def get_trend_analysis(symbol: str):
 
         for tf_name, tf_config in ohlc_analyzer.timeframes.items():
             try:
-                data = client.get_bars(symbol, tf_config["period"], tf_config.get("interval", "1d"))
+                data = client.get_bars(_ohlc_fetch_symbol(symbol), tf_config["period"], tf_config.get("interval", "1d"))
 
                 if data is not None:
                     historical_data[tf_name] = {"symbol": symbol, "data": []}

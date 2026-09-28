@@ -19,6 +19,36 @@ except ImportError:
     CacheService = None
 
 
+# Key -> Yahoo instrument. DXY is the ICE index (not the UUP ETF) and GC is
+# COMEX gold futures (not the GLD ETF). `is_proxy` stays false while the
+# symbol is the instrument the key names. src/research/data/yahoo.py keeps
+# a copy of the symbol map; tests/test_research_data_yahoo.py checks parity.
+MACRO_CATALOG: dict[str, dict[str, Any]] = {
+    "DXY": {"symbol": "DX-Y.NYB", "instrument": "ICE US Dollar Index", "is_proxy": False},
+    "GC": {"symbol": "GC=F", "instrument": "COMEX gold futures (front month)", "is_proxy": False},
+    "CL": {"symbol": "CL=F", "instrument": "NYMEX WTI crude futures (front month)", "is_proxy": False},
+    "TNX": {"symbol": "^TNX", "instrument": "CBOE 10-year Treasury yield", "is_proxy": False},
+    "BTC": {"symbol": "BTC-USD", "instrument": "Bitcoin / USD", "is_proxy": False},
+    "ETH": {"symbol": "ETH-USD", "instrument": "Ethereum / USD", "is_proxy": False},
+    "SOL": {"symbol": "SOL-USD", "instrument": "Solana / USD", "is_proxy": False},
+    "XRP": {"symbol": "XRP-USD", "instrument": "XRP / USD", "is_proxy": False},
+    "NIKKEI": {"symbol": "^N225", "instrument": "Nikkei 225", "is_proxy": False},
+    "HSI": {"symbol": "^HSI", "instrument": "Hang Seng Index", "is_proxy": False},
+    "SSE": {"symbol": "000001.SS", "instrument": "Shanghai Composite", "is_proxy": False},
+    "ASX": {"symbol": "^AXJO", "instrument": "S&P/ASX 200", "is_proxy": False},
+    "FTSE": {"symbol": "^FTSE", "instrument": "FTSE 100", "is_proxy": False},
+    "DAX": {"symbol": "^GDAXI", "instrument": "DAX", "is_proxy": False},
+    "CAC": {"symbol": "^FCHI", "instrument": "CAC 40", "is_proxy": False},
+    "STOXX": {"symbol": "^STOXX50E", "instrument": "EURO STOXX 50", "is_proxy": False},
+    "EURUSD": {"symbol": "EURUSD=X", "instrument": "Euro / US Dollar", "is_proxy": False},
+    "GBPUSD": {"symbol": "GBPUSD=X", "instrument": "British Pound / US Dollar", "is_proxy": False},
+    "USDJPY": {"symbol": "USDJPY=X", "instrument": "US Dollar / Japanese Yen", "is_proxy": False},
+    "AUDUSD": {"symbol": "AUDUSD=X", "instrument": "Australian Dollar / US Dollar", "is_proxy": False},
+    "USDCAD": {"symbol": "USDCAD=X", "instrument": "US Dollar / Canadian Dollar", "is_proxy": False},
+    "USDCHF": {"symbol": "USDCHF=X", "instrument": "US Dollar / Swiss Franc", "is_proxy": False},
+}
+
+
 class YahooFinanceClient:
     """Yahoo Finance client for market data with Redis caching"""
 
@@ -43,36 +73,8 @@ class YahooFinanceClient:
             "NVDA",  # NVIDIA
         ]
 
-        # Macro indicators using ETFs and direct symbols
-        self.macro_symbols = {
-            # Commodities & Indices
-            "DXY": "UUP",  # US Dollar Index ETF
-            "GC": "GLD",  # Gold ETF
-            "CL": "CL=F",  # Crude Oil Futures (WTI) - Direct symbol
-            "TNX": "^TNX",  # 10-Year Treasury Yield (^TNX)
-            # Cryptocurrencies
-            "BTC": "BTC-USD",  # Bitcoin
-            "ETH": "ETH-USD",  # Ethereum
-            "SOL": "SOL-USD",  # Solana
-            "XRP": "XRP-USD",  # Ripple
-            # Asian Markets
-            "NIKKEI": "^N225",  # Nikkei 225 (Japan)
-            "HSI": "^HSI",  # Hang Seng (Hong Kong)
-            "SSE": "000001.SS",  # Shanghai Composite (China)
-            "ASX": "^AXJO",  # ASX 200 (Australia)
-            # European Markets
-            "FTSE": "^FTSE",  # FTSE 100 (UK)
-            "DAX": "^GDAXI",  # DAX (Germany)
-            "CAC": "^FCHI",  # CAC 40 (France)
-            "STOXX": "^STOXX50E",  # Euro Stoxx 50
-            # Forex (Major Pairs)
-            "EURUSD": "EURUSD=X",  # Euro / US Dollar
-            "GBPUSD": "GBPUSD=X",  # British Pound / US Dollar
-            "USDJPY": "USDJPY=X",  # US Dollar / Japanese Yen
-            "AUDUSD": "AUDUSD=X",  # Australian Dollar / US Dollar
-            "USDCAD": "USDCAD=X",  # US Dollar / Canadian Dollar
-            "USDCHF": "USDCHF=X",  # US Dollar / Swiss Franc
-        }
+        # Same map mock_market.macro_yahoo_map() reads. 52-week ranges use it too.
+        self.macro_symbols = {name: meta["symbol"] for name, meta in MACRO_CATALOG.items()}
 
     async def _get_cache(self):
         """Lazy load cache"""
@@ -315,12 +317,17 @@ class YahooFinanceClient:
                                 break
 
                         if indicator:
+                            meta = MACRO_CATALOG.get(indicator, {})
                             macro_data[indicator] = {
                                 "price": float(latest_price),
                                 "change": float(change),
                                 "change_pct": float(change_pct),
                                 "volume": int(latest_volume) if pd.notna(latest_volume) else 0,
                                 "timestamp": datetime.now().isoformat(),
+                                "symbol": meta.get("symbol", symbol),
+                                "instrument": meta.get("instrument", indicator),
+                                "is_proxy": bool(meta.get("is_proxy", False)),
+                                "source": "yahoo",
                             }
 
                     except Exception as e:
