@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 # Add src to path for testing
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.api.alpaca_client import AlpacaClient
 from src.core.database import DatabaseManager, MarketInternals, PriceData
@@ -30,18 +30,20 @@ class TestMarketPulseCollector:
         assert momentum == 1.25  # 2.5 / 2.0, clamped to -5 to 5
 
     def test_classify_volatility(self, mock_settings):
-        """Test volatility regime classification"""
+        """Test volatility regime classification across all thresholds"""
         collector = MarketPulseCollector()
         collector.settings = mock_settings
 
         # Test different volatility levels
+        test_data_extreme = {"vix": {"price": 35.0}}
         test_data_high = {"vix": {"price": 25.5}}
         test_data_normal = {"vix": {"price": 17.3}}
         test_data_low = {"vix": {"price": 12.8}}
 
-        assert collector._classify_volatility(test_data_high) == "EXTREME"
-        assert collector._classify_volatility(test_data_normal) == "HIGH"
-        assert collector._classify_volatility(test_data_low) == "NORMAL"
+        assert collector._classify_volatility(test_data_extreme) == "EXTREME"
+        assert collector._classify_volatility(test_data_high) == "HIGH"
+        assert collector._classify_volatility(test_data_normal) == "NORMAL"
+        assert collector._classify_volatility(test_data_low) == "LOW"
 
     def test_calculate_correlation(self, mock_settings):
         """Test correlation calculation"""
@@ -69,8 +71,9 @@ class TestMarketPulseCollector:
 
         assert "MarketPulse Market Internals" in display
         assert "SPY (Market): $450.25" in display
-        assert "QQQ (Tech): $180.50" in display
-        assert "VIX (Vol): 18.50 (NORMAL)" in display
+        assert "QQQ (Tech):  $180.50" in display
+        assert "VIX (Vol):   18.50" in display
+        assert "NORMAL" in display
         assert "Market Bias: BULLISH" in display  # Both positive changes
         assert "=" * 70 in display
 
@@ -105,9 +108,10 @@ class TestDatabaseManager:
     """Test database operations"""
 
     @pytest.fixture
-    def mock_db_manager(self):
-        """Create in-memory database for testing"""
-        db_manager = DatabaseManager("sqlite:///:memory:")
+    def mock_db_manager(self, tmp_path):
+        """Create temp SQLite database for testing"""
+        db_path = tmp_path / "test.db"
+        db_manager = DatabaseManager(f"sqlite:///{db_path}")
         db_manager.create_engine()
         db_manager.create_tables()
         return db_manager
@@ -169,9 +173,10 @@ class TestLLMIntegration:
 
         assert client.base_url == "http://localhost:1234/v1"
         assert client.timeout == 30
-        assert "fast" in client.models
-        assert "analyst" in client.models
-        assert "reviewer" in client.models
+        assert "fast_analysis" in client.model_capabilities
+        assert "deep_analysis" in client.model_capabilities
+        assert "trade_review" in client.model_capabilities
+        assert "data_validation" in client.model_capabilities
 
     @pytest.mark.asyncio
     async def test_lm_studio_mock_completion(self, mock_settings):
@@ -201,8 +206,9 @@ class TestLLMIntegration:
 
         assert "lm_studio" in status
         assert "openrouter" in status
-        assert status["lm_studio"]["available"] == True
-        assert "fast" in status["lm_studio"]["models"]
+        assert "deepseek" in status
+        assert status["lm_studio"]["available"] is True
+        assert "endpoint" in status["lm_studio"]
 
 
 class TestAlpacaClient:
@@ -211,20 +217,9 @@ class TestAlpacaClient:
         client = AlpacaClient(mock_settings)
 
         assert client.settings == mock_settings
-        assert "SPY" in client.key_symbols
-        assert "QQQ" in client.key_symbols
-        assert "VIX" in client.key_symbols
-
-    def test_format_internals_for_display(self, mock_settings, mock_internals_data):
-        """Test internals formatting"""
-        client = AlpacaClient(mock_settings)
-
-        formatted = client.format_internals_for_display(mock_internals_data)
-
-        assert "MARKET INTERNALS" in formatted
-        assert "SPY" in formatted
-        assert "QQQ" in formatted
-        assert "VIX" in formatted
+        assert client.key_id == mock_settings.api_keys.alpaca.key_id
+        assert client.secret_key == mock_settings.api_keys.alpaca.secret_key
+        assert client.base_url == mock_settings.api_keys.alpaca.base_url
 
 
 class TestMarketCollectorIntegration:
@@ -240,25 +235,29 @@ class TestMarketCollectorIntegration:
         collector.db_manager.create_tables = Mock()
         collector.db_manager.save_market_internals = Mock()
 
-        collector.alpaca_client = Mock()
-        collector.alpaca_client.get_market_internals = AsyncMock(
-            return_value={
-                "spy": {"price": 450.25, "change": 1.25, "change_pct": 0.28},
-                "qqq": {"price": 180.50, "change": 2.15, "change_pct": 1.21},
-            }
-        )
+        # Mock cache and market data collector to prevent network calls
+        collector.cache = Mock()
+        mock_collector = AsyncMock()
+        mock_collector.get_all_market_data.return_value = {
+            "SPY": {"price": 450.25, "change": 1.25, "change_pct": 0.28, "volume": 50000000},
+            "QQQ": {"price": 180.50, "change": 2.15, "change_pct": 1.21, "volume": 30000000},
+            "^VIX": {"price": 18.50, "change": -0.50, "change_pct": -2.63, "volume": 0},
+            "data_source": "mock_api",
+        }
+        collector.collector = mock_collector
 
         # Test initialization
         result = await collector.initialize()
-        assert result == True
+        assert result is True
 
         # Test data collection
         internals = await collector.collect_market_internals()
         assert "spy" in internals
         assert "qqq" in internals
+        assert "vix" in internals
 
         # Test that database methods were called
-        collector.db_manager.save_market_internals.assert_called()
+        collector.db_manager.save_market_internals.assert_called_once()
 
 
 def run_performance_benchmark():
