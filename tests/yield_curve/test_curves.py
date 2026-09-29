@@ -47,6 +47,22 @@ def test_classify_shape_flat():
     assert classify_shape(curve) == CurveShape.FLAT
 
 
+def test_classify_shape_sparse_curve_without_long_tenor_is_not_inverted():
+    # 2y and 30y present, 10y/5y missing (partial FRED fetch). The old
+    # 10y/5y fallback defaulted to 0 and fabricated a -450bp spread ->
+    # false INVERTED on this clearly upward-sloping curve (found by the
+    # T10b review, 2026-09-29). Without a long tenor the inversion gate
+    # must be skipped, not guessed.
+    curve = {"2y": 4.50, "30y": 5.00}
+    assert classify_shape(curve) == CurveShape.NORMAL
+
+
+def test_classify_shape_inverted_falls_back_to_5y():
+    # 10y missing but 5y present: the 2s-vs-5s inversion still counts.
+    curve = {"2y": 5.00, "5y": 4.00, "30y": 4.80}
+    assert classify_shape(curve) == CurveShape.INVERTED
+
+
 def test_classify_trend_steepening():
     today = {"2y": 4.40, "10y": 4.60}  # 2s10s = +20
     baseline = {"2y": 4.45, "10y": 4.55}  # 2s10s = +10
