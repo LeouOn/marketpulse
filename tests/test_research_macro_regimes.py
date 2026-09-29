@@ -764,3 +764,15 @@ class TestPublicApiSmoke:
         assert tape["dominant_regime"].notna().all()
         # The dominant regime is one of the 5 enum values.
         assert set(tape["dominant_regime"].unique()).issubset(set(REGIME_COLUMNS))
+
+
+class TestLookbackPad:
+    def test_lookback_covers_every_trailing_window_with_margin(self):
+        clf = RulesBasedClassifier
+        assert clf.LOOKBACK_DAYS >= max(clf.ZSCORE_WINDOW_DAYS, clf.CHANGE_ZSCORE_WINDOW_DAYS) + 365
+
+    def test_endpoints_pad_their_fetch_by_the_classifiers_own_lookback(self):
+        """A fixed 6-year pad left the 10-year change legs on truncated history."""
+        from src.api import research_router
+
+        assert research_router._REGIME_LOOKBACK_PAD_DAYS == RulesBasedClassifier.LOOKBACK_DAYS

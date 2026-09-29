@@ -47,6 +47,7 @@ from pydantic import BaseModel
 
 from ..research import tools as research_tools
 from ..research.data import AssetConfig, AssetRegistry
+from ..research.macro.regimes import RulesBasedClassifier
 from ..research.strategies import _REGISTRY
 
 router = APIRouter(prefix="/api/research", tags=["research"])
@@ -604,11 +605,12 @@ async def list_assets():
     }
 
 
-# The rules classifier z-scores each factor over a trailing 5-year window
-# (RulesBasedClassifier.ZSCORE_WINDOW_DAYS), so regime endpoints pad their
-# fetch by 6 years to give that window full history -- the same approach as
-# ``src.research.cli._build_regime_tape``.
-_REGIME_LOOKBACK_PAD_DAYS = 365 * 6
+# The rules classifier z-scores factor levels over a trailing 5-year window and
+# REAL_YIELD_SHOCK changes over a trailing 10-year one, so regime endpoints pad
+# their fetch by the classifier's own ``LOOKBACK_DAYS`` (the longer window plus a
+# year) -- the same source of truth ``src.research.cli`` uses. A fixed 6 years
+# left the change legs computing on truncated history.
+_REGIME_LOOKBACK_PAD_DAYS = RulesBasedClassifier.LOOKBACK_DAYS
 #: Default tape length when the caller gives no ``start``.
 _REGIME_DEFAULT_WINDOW_DAYS = 365 * 2
 
@@ -638,7 +640,7 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
 
     try:
         from src.research.macro.factors import MacroFactorProvider
-        from src.research.macro.regimes import RulesBasedClassifier, generate_regime_tape
+        from src.research.macro.regimes import generate_regime_tape
     except ImportError as e:
         raise HTTPException(
             status_code=503,
@@ -804,7 +806,6 @@ async def asset_regime(asset: str, date: str | None = None):
     try:
         from src.research.macro.factors import MacroFactorProvider
         from src.research.macro.model import MacroRegimeModel
-        from src.research.macro.regimes import RulesBasedClassifier
     except ImportError as e:
         raise HTTPException(
             status_code=503,

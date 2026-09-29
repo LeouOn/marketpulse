@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.research_router import router as research_router
+from src.research.macro.regimes import RulesBasedClassifier
 
 
 @pytest.fixture
@@ -370,21 +371,23 @@ _REGIME_NAMES = {
     "RECESSION",
 }
 
-#: Fetch-window padding the router must apply so the rules classifier's
-#: 5-year trailing z-score window has history (mirrors cli._build_regime_tape).
-_REGIME_PAD_DAYS = 365 * 6
+#: Fetch-window padding the router must apply so every trailing window of the
+#: rules classifier (5y levels, 10y REAL_YIELD_SHOCK changes) has history. It is
+#: the classifier's own ``LOOKBACK_DAYS`` -- the router and the CLI share it.
+_REGIME_PAD_DAYS = RulesBasedClassifier.LOOKBACK_DAYS
 
 
 def _fake_factor_frame() -> pd.DataFrame:
     """A realistic MacroFactorProvider.load_factors return value.
 
-    Daily index spanning ~9 years up to tomorrow, all 12 canonical factor
-    columns, mild slopes so rolling z-scores are defined.
+    Daily index spanning the padded fetch window plus the default 2-year tape
+    up to tomorrow, all 12 canonical factor columns, mild slopes so rolling
+    z-scores are defined.
     """
     from src.research.macro.factors import FACTOR_COLUMNS
 
     end = date.today() + timedelta(days=1)
-    start = end - timedelta(days=365 * 9)
+    start = end - timedelta(days=_REGIME_PAD_DAYS + 365 * 2)
     idx = pd.date_range(start, end, freq="D", name="date")
     n = len(idx)
     data = {}
@@ -448,11 +451,11 @@ def test_regimes_endpoint_default_window(client, monkeypatch):
 
     assert r.status_code == 200, r.text
     assert r.json()["data"]["count"] > 0
-    # Defaults: end=today, start=today - 2y, fetch padded by 6 more years.
+    # Defaults: end=today, start=today - 2y, fetch padded by the classifier's lookback.
     assert len(fake.calls) == 1
     fetch_start, fetch_end = fake.calls[0]
     assert fetch_end == date.today()
-    assert fetch_start == date.today() - timedelta(days=365 * 8)
+    assert fetch_start == date.today() - timedelta(days=365 * 2 + _REGIME_PAD_DAYS)
 
 
 def test_regimes_endpoint_rejects_malformed_start(client):

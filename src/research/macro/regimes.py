@@ -264,6 +264,12 @@ class RulesBasedClassifier:
     #: purpose: it must still contain "normal" moves after a multi-year trend).
     CHANGE_ZSCORE_WINDOW_DAYS: int = 10 * 365
 
+    #: History a caller must load BEFORE the first row it wants classified so
+    #: every trailing window is full: the longer window plus a year of margin.
+    #: The regime endpoints and the CLI pad their fetch by this, so a new window
+    #: here cannot silently leave them computing on truncated history.
+    LOOKBACK_DAYS: int = max(ZSCORE_WINDOW_DAYS, CHANGE_ZSCORE_WINDOW_DAYS) + 365
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------

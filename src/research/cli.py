@@ -163,8 +163,8 @@ def _build_regime_tape(
     except ImportError:
         return None
 
-    # 5Y trailing z-score window requires lookback; pad start by ~6 years.
-    lookback_start = start - timedelta(days=365 * 6)
+    # The trailing z-score windows need history before ``start``.
+    lookback_start = start - timedelta(days=RulesBasedClassifier.LOOKBACK_DAYS)
     try:
         provider = MacroFactorProvider()
         factor_df = provider.load_factors(lookback_start, end)
@@ -476,9 +476,9 @@ def cmd_regime(args) -> int:
         return 1
 
     target = _parse_date(args.date) if args.date else date.today()
-    # 5Y trailing z-score window requires lookback; pad by 6 years so the
-    # first 5 years of z-score warmup occur BEFORE the target date.
-    start = target - timedelta(days=365 * 6)
+    # The trailing z-score windows need history; pad so their warmup occurs
+    # BEFORE the target date.
+    start = target - timedelta(days=RulesBasedClassifier.LOOKBACK_DAYS)
 
     try:
         provider = MacroFactorProvider()
