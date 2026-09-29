@@ -68,8 +68,17 @@ done
   NaN/inf to `None` and is used by `routers/options.py`; the research payloads do not use it.
   This is a small, low-risk fix in `src/api/routers/research_router.py`.
 * 🔑 FRED and/or EIA for the two government-backed assets; Alpaca for EQUITIES.
+* **Macro regime model — ✅ (fixed 2026-09-29).** `RulesBasedClassifier` scores five regimes from 12 factors.
+  Its `REAL_YIELD_SHOCK` leg z-scored the real-yield *level* against a trailing 5-year window and essentially never
+  fired: the model's own 2022 acceptance episode was failing, and the regime was never dominant in 1990-2026. It now scores
+  matched-horizon *changes* (21 and 63 days), so all 8 live episodes pass and it reads `REAL_YIELD_SHOCK` as dominant today
+  (0.284 vs `RISK_ON` 0.237: real yields +47bp in 21 days, breakevens flat).
+  **The "probabilities" are compressed stress scores, not calibrated probabilities** — the ordering and the dominant regime are
+  meaningful, the magnitudes are not (a single fully-fired regime cannot show more than ~40%). `RISK_ON` is only "no stress
+  detected". Verify: `RUN_LIVE_TESTS=1 pytest tests/test_research_macro_regimes.py -k "backrun or tape"`.
+  The factor cache no longer rewrites a tracked file (it lives under `data/cache/macro`).
 
-## Treasury yield curve — ✅ (with one open decision)
+## Treasury yield curve — ✅
 
 ```bash
 curl -s -X POST localhost:8000/api/yield-curve/refresh     # live FRED fetch
