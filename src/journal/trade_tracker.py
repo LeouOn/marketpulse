@@ -348,6 +348,7 @@ class TradeJournal:
         """
         stats = self.analyze_performance(days=days)
         setup_analysis = self.analyze_by_setup(days=days)
+        session_analysis = self.analyze_by_session(days=days)
 
         insights = {
             "summary": {
@@ -413,6 +414,20 @@ class TradeJournal:
                 "pnl": f"${s.total_pnl:+,.2f}",
             }
             for s in setup_analysis[:5]  # Top 5
+        ]
+
+        # Session rankings mirror setup_rankings (the analysis was computed
+        # and discarded until 2026-09-29; SessionAnalysis has no
+        # profit_factor, so avg_pnl stands in for the "pf" column).
+        insights["session_rankings"] = [
+            {
+                "session": s.session,
+                "trades": s.total_trades,
+                "win_rate": f"{s.win_rate:.1f}%",
+                "avg_pnl": f"${s.average_pnl:+,.2f}",
+                "pnl": f"${s.total_pnl:+,.2f}",
+            }
+            for s in session_analysis[:5]  # Top 5 by total P&L
         ]
 
         return insights

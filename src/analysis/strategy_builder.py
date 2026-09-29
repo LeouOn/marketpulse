@@ -443,6 +443,22 @@ class StrategyBuilder:
                 bull_spread = {"type": "bull_call_spread", "long_strike": otm_calls[0], "short_strike": otm_calls[1]}
                 strategies.append(bull_spread)
 
+            # Covered call at the money: sell the ATM call against a long
+            # stock position (the ATM strike was computed and discarded
+            # until 2026-09-29). Premiums are included when the chain
+            # carries them (yfinance records expose bid/ask/lastPrice).
+            if chain["calls"]:
+                atm_call = min(chain["calls"], key=lambda c: abs(c["strike"] - stock_price))
+                strategies.append(
+                    {
+                        "type": "covered_call",
+                        "strike": atm_call["strike"],
+                        "premium_bid": atm_call.get("bid"),
+                        "premium_ask": atm_call.get("ask"),
+                        "premium_last": atm_call.get("lastPrice"),
+                    }
+                )
+
             return {
                 "symbol": symbol,
                 "stock_price": stock_price,
