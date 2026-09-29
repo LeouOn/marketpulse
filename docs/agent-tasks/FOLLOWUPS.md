@@ -9,11 +9,11 @@ A day before the first FRED observation (e.g. a leading holiday) has no curve, s
 the delta/z-score lookups used the same misaligned indexes. Fixed by carrying `(date, curve)` pairs (zips are now `strict=True`); the regression test failed on the old code
 (snapshots dated 9/21… instead of 9/23…).
 
-## 1b. `classify_shape` ignores the 2s>30s spread — open, needs a product decision
+## 1b. `classify_shape` and the 2s>30s spread — **CLOSED** (owner: keep 2s10s-only)
 `src/yield_curve/curves.py`: `s_2s30s` was computed and never used (deleted for lint). Only `s_2s10s` gates `INVERTED`, so a 2s>30s inversion is not classified as inverted, and
-`INVERTED_HUMPED`/`HUMPED` only trigger when the 5y, 2y and 30y points are all present. Decide what "inverted" should mean before changing it (found by the T10b review).
+`INVERTED_HUMPED`/`HUMPED` only trigger when the 5y, 2y and 30y points are all present. Measured 0 of 1,935 days differ; the enum comments now state the 2s10s-only definition. The related sparse-curve bug (a missing 10y/5y invented a 0% yield and labelled the curve INVERTED) is **fixed**.
 
-## 2. "Computed then discarded" values that look like unfinished features (F841 — deleted for lint, intent recorded here)
+## 2. "Computed then discarded" values that looked like unfinished features — **DONE** (`3118e97`: journal `session_rankings`, ATM covered call; `s_2s30s` closed under 1b)
 | Site | Discarded value | What it suggests |
 |---|---|---|
 | `src/yield_curve/curves.py` ~L66 | `s_2s30s` | only `s_2s10s` gates `INVERTED`, so a 2s>30s inversion is not classified as inverted |

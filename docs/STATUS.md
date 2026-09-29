@@ -37,8 +37,8 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/api/market/symbols   # �
 ```
 
 * `/api/*` is proxied to `http://localhost:8000` by `src/middleware.ts`; override with `BACKEND_URL`.
-* **Open:** the DXY and gold panels predate the additive `symbol` / `instrument` / `is_proxy`
-  fields, so proxy instruments are not labelled as such.
+* DXY and gold panels now use the additive `symbol` / `instrument` / `is_proxy` fields, so proxy
+  instruments are labelled as such, and withheld macro data shows a real empty state.
 * **Behaviour change:** panels that used to show fabricated internals now show **nothing**,
   because internals are withheld unless `MARKETPULSE_ALLOW_MOCK=1`. See
   [`data-provenance.md`](data-provenance.md).
@@ -81,18 +81,18 @@ curl -s localhost:8000/api/yield-curve/current
   `success: false` — an honest "no snapshot", not a crash.
 * The backfill date-misalignment bug is **fixed** (`7a4c905`); the regression test fails on the
   old code.
-* **Bug (fixed, pending merge):** `classify_shape` substituted `0` for a missing 10y/5y, so a curve
+* **Bug (fixed):** `classify_shape` substituted `0` for a missing 10y/5y, so a curve
   of `{"2y": 4.50, "30y": 5.00}` — upward sloping, 2s30s +50bp — was classified `INVERTED`. This is
   reachable: `FredCurveFetcher.fetch_tenors` catches per tenor and omits failures, so a run where
   DGS5 and DGS10 both fail produces exactly that curve and persists a false `INVERTED` snapshot.
-  Fixed on `fix/yield-shape-sparse-curve` (`d5bbd25`), with 4 tests; replaying all 1,866
+  Fixed (two agents fixed it independently; the `followups-backend` implementation is the one kept), with tests; replaying all 1,866
   complete-curve days in the local FRED cache shows 0 label changes.
-* **Open decision, now with evidence:** `classify_shape` treats only `2s10s < 0` as inverted, so a
+* **Decision (closed 2026-09-29, keep 2s10s-only):** `classify_shape` treats only `2s10s < 0` as inverted, so a
   curve where 2y > 30y but 2y < 10y would not be `INVERTED`. Measured over the 1,866 common trading
   days in `data/macro/` (2019-01-02 → 2026-06-17), there are **zero** days where `2s30s < 0` but
   `2s10s >= 0`, so adding the second gate would change no label. The recommendation is to keep
-  2s10s-only — it is the conventional measure and matches the enum's documented definition — and
-  treat the question as closed. See [`agent-tasks/FOLLOWUPS.md`](agent-tasks/FOLLOWUPS.md) §1b.
+  2s10s-only — it is the conventional measure and matches the enum's documented definition. The owner accepted this;
+  the enum comments now say so. See [`agent-tasks/FOLLOWUPS.md`](agent-tasks/FOLLOWUPS.md) §1b.
 
 ## LLM providers — ⚠️
 
@@ -149,9 +149,9 @@ curl -s -X POST localhost:8000/api/ai/query -H 'Content-Type: application/json' 
 
 ```bash
 env -i HOME="$HOME" PATH="$PATH" .venv/bin/python -m pytest tests -q
-# → 1078 passed, 32 skipped
+# → 1088 passed, 32 skipped
 uvx ruff@0.16.9 check src tests          # All checks passed!
-uvx ruff@0.16.9 format --check src tests # 266 files already formatted
+uvx ruff@0.16.9 format --check src tests # 267 files already formatted
 ```
 
 The suite is hermetic by default: real keys, `config/credentials.yaml` and research data paths
@@ -162,11 +162,11 @@ are neutralised, so it passes with or without a populated `.env`. Opt-ins are li
 
 | # | Item | Where |
 |---|---|---|
-| 1 | `classify_shape` sparse curve mislabelled `INVERTED` — **fixed** on `fix/yield-shape-sparse-curve` | `src/yield_curve/curves.py` |
-| 1b | `classify_shape` ignores the 2s>30s spread — 0 days differ over 1,866; recommend closing | `src/yield_curve/curves.py` |
+| 1 | `classify_shape` sparse curve mislabelled `INVERTED` — **fixed** | `src/yield_curve/curves.py` |
+| 1b | `classify_shape` and the 2s>30s spread — **closed**: keep 2s10s-only (0 days differ over 1,866) | `src/yield_curve/curves.py` |
 | 2 | `OIL` / `HOUSING` research `/data` returns 500 on a NaN | `src/api/routers/research_router.py` |
 | 3 | `/api/ai/status` misreports an unresolved `${…}` key as configured | `src/ai/massive_analyst.py` |
 | 4 | `/api/llm/chat` leaks MiniMax's inline `<think>` reasoning | `src/api/routers/llm.py` |
 | 5 | Agent pipeline has no tool calling on MiniMax | `src/llm/minimax_client.py` or `src/llm/model_router.py` |
-| 6 | Frontend DXY/gold labels predate `symbol` / `instrument` / `is_proxy` | `marketpulse-client/` |
-| 7 | Two "computed then discarded" values look like unfinished features | [`agent-tasks/FOLLOWUPS.md`](agent-tasks/FOLLOWUPS.md) §2 |
+| 6 | ~~Frontend DXY/gold labels predate `symbol` / `instrument` / `is_proxy`~~ — **fixed** (`task/frontend-labels`) | `marketpulse-client/` |
+| 7 | ~~Two "computed then discarded" values~~ — **completed** (journal `session_rankings`, ATM covered call) | [`agent-tasks/FOLLOWUPS.md`](agent-tasks/FOLLOWUPS.md) §2 |
