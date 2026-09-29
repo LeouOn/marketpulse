@@ -1,0 +1,5 @@
+# Commits that only reformat/reorder code. GitHub honours this file automatically;
+# locally run once:  git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# ruff format + import sort + unused-import removal (mechanical pass, T10)
+49ac5b50ad9398facc0db224fcbdca3c4055bb44
