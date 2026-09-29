@@ -15,7 +15,7 @@ from typing import Optional
 class CurveShape(str, Enum):
     """Curve shape classification."""
 
-    NORMAL = "NORMAL"  # Upward sloping, 2s10s > 0 and 2s30s > 0
+    NORMAL = "NORMAL"  # Upward sloping: 2s10s > 0 (or 2s10s undefined)
     FLAT = "FLAT"  # All spreads within 25bps band
     INVERTED = "INVERTED"  # 2s10s < 0
     HUMPED = "HUMPED"  # Mid-curve above both ends
@@ -64,11 +64,14 @@ def classify_shape(curve: dict[str, float]) -> CurveShape:
     values = [curve[k] for k in keys]
     spread_band = (max(values) - min(values)) * 100.0
 
-    s_2s10s = (curve.get("10y", curve.get("5y", 0)) - curve.get("2y", 0)) * 100.0
-
-    # INVERTED: short end above long end (2s10s < 0)
-    if s_2s10s < 0:
-        return CurveShape.INVERTED
+    # INVERTED: short end above long end (2s10s < 0). Only testable when both legs
+    # are actually present: substituting 0 for a missing 10y/5y invents a ~-450bp
+    # spread and mislabels a sparse curve as inverted. compute_spreads returns None
+    # for the same reason.
+    long_leg = curve.get("10y", curve.get("5y"))
+    if "2y" in curve and long_leg is not None:
+        if (long_leg - curve["2y"]) * 100.0 < 0:
+            return CurveShape.INVERTED
 
     # FLAT: all tenors within the band
     if spread_band <= _FLAT_BAND_BPS:
