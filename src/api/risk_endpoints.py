@@ -134,7 +134,7 @@ async def validate_trade(request: TradeValidationRequest):
 
     except Exception as e:
         logger.error(f"Error validating trade: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @risk_router.post("/calculate-position-size")
@@ -187,7 +187,7 @@ async def calculate_position_size(
 
     except Exception as e:
         logger.error(f"Error calculating position size: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @risk_router.post("/record-trade-result")
@@ -215,7 +215,7 @@ async def record_trade_result(request: RecordTradeRequest):
 
     except Exception as e:
         logger.error(f"Error recording trade result: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @risk_router.get("/risk-summary")
@@ -235,7 +235,7 @@ async def get_risk_summary():
 
     except Exception as e:
         logger.error(f"Error getting risk summary: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @risk_router.post("/reset-daily")
@@ -253,7 +253,7 @@ async def reset_daily_stats():
 
     except Exception as e:
         logger.error(f"Error resetting daily stats: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ============================================================================
@@ -340,7 +340,7 @@ async def open_position(request: PositionRequest):
 
     except Exception as e:
         logger.error(f"Error opening position: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @risk_router.post("/positions/close")
@@ -400,7 +400,7 @@ async def close_position(request: ClosePositionRequest):
         raise
     except Exception as e:
         logger.error(f"Error closing position: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @risk_router.get("/positions/open")
@@ -434,7 +434,7 @@ async def get_open_positions():
 
     except Exception as e:
         logger.error(f"Error getting open positions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @risk_router.get("/positions/state")
@@ -450,7 +450,7 @@ async def get_position_state():
 
     except Exception as e:
         logger.error(f"Error getting position state: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ============================================================================
@@ -507,7 +507,7 @@ async def analyze_performance(request: PerformanceRequest):
 
     except Exception as e:
         logger.error(f"Error analyzing performance: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @journal_router.get("/insights")
@@ -528,7 +528,7 @@ async def get_insights(days: int = Query(30)):
 
     except Exception as e:
         logger.error(f"Error getting insights: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @journal_router.get("/by-setup")
@@ -559,7 +559,7 @@ async def analyze_by_setup(days: Optional[int] = Query(None)):
 
     except Exception as e:
         logger.error(f"Error analyzing by setup: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @journal_router.get("/by-session")
@@ -587,7 +587,7 @@ async def analyze_by_session(days: Optional[int] = Query(None)):
 
     except Exception as e:
         logger.error(f"Error analyzing by session: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ============================================================================
@@ -623,4 +623,4 @@ async def send_alert(request: SendAlertRequest):
 
     except Exception as e:
         logger.error(f"Error sending alert: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

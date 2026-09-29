@@ -131,7 +131,7 @@ async def run_backtest(request: BacktestRequest):
 
     except Exception as e:
         logger.error(f"Error running backtest: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @backtest_router.get("/run/{symbol}")
@@ -202,7 +202,7 @@ async def get_position_size(request: PositionSizeRequest):
 
     except Exception as e:
         logger.error(f"Error calculating position size: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @backtest_router.get("/regime")
@@ -240,7 +240,7 @@ async def get_market_regime(symbol: str = Query("NQ")):
 
     except Exception as e:
         logger.error(f"Error classifying regime: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @backtest_router.get("/")

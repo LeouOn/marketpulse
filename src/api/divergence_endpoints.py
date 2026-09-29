@@ -68,7 +68,7 @@ async def scan_divergences(request: DivergenceScanRequest):
         raise
     except Exception as e:
         logger.error(f"Error scanning divergences: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @divergence_router.get("/scan/{symbol}")
@@ -185,7 +185,7 @@ async def get_divergence_chart(
         raise
     except Exception as e:
         logger.error(f"Error generating divergence chart: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @divergence_router.get("/dashboard/{symbol}")
@@ -443,7 +443,7 @@ async def get_divergence_dashboard(
 
     except Exception as e:
         logger.error(f"Error generating divergence dashboard: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @divergence_router.get("/")
