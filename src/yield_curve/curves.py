@@ -63,7 +63,6 @@ def classify_shape(curve: dict[str, float]) -> CurveShape:
     spread_band = (max(values) - min(values)) * 100.0
 
     s_2s10s = (curve.get("10y", curve.get("5y", 0)) - curve.get("2y", 0)) * 100.0
-    s_2s30s = (curve.get("30y", curve.get("10y", 0)) - curve.get("2y", 0)) * 100.0
 
     # INVERTED: short end above long end (2s10s < 0)
     if s_2s10s < 0:

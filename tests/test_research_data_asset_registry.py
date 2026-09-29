@@ -16,6 +16,7 @@ All tests are pure -- no network, no API keys, no cache I/O.
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from datetime import date
 
 import pytest
@@ -115,7 +116,7 @@ def test_every_entry_has_required_fields_populated(asset_key: str) -> None:
 def test_asset_configs_are_frozen() -> None:
     """AssetConfig is a frozen dataclass -- mutation must raise FrozenInstanceError."""
     cfg = AssetRegistry["BTC"]
-    with pytest.raises(Exception):  # FrozenInstanceError is a dataclasses-internal
+    with pytest.raises(FrozenInstanceError):
         cfg.ticker = "ETH-USD"  # type: ignore[misc]
 
 

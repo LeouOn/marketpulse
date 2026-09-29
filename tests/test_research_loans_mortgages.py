@@ -258,7 +258,7 @@ def test_thirty_year_housing_dca_with_mortgage_positive_equity() -> None:
 
     units_owned = 0.0
     cash_deployed = 0.0
-    for i, ts in enumerate(ohlcv.index):
+    for i, _ts in enumerate(ohlcv.index):
         price = float(ohlcv["close"].iloc[i])
         intensity = float(signals.iloc[i])
         # $1000 monthly contribution scaled by the cycle intensity.

@@ -93,8 +93,6 @@ class TestCompositeAccumulationSignals:
         sibling weights so only sma_trend drives the composite.
         """
         df = _make_declining_df(250)
-        s = CompositeAccumulation()
-        sig = s.generate_signals(df)
         # In a declining market the SMA trend is bearish (close < SMA) and RSI
         # is very low — both drive the composite HIGH (bearish = accumulate more).
         # So we test with a config where only sma_trend_weight matters.

@@ -115,8 +115,6 @@ class OptionsAnalyzer:
             bid = float(option_data.get('bid', 0))
             ask = float(option_data.get('ask', 0))
             last_price = float(option_data.get('lastPrice', 0))
-            volume = int(option_data.get('volume', 0))
-            open_interest = int(option_data.get('openInterest', 0))
             implied_vol = float(option_data.get('impliedVolatility', 0))
 
             # Calculate mid price

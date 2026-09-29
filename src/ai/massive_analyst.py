@@ -464,7 +464,7 @@ class MassiveAIAnalyst:
                 'GIVE', 'SHOW', 'TELL', 'THINK', 'KNOW', 'TAKE', 'COME', 'GO',
                 'BUY', 'SELL', 'LONG', 'SHORT', 'TRADE', 'TRADING', 'STOCK',
                 'MARKET', 'PRICE', 'TARGET', 'STOP', 'LOSS', 'PROFIT', 'RISK',
-                'POSITION', 'RECOMMEND', 'RECOMMENDATION', 'SHOULD', 'PLEASE',
+                'POSITION', 'RECOMMEND', 'RECOMMENDATION', 'PLEASE',
             }
             symbols = [s for s in re.findall(r'\b[A-Z]{1,5}\b', question.upper()) if s not in STOPWORDS]
             if symbols:

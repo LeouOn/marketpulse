@@ -359,7 +359,6 @@ class TradeJournal:
         """
         stats = self.analyze_performance(days=days)
         setup_analysis = self.analyze_by_setup(days=days)
-        session_analysis = self.analyze_by_session(days=days)
 
         insights = {
             'summary': {

@@ -175,7 +175,7 @@ class TestDS4Client:
 
     def test_unreachable_server_is_false_not_exception(self, fresh_settings):
         s = fresh_settings
-        setattr(s.llm.ds4, "base_url", "http://127.0.0.1:1/v1")  # port 1: refused
+        s.llm.ds4.base_url = "http://127.0.0.1:1/v1"  # port 1: refused
         client = self._client(s)
         assert asyncio.run(client.check_health()) is False
 
@@ -230,7 +230,7 @@ def _ds4_primary_settings(fresh_settings) -> Settings:
 class TestRouterDS4:
     def test_ds4_registered_as_provider(self, fresh_settings):
         s = _ds4_primary_settings(fresh_settings)
-        setattr(s.llm.ds4, "base_url", "http://127.0.0.1:1/v1")  # refuse fast
+        s.llm.ds4.base_url = "http://127.0.0.1:1/v1"  # refuse fast
 
         async def _run_router():
             async with ModelRouter(s) as router:
@@ -264,7 +264,7 @@ class TestRouterDS4:
 
     def test_fallback_to_minimax_when_ds4_down(self, fresh_settings, monkeypatch):
         s = _ds4_primary_settings(fresh_settings)
-        setattr(s.llm.ds4, "base_url", "http://127.0.0.1:1/v1")
+        s.llm.ds4.base_url = "http://127.0.0.1:1/v1"
 
         from src.llm.minimax_client import MiniMaxClient
 
@@ -333,7 +333,7 @@ class TestStatusSurfaces:
         import src.llm.llm_client as llm_client_mod
         from src.llm.llm_client import LLMManager
 
-        setattr(fresh_settings.llm.minimax, "api_key", "${api_keys:minimax:api_key}")
+        fresh_settings.llm.minimax.api_key = "${api_keys:minimax:api_key}"
         monkeypatch.setattr(llm_client_mod, "get_settings", lambda: fresh_settings)
         assert LLMManager().get_status()["minimax"]["available"] is False
 

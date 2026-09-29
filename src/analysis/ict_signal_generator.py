@@ -471,7 +471,7 @@ class ICTSignalGenerator:
         cvd_values = []
         cumulative = 0.0
 
-        for idx, candle in candles.iterrows():
+        for _idx, candle in candles.iterrows():
             # Approximate buy/sell volume from candle direction
             if candle['close'] > candle['open']:
                 # Bullish candle - more buying

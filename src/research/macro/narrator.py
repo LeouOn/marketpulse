@@ -163,7 +163,7 @@ class RegimeJudgeOutput(BaseModel):
         if not v:
             raise ValueError("regime_probs must not be empty")
         probs = [float(p) for p in v.values()]
-        for regime, p in zip(v.keys(), probs):
+        for regime, p in zip(v.keys(), probs, strict=True):
             if not (0.0 <= p <= 1.0):
                 raise ValueError(
                     f"regime_probs[{regime.value if isinstance(regime, Regime) else regime}]"
