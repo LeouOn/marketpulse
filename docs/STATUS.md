@@ -81,10 +81,18 @@ curl -s localhost:8000/api/yield-curve/current
   `success: false` — an honest "no snapshot", not a crash.
 * The backfill date-misalignment bug is **fixed** (`7a4c905`); the regression test fails on the
   old code.
-* **Open decision:** `classify_shape` in `src/yield_curve/curves.py` only treats `2s10s < 0` as
-  inverted, so a curve where 2y > 30y but 2y < 10y is *not* labelled `INVERTED`, and
-  `HUMPED` / `INVERTED_HUMPED` only trigger when 2y, 5y and 30y are all present. Needs a product
-  decision, not a lint fix — see [`agent-tasks/FOLLOWUPS.md`](agent-tasks/FOLLOWUPS.md) §1b.
+* **Bug (fixed, pending merge):** `classify_shape` substituted `0` for a missing 10y/5y, so a curve
+  of `{"2y": 4.50, "30y": 5.00}` — upward sloping, 2s30s +50bp — was classified `INVERTED`. This is
+  reachable: `FredCurveFetcher.fetch_tenors` catches per tenor and omits failures, so a run where
+  DGS5 and DGS10 both fail produces exactly that curve and persists a false `INVERTED` snapshot.
+  Fixed on `fix/yield-shape-sparse-curve` (`d5bbd25`), with 4 tests; replaying all 1,866
+  complete-curve days in the local FRED cache shows 0 label changes.
+* **Open decision, now with evidence:** `classify_shape` treats only `2s10s < 0` as inverted, so a
+  curve where 2y > 30y but 2y < 10y would not be `INVERTED`. Measured over the 1,866 common trading
+  days in `data/macro/` (2019-01-02 → 2026-06-17), there are **zero** days where `2s30s < 0` but
+  `2s10s >= 0`, so adding the second gate would change no label. The recommendation is to keep
+  2s10s-only — it is the conventional measure and matches the enum's documented definition — and
+  treat the question as closed. See [`agent-tasks/FOLLOWUPS.md`](agent-tasks/FOLLOWUPS.md) §1b.
 
 ## LLM providers — ⚠️
 
@@ -154,7 +162,8 @@ are neutralised, so it passes with or without a populated `.env`. Opt-ins are li
 
 | # | Item | Where |
 |---|---|---|
-| 1 | `classify_shape` ignores the 2s>30s spread — needs a product decision | `src/yield_curve/curves.py` |
+| 1 | `classify_shape` sparse curve mislabelled `INVERTED` — **fixed** on `fix/yield-shape-sparse-curve` | `src/yield_curve/curves.py` |
+| 1b | `classify_shape` ignores the 2s>30s spread — 0 days differ over 1,866; recommend closing | `src/yield_curve/curves.py` |
 | 2 | `OIL` / `HOUSING` research `/data` returns 500 on a NaN | `src/api/routers/research_router.py` |
 | 3 | `/api/ai/status` misreports an unresolved `${…}` key as configured | `src/ai/massive_analyst.py` |
 | 4 | `/api/llm/chat` leaks MiniMax's inline `<think>` reasoning | `src/api/routers/llm.py` |
