@@ -2,49 +2,60 @@
 
 ## Overview
 
-This document describes the enhanced LLM integration system for MarketPulse, which combines local LM Studio models with a comprehensive trading knowledge base, RAG (Retrieval-Augmented Generation), and hypothesis testing frameworks.
+This document describes the enhanced LLM integration system for MarketPulse, which combines the
+configured LLM provider (MiniMax by default) with a trading knowledge base, RAG
+(Retrieval-Augmented Generation), and hypothesis testing frameworks.
+
+> **Status:** measured 2026-09-29. See [docs/STATUS.md](docs/STATUS.md) for what works
+> and what is broken. Provider health: `curl -s localhost:8000/api/llm/model-status`.
 
 ## System Architecture
 
 ```
 MarketPulse Enhanced LLM System
 ├── Knowledge Base (trading_knowledge/)
-│   ├── trading_glossary.json (64+ terms)
+│   ├── trading_glossary.json (64 terms)
 │   ├── core_concepts/ (market structure, ICT, etc.)
 │   └── hypotheses/ (active and tested hypotheses)
 ├── RAG System (src/llm/trading_knowledge_rag.py)
 ├── Enhanced Prompts (src/llm/system_prompts.py)
 ├── Hypothesis Testing (src/llm/hypothesis_tester.py)
-├── Enhanced LLM Client (src/llm/enhanced_llm_client.py)
+├── Enhanced LLM Client (src/llm/enhanced_llm_client.py, class EnhancedLLMClient)
 └── Integration Layer (connects to MarketPulse API)
 ```
 
 ## Quick Start
 
 ### Prerequisites
-- LM Studio running with aquif-3.5-max-42b-a3b-i1 model loaded
-- MarketPulse system configured
-- Python 3.10+ with required dependencies
+- Python **3.11+** (`pyproject.toml`), 3.12 verified
+- A key for the configured provider — `MINIMAX_API_KEY` by default
+  (see [USAGE.md](USAGE.md) for the provider table)
+- For a local provider instead: `ds4` on **:8001** (see
+  [docs/local-llm-ds4.md](docs/local-llm-ds4.md)) or LM Studio on :1234
 
 ### Installation
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python -r requirements.txt
+cp .env.example .env          # then set MINIMAX_API_KEY
 
-# Verify LM Studio connection
-python test_llm_integration.py
-
-# Test enhanced system
-python test_enhanced_llm_integration.py
+# Verify the provider is configured and reachable
+curl -s localhost:8000/api/llm/model-status
 ```
+
+> The two scripts this section used to name (`test_llm_integration.py`,
+> `test_enhanced_llm_integration.py`) are not in the repository, and
+> `tests/test_enhanced_llm_integration.py` is script-shaped — it collects no tests. The
+> provider check above is the equivalent; the enhanced client itself is covered offline by
+> `.venv/bin/python -m pytest tests/test_enhanced_llm_client.py -q` (2 passed).
 
 ### Basic Usage
 ```python
 import asyncio
-from src.llm.enhanced_llm_client import EnhancedLMStudioClient
+from src.llm.enhanced_llm_client import EnhancedLLMClient
 
 async def analyze_market():
-    async with EnhancedLMStudioClient() as client:
+    async with EnhancedLLMClient() as client:
         # Market analysis with knowledge
         market_data = {
             'spy': {'price': 450.25, 'change': 2.15},
@@ -277,7 +288,7 @@ How and why it should work
 
 ## Enhanced LLM Client
 
-### EnhancedLMStudioClient Features
+### EnhancedLLMClient Features
 
 **Knowledge-Aware Methods:**
 ```python
@@ -299,7 +310,7 @@ result = await client.test_hypothesis("hypothesis_name", data)
 
 **Configuration Options:**
 ```python
-client = EnhancedLMStudioClient(settings={
+client = EnhancedLLMClient(settings={
     'knowledge_dir': "trading_knowledge",
     'max_context_chunks': 5,
     'relevance_threshold': 0.3,
@@ -339,9 +350,10 @@ async def retrieve_context_endpoint(request: ContextRequest):
 
 ### Data Flow
 
-1. **Market Data Collection** → `marketpulse.py` collects real-time data
-2. **Knowledge Enhancement** → `EnhancedLMStudioClient` adds context
-3. **Analysis Generation** → LM Studio provides AI insights
+1. **Market Data Collection** → `src/data/market_collector.py` (also reachable via
+   `GET /api/market/internals`) collects real-time data
+2. **Knowledge Enhancement** → `EnhancedLLMClient` adds context
+3. **Analysis Generation** → the configured LLM provider (MiniMax by default) provides AI insights
 4. **Hypothesis Testing** → Framework tests trading ideas
 5. **Result Storage** → Database stores analyses and results
 
@@ -401,12 +413,13 @@ async def retrieve_context_endpoint(request: ContextRequest):
 ## Deployment Considerations
 
 ### Development Environment
-- LM Studio running locally
+- A cloud provider key (MiniMax by default) is enough; nothing local to run
+- Alternatively `ds4` on :8001 or LM Studio on :1234
 - Small knowledge base (fast iteration)
 - Debug logging enabled
 
 ### Production Environment
-- Potentially multiple LM Studio instances
+- The provider is chosen by `llm.model_routing.primary_provider`, with a configured fallback chain
 - Cached knowledge base
 - Monitoring and alerting
 - Backup knowledge sources

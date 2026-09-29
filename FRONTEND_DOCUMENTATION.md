@@ -2,14 +2,18 @@
 
 ## Architecture Overview
 
-The MarketPulse frontend is a Next.js 14+ React application with TypeScript, Tailwind CSS, and modern web technologies.
+The MarketPulse frontend is a Next.js 16 / React 19 application with TypeScript, Tailwind CSS, and
+modern web technologies.
+
+> **Status:** measured 2026-09-29. `npm ci && npm run lint && npm run build` all pass on
+> Node 24.21.0. See [docs/STATUS.md](docs/STATUS.md) for the two open frontend items.
 
 ### Technology Stack
-- **Framework:** Next.js 14+ (App Router)
+- **Framework:** Next.js 16.2.6 (App Router) — requires **Node >= 20.9**
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
-- **Charts:** Recharts
-- **Icons:** Lucide React
+- **Charts:** `lightweight-charts` (not Recharts)
+- **Icons:** `lucide-react`
 - **State Management:** React Hooks
 - **API Client:** Custom fetch wrapper
 - **Testing:** Jest + React Testing Library
@@ -163,15 +167,17 @@ interface DashboardData {
    - Frequency: Every 30 seconds
    - Data: Full dashboard data including AI analysis
 
-2. **Future API Endpoints to Integrate:**
-   - [ ] `POST /api/llm/comment` - Add user comments
-   - [ ] `POST /api/llm/refine` - Refine AI analysis
-   - [ ] `POST /api/llm/analyze-chart` - Chart analysis
-   - [ ] `GET /api/llm/validation/sanity-check` - Data validation
-   - [ ] `GET /api/llm/conversation-history` - Analysis history
-   - [ ] `GET /api/market/historical` - Historical data for charts
-   - [ ] `GET /api/market/internals` - Raw market internals
-   - [ ] WebSocket `/ws/market` - Real-time updates
+2. **Other endpoints already registered on the backend** (all present as of 2026-09-29;
+   wire them up as needed — verify with `curl -s localhost:8000/api/debug/routes`):
+   - `POST /api/llm/comment` - Add user comments
+   - `POST /api/llm/refine` - Refine AI analysis
+   - `POST /api/llm/analyze-chart` - Chart analysis
+   - `GET /api/llm/validation/sanity-check` - Data validation
+   - `GET /api/llm/conversation-history/{analysis_id}` - Analysis history (**path takes an
+     `analysis_id`**; the parameterless form does not exist)
+   - `GET /api/market/historical` - Historical data for charts
+   - `GET /api/market/internals` - Raw market internals
+   - WebSocket `/ws/market` - Real-time updates
 
 ### Error Handling Strategy
 
