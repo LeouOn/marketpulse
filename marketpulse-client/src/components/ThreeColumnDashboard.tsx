@@ -9,7 +9,7 @@ import type { DashboardData, MacroData, MarketBreadth } from '@/types/market';
 import { CommandCenter } from './dashboard/CommandCenter';
 import { CenterTabs } from './dashboard/CenterTabs';
 import { AiChatPanel } from './dashboard/AiChatPanel';
-import { INDEX_LABELS, MACRO_LABELS, MACRO_SYMBOLS } from './dashboard/labels';
+import { INDEX_LABELS, MACRO_LABELS, MACRO_SYMBOLS, macroUnavailableReason } from './dashboard/labels';
 import type { MarketData, MarketRegime, SessionInfo } from './dashboard/types';
 
 export function ThreeColumnDashboard() {
@@ -35,6 +35,10 @@ export function ThreeColumnDashboard() {
 
   const dashboardData = dashQ.data ?? null;
   const macroData = macroQ.data ?? null;
+  // T7a withholds fabricated macro data with an HTTP-200 success:false
+  // envelope, which apiFetch does not throw for — extract the reason so
+  // the overview can explain the missing section instead of hiding it.
+  const macroUnavailable = macroUnavailableReason(macroData);
   // apiFetch already unwraps `{ data }`; do not read `.data` again.
   const breadthData = breadthQ.data ?? null;
   const loading = dashQ.isPending && !dashQ.data;
@@ -119,7 +123,8 @@ export function ThreeColumnDashboard() {
         </div>
         <div>
           <CenterTabs majorIndices={sym as Record<string, MarketData>} indexLabels={INDEX_LABELS}
-            commoditiesCrypto={commoditiesCrypto} macroLabels={MACRO_LABELS} sectorData={sectorData} />
+            commoditiesCrypto={commoditiesCrypto} macroLabels={MACRO_LABELS} sectorData={sectorData}
+            macroUnavailable={macroUnavailable} />
         </div>
         <div>
           <AiChatPanel marketData={llmMarketData} />

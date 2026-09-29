@@ -44,7 +44,7 @@ import { useTheme } from '@/components/theme-provider';
 // Exact casing required by POST /api/research/compare (AssetRegistry keys).
 const ASSET_OPTIONS: Array<{ key: string; label: string }> = [
   { key: 'BTC', label: 'Bitcoin' },
-  { key: 'GOLD', label: 'Gold (LBMA AM fix)' },
+  { key: 'GOLD', label: 'Gold (GLD ETF proxy)' },
   { key: 'OIL', label: 'WTI Crude Oil (spot)' },
   { key: 'EQUITIES', label: 'US Broad Equities (S&P 500)' },
   { key: 'HOUSING', label: 'US Housing (Case-Shiller)' },

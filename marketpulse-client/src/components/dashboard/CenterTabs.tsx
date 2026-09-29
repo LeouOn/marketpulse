@@ -20,6 +20,8 @@ export interface CenterTabsProps {
   commoditiesCrypto: Record<string, MarketData> | null;
   macroLabels: Record<string, string>;
   sectorData: Record<string, number>;
+  /** Backend reason when /market/macro withheld its data (T7a). */
+  macroUnavailable?: string | null;
 }
 
 const TABS = [
@@ -49,6 +51,7 @@ export function CenterTabs({
   commoditiesCrypto,
   macroLabels,
   sectorData,
+  macroUnavailable,
 }: CenterTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
 
@@ -118,6 +121,7 @@ export function CenterTabs({
             commoditiesCrypto={commoditiesCrypto}
             macroLabels={macroLabels}
             sectorData={sectorData}
+            macroUnavailable={macroUnavailable}
           />
         )}
         {activeTab === 'backtest' && <BacktestTab />}
@@ -136,6 +140,7 @@ interface OverviewTabProps {
   commoditiesCrypto: Record<string, MarketData> | null;
   macroLabels: Record<string, string>;
   sectorData: Record<string, number>;
+  macroUnavailable?: string | null;
 }
 
 function OverviewTab({
@@ -144,6 +149,7 @@ function OverviewTab({
   commoditiesCrypto,
   macroLabels,
   sectorData,
+  macroUnavailable,
 }: OverviewTabProps) {
   const indexRows = buildRows(majorIndices, indexLabels);
   const commodityRows = commoditiesCrypto ? buildRows(commoditiesCrypto, macroLabels) : [];
@@ -163,6 +169,17 @@ function OverviewTab({
           columns={INDICES_COLUMNS}
           rows={commodityRows}
         />
+      )}
+      {commodityRows.length === 0 && macroUnavailable && (
+        <div className="panel" role="status">
+          <div className="border-b border-line-subtle px-3 h-8 flex items-center">
+            <span className="panel-title">Commodities &amp; Crypto</span>
+          </div>
+          <div className="p-2.5 text-[11px] leading-relaxed text-ink-muted">
+            <span className="text-ink">Macro quotes unavailable.</span>{' '}
+            {macroUnavailable}
+          </div>
+        </div>
       )}
       {Object.keys(sectorData).length > 0 && (
         <SectorPerformance data={sectorData} />
@@ -190,13 +207,34 @@ function buildRows(
       const sparklineData = generateSparklineData(md.price, md.change);
       const changeClass = md.change >= 0 ? 'text-pos' : 'text-neg';
       const sign = md.change >= 0 ? '+' : '';
+      // Server truth (T7a): link and title use the real instrument symbol
+      // when the series carries it (DX-Y.NYB, GC=F, ...), the display
+      // label prefers the human name and falls back to the instrument.
+      const realSymbol = md.symbol ?? symbol;
+      const provenance = [
+        md.instrument ? `Instrument: ${md.instrument}` : null,
+        `Symbol: ${realSymbol}`,
+        md.is_proxy ? 'proxy instrument' : null,
+        md.source ? `source: ${md.source}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
       return {
         symbol: (
           <Link
-            href={`/chart/${encodeURIComponent(symbol.replace(/^\^/, ''))}`}
+            href={`/chart/${encodeURIComponent(realSymbol.replace(/^\^/, ''))}`}
             className="text-ink hover:text-teal font-mono"
+            title={provenance}
           >
-            {labels[symbol] || symbol}
+            {labels[symbol] || md.instrument || symbol}
+            {md.source === 'mock' && (
+              <span
+                className="ml-1.5 rounded bg-line-subtle px-1 py-0.5 text-[9px] uppercase tracking-wide text-ink-muted"
+                title="Labelled mock data (MARKETPULSE_ALLOW_MOCK=1)"
+              >
+                mock
+              </span>
+            )}
           </Link>
         ),
         trend: (
