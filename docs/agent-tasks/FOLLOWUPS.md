@@ -3,13 +3,15 @@
 Found by the T10b analysis (2026-09-29). Each is real but is a behavior change, so it is **not** part of the lint commits.
 Line numbers are as of `main` at the time; re-check before editing.
 
-## 1. Yield-curve backfill can write snapshots under the wrong date (data bug) — owner: integrator
-`src/scheduler/yield_curve_job.py` (~L156–172, from T6): `curves` only appends non-empty curves, but `dates` keeps every business day, then
-`zip(dates, curves)` pairs them by position. `_asof_value` returns `None` for every tenor when a date precedes the first FRED observation in the fetch window
-(for example a leading market holiday), so `curves` is shorter than `dates` and **every snapshot after the gap is saved under an earlier date**; today's snapshot can be dropped.
-`baseline = curves[i - 5]` and `_delta_fields(dates, …, i)` use the same misaligned indexes.
-Fix: build `(date, curve)` pairs, keep only non-empty ones, and derive `dates`/`curves` from the pairs so everything downstream stays aligned; add a test with a leading empty date.
-Until then the lint change uses `strict=False` on those zips (preserves today's behavior).
+## 1. Yield-curve backfill wrote snapshots under the wrong date — **FIXED** (`7a4c905`)
+`src/scheduler/yield_curve_job.py` (from T6): `curves` only appended non-empty curves, but `dates` kept every business day, then `zip(dates, curves)` paired them by position.
+A day before the first FRED observation (e.g. a leading holiday) has no curve, so every later snapshot was saved under an earlier date and the newest days were dropped;
+the delta/z-score lookups used the same misaligned indexes. Fixed by carrying `(date, curve)` pairs (zips are now `strict=True`); the regression test failed on the old code
+(snapshots dated 9/21… instead of 9/23…).
+
+## 1b. `classify_shape` ignores the 2s>30s spread — open, needs a product decision
+`src/yield_curve/curves.py`: `s_2s30s` was computed and never used (deleted for lint). Only `s_2s10s` gates `INVERTED`, so a 2s>30s inversion is not classified as inverted, and
+`INVERTED_HUMPED`/`HUMPED` only trigger when the 5y, 2y and 30y points are all present. Decide what "inverted" should mean before changing it (found by the T10b review).
 
 ## 2. "Computed then discarded" values that look like unfinished features (F841 — deleted for lint, intent recorded here)
 | Site | Discarded value | What it suggests |
@@ -23,5 +25,11 @@ Genuine dead code (deleted, nothing to follow up): `llm/tools/upstream_tools.py`
 
 ## 3. Decisions recorded from the T10b review
 - `B027` on `Loan/ScalingModel/Strategy.validate_params`: kept as optional hooks with `# noqa: B027  # optional hook` — making them `@abstractmethod` would make 7 strategies (and a directly-instantiated `Loan()` in tests) uninstantiable.
-- `B905`: provably equal-length `zip`s may take `strict=True`; the yield-curve zips stay `strict=False` until item 1 is fixed.
+- `B905`: provably equal-length `zip`s take `strict=True` (alert manager, regime narrator, heatmap chart); the yield-curve zips were `strict=False` until item 1 was fixed and are now `strict=True`.
 - `B017`: `pytest.raises(Exception)` narrowed to `dataclasses.FrozenInstanceError` (measured).
+- Auto-fix counts: 233 findings up front; the fix pass reports 240 because sorting exposes a few more once unused imports are gone — both numbers are right.
+
+## 4. Small leftovers
+- `tests/test_research_loans.py:75` has `# type: ignore[abstract]` on a line that instantiates `Loan`, which is not abstract. Harmless, but it misleads readers into thinking `Loan` is abstract
+  (the wrong conclusion when someone considers `@abstractmethod`). Not a lint finding, so left alone.
+- Enabling the `UP`/`SIM`/`TCH`/`E`/`W` rules later is possible, but treat `UP` autofixes as unsafe here: that family removed a needed `typing` import earlier (`4829f23`, fixed in `ec8d4bc`).
