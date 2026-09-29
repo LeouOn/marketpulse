@@ -30,7 +30,9 @@ dependencies = [
 dev = [
     "pytest>=8.3.4",
     "pytest-asyncio>=0.25.0",
-    "ruff>=0.9.0",
+    # Pinned so `ruff format --check` cannot drift between machines/CI
+    # (owner decision 2026-09-29, T10).
+    "ruff==0.16.9",
     "mypy>=1.14.0",
 ]
 
@@ -39,15 +41,15 @@ target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]
+# Owner decision 2026-09-29 (T10): enforce F (pyflakes), E9 (syntax errors),
+# B (bugbear), I (import order). Dropped E/W/UP/SIM/TCH: ~450 style findings
+# with no bug-catching value at py311 -- and the UP autofix family is the
+# kind that broke startup before (4829f23 + ec8d4bc).
 select = [
-    "E",
-    "W",
     "F",
-    "I",
-    "UP",
+    "E9",
     "B",
-    "SIM",
-    "TCH",
+    "I",
 ]
 ignore = ["E501"]
 
