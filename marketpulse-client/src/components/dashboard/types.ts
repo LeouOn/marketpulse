@@ -11,6 +11,11 @@ export interface MarketData {
   change_pct: number;
   volume: number;
   timestamp: string;
+  // Provenance (T7a) — optional so index/dashboard payloads without them
+  // still typecheck.
+  instrument?: string;
+  is_proxy?: boolean;
+  source?: string;
 }
 
 export type MarketRegime = 'favorable' | 'mixed' | 'avoid';

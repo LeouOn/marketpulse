@@ -31,7 +31,7 @@ export interface AssetOption {
  */
 export const ASSET_OPTIONS: AssetOption[] = [
   { key: 'BTC', label: 'Bitcoin', sublabel: 'BTC-USD' },
-  { key: 'GOLD', label: 'Gold', sublabel: 'XAUUSD spot' },
+  { key: 'GOLD', label: 'Gold', sublabel: 'GLD ETF proxy' },
   { key: 'OIL', label: 'Oil (WTI)', sublabel: 'CL=F front month' },
   { key: 'EQUITIES', label: 'US Equities', sublabel: 'S&P 500' },
   { key: 'HOUSING', label: 'Housing', sublabel: 'Case-Shiller' },

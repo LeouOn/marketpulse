@@ -70,9 +70,9 @@ const ASSET_META: Record<
   GOLD: {
     label: 'Gold',
     subtitle:
-      'Backtest strategies and explore Monte Carlo scenarios for Gold spot (XAUUSD).',
+      'Backtest strategies and explore Monte Carlo scenarios for Gold via the GLD ETF proxy.',
     dataCard:
-      'Daily Gold spot (XAUUSD) from LBMA, via FRED. Cached locally as CSV.',
+      'Daily Gold via the GLD ETF proxy (Yahoo Finance) — the LBMA fix no longer exists on FRED, so the registry deliberately tracks the ETF. Cached locally as CSV.',
     examples: [
       'What strategies are available?',
       "Summarize Gold's performance since 2010.",

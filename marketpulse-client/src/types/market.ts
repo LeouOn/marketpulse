@@ -28,6 +28,13 @@ export interface MarketSymbolData {
   high?: number;
   low?: number;
   close?: number;
+  // Provenance fields (T7a): every /market/macro series carries the real
+  // instrument behind the key. is_proxy is false when the symbol IS the
+  // instrument the key names (DXY -> ICE index, GC -> gold futures).
+  symbol?: string;
+  instrument?: string;
+  is_proxy?: boolean;
+  source?: 'yahoo' | 'mock' | (string & {});
 }
 
 export interface DashboardData {
