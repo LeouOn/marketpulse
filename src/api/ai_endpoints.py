@@ -108,7 +108,7 @@ async def query_ai_analyst(request: QueryRequest):
 
     except Exception as e:
         logger.error(f"Error in AI query: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @ai_router.get("/query/{symbol}")
@@ -174,7 +174,7 @@ async def get_trade_recommendation(request: TradeRecommendationRequest):
 
     except Exception as e:
         logger.error(f"Error getting trade recommendation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @ai_router.get("/recommend/{symbol}")
@@ -230,7 +230,7 @@ async def validate_trade(request: TradeValidationRequest):
 
     except Exception as e:
         logger.error(f"Error validating trade: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @ai_router.get("/status")
@@ -266,7 +266,7 @@ async def get_ai_status():
 
     except Exception as e:
         logger.error(f"Error getting AI status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @ai_router.get("/")

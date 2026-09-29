@@ -661,7 +661,7 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
         raise HTTPException(
             status_code=503,
             detail=f"Macro layer unavailable: {e}",
-        )
+        ) from e
 
     try:
         provider = MacroFactorProvider()
@@ -671,7 +671,7 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
         raise HTTPException(
             status_code=503,
             detail=f"Macro factor data unavailable: {e}",
-        )
+        ) from e
 
     if factor_df is None or factor_df.empty:
         raise HTTPException(
@@ -744,9 +744,9 @@ async def get_asset_data(
     try:
         df = research_tools._load_asset_df(asset, start, end, timeframe)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"{asset} data load failed: {e}")
+        raise HTTPException(status_code=400, detail=f"{asset} data load failed: {e}") from e
 
     if df.empty:
         raise HTTPException(
@@ -829,7 +829,7 @@ async def asset_regime(asset: str, date: str | None = None):
         raise HTTPException(
             status_code=503,
             detail=f"Macro layer unavailable: {e}",
-        )
+        ) from e
 
     try:
         asof = datetime.fromisoformat(date) if date else None
@@ -851,7 +851,7 @@ async def asset_regime(asset: str, date: str | None = None):
         raise HTTPException(
             status_code=503,
             detail=f"Macro factor data unavailable: {e}",
-        )
+        ) from e
 
     if factor_df is None or factor_df.empty:
         raise HTTPException(
@@ -869,7 +869,7 @@ async def asset_regime(asset: str, date: str | None = None):
             timestamp=asof,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     return {
         "success": True,

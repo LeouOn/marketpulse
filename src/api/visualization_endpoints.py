@@ -98,7 +98,7 @@ async def get_candlestick_chart(request: ChartRequest):
         raise
     except Exception as e:
         logger.error(f"Error generating candlestick chart: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @viz_router.get("/candlestick/{symbol}")
@@ -177,7 +177,7 @@ async def get_indicator_panel(
         raise
     except Exception as e:
         logger.error(f"Error generating indicator panel: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @viz_router.get("/volume-profile/{symbol}")
@@ -224,7 +224,7 @@ async def get_volume_profile(
         raise
     except Exception as e:
         logger.error(f"Error generating volume profile: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @viz_router.get("/market-heatmap")
@@ -315,7 +315,7 @@ async def get_market_heatmap(
         raise
     except Exception as e:
         logger.error(f"Error generating market heatmap: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @viz_router.get("/analysis/{symbol}")
@@ -393,7 +393,7 @@ async def get_technical_analysis(
         raise
     except Exception as e:
         logger.error(f"Error generating technical analysis: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @viz_router.get("/dashboard/{symbol}")
@@ -591,7 +591,7 @@ async def get_trading_dashboard(
         raise
     except Exception as e:
         logger.error(f"Error generating dashboard: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @viz_router.get("/")
