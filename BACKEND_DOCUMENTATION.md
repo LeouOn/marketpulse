@@ -1,5 +1,9 @@
 # MarketPulse Backend Documentation
 
+> **Status:** measured 2026-09-29 against `main`. See [docs/STATUS.md](docs/STATUS.md)
+> for what works, what is broken, and the command to check each part. Route count and
+> startup health: `curl -s localhost:8000/api/debug/routes` and `tests/test_app_boots.py`.
+
 ## Architecture Overview
 
 The MarketPulse backend is a Python-based FastAPI application that provides real-time market data collection, AI-powered analysis, and API endpoints for the frontend.
@@ -372,27 +376,35 @@ CREATE TABLE user_comments (
 ## Configuration Management
 
 ### Environment Variables
+`.env.example` is the template, and defines only these:
+
 ```bash
-# Database
-DATABASE_URL=postgresql://user:pass@localhost:5432/marketpulse
-
-# APIs
-ALPACA_API_KEY=your_alpaca_key
-ALPACA_SECRET_KEY=your_alpaca_secret
-
-# LLM
-LM_STUDIO_URL=http://localhost:1234/v1
-LM_STUDIO_MODEL=aquif-3.5-max-42b-a3b-i1
-
-# Market Settings
-MARKET_DATA_INTERVAL=60  # seconds
-LLM_ANALYSIS_INTERVAL=300  # seconds
+MINIMAX_API_KEY=...            # default LLM provider
+DATABASE_URL=sqlite:///./marketpulse.db
+HOST=0.0.0.0
+PORT=8000
+LOG_LEVEL=INFO
 ```
 
+Everything else is configured in `config/credentials.yaml`, not the environment. The
+`DATABASE_URL` default is **SQLite**; PostgreSQL is optional (a
+`postgresql://user:pass@localhost:5432/marketpulse` URL is all it takes to switch).
+
 ### Configuration Files
-- `config/credentials.yaml` - API keys and secrets
-- `config/settings.yaml` - Application settings
-- `.env` - Environment-specific variables
+- `.env` — five core variables (above)
+- `config/credentials.yaml` — API keys and service settings. Copy
+  `config/credentials.example.yaml`; its sections are `database`, `redis`, `api_keys`,
+  `macro_data`, `llm`, `markets`, `analysis`, `logging`.
+  - `api_keys:` → `alpaca` (`key_id`, `secret_key`, `base_url`), `rithmic`, `coinbase`,
+    `openrouter`, `minimax`
+  - `macro_data:` → `fred_api_key`, `eia_api_key`
+
+There is **no** `config/settings.yaml`.
+
+> The keys `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` / `LM_STUDIO_URL` / `LM_STUDIO_MODEL`
+> that earlier revisions of this document listed are not read by the code. Use the
+> `credentials.yaml` structure above. LLM provider selection is
+> `llm.model_routing.primary_provider`; see [USAGE.md](USAGE.md).
 
 **Areas for Enhancement:**
 - [ ] Add configuration validation

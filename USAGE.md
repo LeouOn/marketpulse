@@ -1,67 +1,82 @@
 # MarketPulse LLM Integration Guide
 
-This guide explains how to integrate MarketPulse with local LLMs (LM Studio) for market analysis, data validation, and user interaction.
+How MarketPulse talks to LLM providers for market analysis, data validation, and user
+interaction.
+
+> **Status:** measured 2026-09-29. See [docs/STATUS.md](docs/STATUS.md) for what works,
+> what is broken, and the exact command to check each part. Provider health at a glance:
+> `curl -s localhost:8000/api/llm/model-status`.
 
 ## Overview
 
-MarketPulse now supports local LLM integration through LM Studio, providing:
+MarketPulse routes every LLM call through a single `ModelRouter`
+(`src/llm/model_router.py`) that picks a provider per capability. It provides:
+
 - **Data Validation**: Sanity checks on market data interpretation
 - **Market Analysis**: AI-powered insights on market conditions
 - **Chart Interpretation**: Text-based technical analysis
 - **User Interaction**: Comment and refine AI responses
 - **Multi-turn Conversations**: Build on previous analysis
 
-## Quick Start
+## Providers
 
-### 1. Verify LM Studio Setup
+The default provider is **MiniMax**. `ds4` is a supported *local* provider; DeepSeek,
+OpenRouter and LM Studio are configured as fallbacks.
 
-First, ensure LM Studio is running with your model loaded:
+| Provider | Role | Endpoint | Key |
+|---|---|---|---|
+| **MiniMax** | **default** | `https://api.minimax.io/v1` | `MINIMAX_API_KEY` |
+| `ds4` | local | `http://localhost:8001` | none |
+| DeepSeek | fallback | `https://api.deepseek.com/v1` | `DEEPSEEK_API_KEY` |
+| OpenRouter | fallback | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` |
+| LM Studio | fallback | `http://127.0.0.1:1234/v1` (auto-detects the loaded model) | none |
 
-```bash
-# Test the connection
-python test_llm_integration.py
-```
-
-Expected output:
-```
-🔌 Testing LM Studio connection...
-Endpoint: http://127.0.0.1:1234/v1
-Model: aquif-3.5-max-42b-a3b-i1
-
-1. Testing basic connectivity...
-   ✅ Basic connectivity test PASSED
-
-2. Testing model capabilities...
-   ✅ Model reasoning test PASSED
-
-📊 Overall: 5/5 tests passed (100%)
-🎉 All LLM tests passed! Integration is working correctly.
-```
-
-### 2. Configuration
-
-Your `config/credentials.yaml` should have:
+The default model for every capability is `MiniMax-M3`. Change the selection with
+`llm.model_routing.primary_provider` in `.env` / `config/credentials.yaml`:
 
 ```yaml
-# LLM Configuration
 llm:
-  # Primary: LM Studio (local)
-  primary:
-    base_url: http://127.0.0.1:1234/v1
-    api_key: not-needed
-    timeout: 30
-    model: aquif-3.5-max-42b-a3b-i1  # Your loaded model
+  model_routing:
+    primary_provider: minimax      # minimax | deepseek | lm_studio | openrouter | ds4
+    fallback_providers: deepseek,lm_studio,openrouter
 ```
 
-### 3. Run MarketPulse with AI Analysis
+A `ds4` local server must listen on **:8001** — the API itself uses :8000. See
+[docs/local-llm-ds4.md](docs/local-llm-ds4.md).
+
+## Quick Start
+
+### 1. Add a key
 
 ```bash
-# Single collection with AI analysis
-python marketpulse.py --mode collect
-
-# Continuous monitoring with periodic AI analysis
-python marketpulse.py --mode monitor
+cp .env.example .env
+# then set MINIMAX_API_KEY (or whichever provider you are using)
 ```
+
+### 2. Check it is reachable
+
+```bash
+curl -s localhost:8000/api/llm/model-status
+```
+
+`configured: true` means a real key was found; `false` means the value is still a
+placeholder such as `your_minimax_api_key`. The endpoint also reports `healthy` per
+provider once a health check has run.
+
+### 3. Ask something
+
+```bash
+curl -s -X POST localhost:8000/api/llm/chat -H 'Content-Type: application/json' \
+     -d '{"message":"In one short sentence: what is a stop loss?"}'
+```
+
+> **Known issue:** MiniMax-M3 returns its reasoning inline, so the `response` currently
+> begins with a raw `<think>…</think>` block before the answer. The AI analyst strips this;
+> this chat route does not yet.
+
+## API Endpoints
+
+### Core AI Analysis
 
 ## API Endpoints
 
@@ -77,7 +92,7 @@ GET /api/market/ai-analysis
 {
   "success": true,
   "data": {
-    "analysis": "🤖 LM Studio (Fast Analysis):\nCurrent market shows mixed signals..."
+    "analysis": "🤖 MiniMax-M3 (Fast Analysis):\nCurrent market shows mixed signals..."
   },
   "timestamp": "2024-01-15T10:30:00"
 }
@@ -97,7 +112,7 @@ GET /api/market/dashboard
     "marketBias": "MIXED",
     "volatilityRegime": "NORMAL",
     "symbols": { /* market data */ },
-    "aiAnalysis": "🤖 LM Studio analysis..."
+    "aiAnalysis": "🤖 MiniMax-M3 analysis..."
   }
 }
 ```
@@ -371,7 +386,7 @@ asyncio.run(refine_with_feedback())
 
 ## Text-Based Chart Encoding
 
-Since LM Studio doesn't support images, encode charts as structured text:
+The analysis path is text-only, so encode charts as structured text:
 
 ### Candlestick Data Format
 ```python
@@ -469,10 +484,12 @@ refined = await client.generate_completion(
 
 ### Connection Issues
 
-**Problem**: `LM Studio connection failed`
-- **Solution**: Ensure LM Studio is running and model is loaded
-- **Check**: Visit http://127.0.0.1:1234 in your browser
-- **Verify**: Model name matches `config/credentials.yaml`
+**Problem**: the provider returns 401/404, or `model-status` shows `configured: false`
+- **Solution**: check the provider's key is present and not the `your_…` placeholder
+- **Check**: `curl -s localhost:8000/api/llm/model-status` — `configured` and `healthy` per provider
+- **Verify**: the model id matches `llm.<provider>.model` in `.env` / `config/credentials.yaml`
+- **Local providers only** (`ds4`, LM Studio): confirm the server is up. `ds4` must listen on
+  :8001 because the API owns :8000; LM Studio serves :1234 and auto-detects its loaded model.
 
 **Problem**: `Timeout errors`
 - **Solution**: Increase timeout in config: `timeout: 60`
@@ -496,7 +513,7 @@ refined = await client.generate_completion(
 
 **Problem**: High memory usage
 - **Solution**: Process data in smaller chunks
-- **Monitor**: Check LM Studio resource usage
+- **Monitor**: for cloud providers check the provider dashboard; for local ones check the server process
 
 ## Example Workflow
 
@@ -536,9 +553,9 @@ curl -X POST http://localhost:8000/api/llm/refine \
 
 ## Next Steps
 
-1. **Test the integration**: Run `python test_llm_integration.py`
-2. **Start collecting data**: Run `python marketpulse.py --mode collect`
+1. **Test the integration**: `curl -s localhost:8000/api/llm/model-status`
+2. **Ask a question**: `curl -s -X POST localhost:8000/api/llm/chat -H 'Content-Type: application/json' -d '{"message":"hello"}'`
 3. **Explore the API**: Use the endpoints above or visit `http://localhost:8000/docs`
-4. **Build your workflow**: Integrate the Python SDK into your trading tools
+4. **Run the test suite**: `env -i HOME="$HOME" PATH="$PATH" .venv/bin/python -m pytest tests -q`
 
 For questions or issues, check the troubleshooting section or run the test suite to diagnose connection problems.
