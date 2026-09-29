@@ -15,9 +15,9 @@ from typing import Optional
 class CurveShape(str, Enum):
     """Curve shape classification."""
 
-    NORMAL = "NORMAL"  # Upward sloping, 2s10s > 0 and 2s30s > 0
+    NORMAL = "NORMAL"  # Default when no inversion/flat/hump rule fires (INVERTED is 2s10s-only)
     FLAT = "FLAT"  # All spreads within 25bps band
-    INVERTED = "INVERTED"  # 2s10s < 0
+    INVERTED = "INVERTED"  # 2s10s < 0 (or 2s5s when 10y is missing)
     HUMPED = "HUMPED"  # Mid-curve above both ends
     INVERTED_HUMPED = "INVERTED_HUMPED"  # Mid-curve below both ends
 
@@ -64,10 +64,17 @@ def classify_shape(curve: dict[str, float]) -> CurveShape:
     values = [curve[k] for k in keys]
     spread_band = (max(values) - min(values)) * 100.0
 
-    s_2s10s = (curve.get("10y", curve.get("5y", 0)) - curve.get("2y", 0)) * 100.0
+    # Inversion gate: 2s10s, falling back to the 5y when 10y is missing.
+    # Both legs must actually be present -- a missing long tenor must not
+    # fabricate a 0% yield (the old 0-default produced a false INVERTED
+    # on sparse curves like {"2y": 4.5, "30y": 5.0}).
+    short = curve.get("2y")
+    long_tenor = curve.get("10y")
+    if long_tenor is None:
+        long_tenor = curve.get("5y")
 
     # INVERTED: short end above long end (2s10s < 0)
-    if s_2s10s < 0:
+    if short is not None and long_tenor is not None and (long_tenor - short) * 100.0 < 0:
         return CurveShape.INVERTED
 
     # FLAT: all tenors within the band
