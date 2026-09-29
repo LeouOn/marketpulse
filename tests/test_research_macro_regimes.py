@@ -496,6 +496,89 @@ class TestRegimeFormulasFire:
 
 
 # ===========================================================================
+# REAL_YIELD_SHOCK change legs (2026-09-29): a shock is a CHANGE, not a level
+# ===========================================================================
+
+
+def _ry_scenario(*, spike: float, breakeven_move: float = 0.0, trend: bool = True, drop_cols=None) -> pd.DataFrame:
+    """Real-yield history that makes the LEVEL z-score blind to a fresh spike.
+
+    ``trend=True`` lays a multi-year real-yield uptrend under the trailing
+    5-year window (its own end sits near z ~ +1.7, like 2022-26), then adds a
+    ``spike`` over the final 21 days.  ``breakeven_move`` moves breakevens by
+    that much over the same 21 days.
+    """
+    days = 3800
+    idx = pd.date_range("2010-01-01", periods=days, freq="D")
+    rng = np.random.default_rng(7)
+    real = (np.linspace(-2.0, 4.0, days) if trend else np.full(days, 1.0)) + rng.normal(0, 0.04, days)
+    real[-21:] += np.linspace(0, spike, 21)
+    breakeven = 2.0 + rng.normal(0, 0.03, days)
+    breakeven[-21:] += np.linspace(0, breakeven_move, 21)
+    return _synthetic_factor_df(
+        days=days,
+        seed=7,
+        overrides={
+            "real_yield_10y": pd.Series(real, index=idx),
+            "breakeven_10y": pd.Series(breakeven, index=idx),
+        },
+        drop_cols=drop_cols,
+    )
+
+
+class TestRealYieldShockChangeLegs:
+    def test_fresh_spike_fires_even_though_the_level_zscore_is_blind(self):
+        from src.research.macro.regimes import _SL_RY_BREAKEVEN, _SL_RY_REAL, _TH_RY_BREAKEVEN, _TH_RY_REAL
+
+        df = _ry_scenario(spike=0.22)
+        clf = RulesBasedClassifier()
+        z = clf._compute_zscores(df)
+        # What the legacy level-only product would have said on the last day:
+        legacy = _sigmoid(z["real_yield_10y"].iloc[-1], _TH_RY_REAL, _SL_RY_REAL) * _sigmoid(
+            -z["breakeven_10y"].iloc[-1], _TH_RY_BREAKEVEN, _SL_RY_BREAKEVEN
+        )
+        assert legacy < 0.4, f"scenario should blind the level leg (legacy score {legacy:.2f})"
+
+        logits = clf.compute_logits(df)
+        assert logits["REAL_YIELD_SHOCK"].iloc[-1] > 0.6
+        assert clf.classify(df).iloc[-1].idxmax() == "REAL_YIELD_SHOCK"
+
+    def test_a_spike_with_rising_breakevens_is_not_a_real_yield_shock(self):
+        # Same real-yield move, but inflation compensation rises with it: that is
+        # INFLATION_ACCEL territory, so the "breakevens not rising" leg must veto it.
+        df = _ry_scenario(spike=0.22, breakeven_move=0.22)
+        logits = RulesBasedClassifier().compute_logits(df)
+        assert logits["REAL_YIELD_SHOCK"].iloc[-1] < 0.1
+
+    def test_no_spike_adds_no_signal(self):
+        df = _ry_scenario(spike=0.0)
+        logits = RulesBasedClassifier().compute_logits(df)
+        assert logits["REAL_YIELD_SHOCK"].iloc[-1] < 0.3
+        assert RulesBasedClassifier().classify(df).iloc[-1].idxmax() == "RISK_ON"
+
+    def test_missing_breakeven_column_suppresses_the_regime(self):
+        # Metis EC1: a missing input factor means regime score 0, spike or not.
+        df = _ry_scenario(spike=0.22, drop_cols=["breakeven_10y"])
+        logits = RulesBasedClassifier().compute_logits(df)
+        assert (logits["REAL_YIELD_SHOCK"] == 0.0).all()
+
+    def test_change_zscore_looks_back_by_calendar_time_not_rows(self):
+        # On a business-day frame a 7-calendar-day look-back is exactly 5 rows.
+        idx = pd.bdate_range("2015-01-01", periods=1500)
+        x = pd.Series(np.random.default_rng(3).normal(0, 1, len(idx)).cumsum(), index=idx, name="real_yield_10y")
+        got = RulesBasedClassifier._change_zscore(x.to_frame(), "real_yield_10y", 7)
+
+        change = x - x.shift(5)
+        rolling = change.rolling(window=f"{RulesBasedClassifier.CHANGE_ZSCORE_WINDOW_DAYS}D", min_periods=250)
+        expected = (change - rolling.mean()) / rolling.std()
+        np.testing.assert_allclose(got.iloc[-200:].to_numpy(), expected.iloc[-200:].to_numpy(), rtol=1e-9)
+
+    def test_change_zscore_is_all_nan_for_an_absent_column(self):
+        df = _synthetic_factor_df(days=600)
+        assert RulesBasedClassifier._change_zscore(df, "no_such_factor", 21).isna().all()
+
+
+# ===========================================================================
 # Tests 8-13: 6-episode live backrun validation (PRIMARY acceptance)
 # ===========================================================================
 
@@ -517,6 +600,10 @@ class TestRegimeFormulasFire:
         ("2019-01-01", "2019-12-31", Regime.RISK_ON),
         # 6. Risk-on year: post-2022-shock normalisation in 2023.
         ("2023-01-01", "2023-12-31", Regime.RISK_ON),
+        # 7-8. Added 2026-09-29 with the REAL_YIELD_SHOCK change legs: the level-only
+        # leg missed both (2013 peaked at a level z of +0.22; see the regimes.py docstring).
+        ("2013-05-01", "2013-09-30", Regime.REAL_YIELD_SHOCK),  # taper tantrum: real yields +128bp
+        ("2023-08-15", "2023-10-31", Regime.REAL_YIELD_SHOCK),  # 10y to 5%: real yields +80bp
     ],
     ids=[
         "gfc-recession",
@@ -525,6 +612,8 @@ class TestRegimeFormulasFire:
         "real-yield-shock",
         "risk-on-2019",
         "risk-on-2023",
+        "taper-tantrum-2013",
+        "real-yield-spike-oct-2023",
     ],
 )
 def test_backrun_validation(start_date: str, end_date: str, expected_regime: Regime):

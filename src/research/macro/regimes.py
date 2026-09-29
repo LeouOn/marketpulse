@@ -8,7 +8,8 @@ emits a per-timestamp 5-vector of regime probabilities (one per
 Design constraints (Metis MUST NOT / G7)
 ----------------------------------------
 
-* **Backward-looking only.** All z-scores use trailing 5-year windows.
+* **Backward-looking only.** Level z-scores use trailing 5-year windows and
+  the change z-scores (REAL_YIELD_SHOCK) trailing 10-year windows.
   No future information leaks into a historical backtest.
 * **Deterministic.** Same input frame -> identical output frame.  No
   RNG, no LLM call (that's T13's job), no smoothing or hysteresis.
@@ -43,6 +44,52 @@ direction (high when the regime is absent, low when present):
 The corrections preserve each formula's INTENT (which macro signal
 maps to which regime) and were chosen so the 6-episode historical
 backrun passes.  Reference: ``learnings.md`` section "W3 T12".
+
+REAL_YIELD_SHOCK is judged on CHANGES, not levels (2026-09-29)
+--------------------------------------------------------------
+
+The original leg z-scored the real-yield LEVEL against a trailing 5-year
+window and required breakevens to be *falling* on the same basis.  Measured
+against real history (FRED, 1990-2026) it essentially never fired:
+
+* the 2013 taper tantrum (real yields +128bp in 63 days) peaked at a level
+  z-score of only +0.22, because that 5-year window still contained the
+  2008-12 real-yield collapse;
+* the 2022-06..10 acceptance episode FAILED its own top-2 test (mean
+  REAL_YIELD_SHOCK score 0.04) -- so "6/6 pass" was no longer true;
+* REAL_YIELD_SHOCK was the dominant regime on 0.0% of all days, so the
+  "all five regimes appear" tape check could not have held either.
+
+A level z-score is contaminated by whatever the window happens to contain,
+so it cannot see a shock.  The regime score is now the STRONGEST of
+
+* the legacy level product (kept, it still catches slow extremes), and
+* for each horizon ``h`` in ``_RY_CHANGE_HORIZONS`` (21 and 63 calendar days)::
+
+      sigmoid(z(h-day real-yield change)) * sigmoid(-z(h-day breakeven change))
+
+  where each z-score is taken against the trailing 10-year distribution of
+  h-day changes.  The horizons are MATCHED: comparing a 21-day real-yield
+  spike with a 63-day breakeven drift mislabelled the very move this was
+  built to detect (breakevens had crept up over 63 days but were flat
+  across the 21-day spike).
+
+Validation (live data, all reproduced by the ``live`` tests): all 6
+acceptance episodes plus 2013 taper and Oct-2023 pass top-2; mean score in
+true shocks 0.34 vs 0.08 in negative controls (2016-11 election, 2019, 2021,
+COVID rebound, 2017, 2024); fires on ~2% of days; every threshold in a
+neighbourhood of the chosen ones (real 1.75-2.5, breakeven -1.0..0) also
+passes, so this is not a knife-edge fit.
+
+Score scale (read before trusting the numbers)
+----------------------------------------------
+
+The per-regime "logits" are stress scores in [0, 1]; ``classify`` softmaxes
+them.  Softmax of values in [0, 1] is heavily compressed: a single fully
+fired regime against four zeros can never exceed ``e/(e+4) ~ 40%``.  The
+ORDER and the dominant regime are meaningful; the absolute "probabilities"
+are not calibrated.  Use :meth:`RulesBasedClassifier.compute_logits` for the
+raw stress scores.  ``RISK_ON`` is only the residual "no stress detected".
 
 Public API
 ----------
@@ -157,10 +204,20 @@ _TH_REC_ISM: float = 1.0  # applied to (-ism_pmi_z)
 _SL_REC_ISM: float = 1.5
 
 # REAL_YIELD_SHOCK: real yields spiking AND breakevens not rising
+# (legacy LEVEL product -- kept, but on its own it never fired; see the
+# module docstring)
 _TH_RY_REAL: float = 2.0
 _SL_RY_REAL: float = 2.0
 _TH_RY_BREAKEVEN: float = 0.5  # applied to (-breakeven_z)
 _SL_RY_BREAKEVEN: float = 1.0
+
+# REAL_YIELD_SHOCK, CHANGE-based legs (matched horizons, calendar days)
+_RY_CHANGE_HORIZONS: tuple[int, ...] = (21, 63)
+_TH_RY_CHG_REAL: float = 2.0  # z of the h-day real-yield change
+_SL_RY_CHG_REAL: float = 1.5
+_TH_RY_CHG_BREAKEVEN: float = -0.5  # applied to (-z of the h-day breakeven change): "not rising"
+_SL_RY_CHG_BREAKEVEN: float = 2.0
+_CHANGE_MIN_PERIODS: int = 250  # observations of the h-day change needed before its z-score is defined
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +258,11 @@ class RulesBasedClassifier:
     #: 5-year rolling z-score window (days).  Matches T11's default
     #: (``MacroFactorProvider.compute_zscores`` uses the same value).
     ZSCORE_WINDOW_DAYS: int = 5 * 365
+
+    #: 10-year trailing window for the distribution of h-day changes used by
+    #: the REAL_YIELD_SHOCK change legs (longer than the level window on
+    #: purpose: it must still contain "normal" moves after a multi-year trend).
+    CHANGE_ZSCORE_WINDOW_DAYS: int = 10 * 365
 
     # ------------------------------------------------------------------
     # Public API
@@ -287,10 +349,22 @@ class RulesBasedClassifier:
         p_rec_values = np.where(sahm.to_numpy(), 1.0, p_rec_soft.to_numpy())
         p_rec = pd.Series(p_rec_values, index=idx, dtype=float)
 
-        # REAL_YIELD_SHOCK: real yields spiking AND breakevens NOT rising
-        p_ry = self._sigmoid_fillna(real_yield_z, _TH_RY_REAL, _SL_RY_REAL) * self._sigmoid_fillna(
-            -breakeven_z, _TH_RY_BREAKEVEN, _SL_RY_BREAKEVEN
-        )
+        # REAL_YIELD_SHOCK: real yields spiking AND breakevens NOT rising.
+        # The legacy level-z product is kept, and joined by one CHANGE-based
+        # product per matched horizon; the regime scores the strongest of them
+        # (see the module docstring for why levels alone never fired).
+        candidates = [
+            self._sigmoid_fillna(real_yield_z, _TH_RY_REAL, _SL_RY_REAL)
+            * self._sigmoid_fillna(-breakeven_z, _TH_RY_BREAKEVEN, _SL_RY_BREAKEVEN)
+        ]
+        for horizon in _RY_CHANGE_HORIZONS:
+            ry_change_z = self._change_zscore(factor_df, "real_yield_10y", horizon)
+            be_change_z = self._change_zscore(factor_df, "breakeven_10y", horizon)
+            candidates.append(
+                self._sigmoid_fillna(ry_change_z, _TH_RY_CHG_REAL, _SL_RY_CHG_REAL)
+                * self._sigmoid_fillna(-be_change_z, _TH_RY_CHG_BREAKEVEN, _SL_RY_CHG_BREAKEVEN)
+            )
+        p_ry = pd.concat(candidates, axis=1).max(axis=1)
 
         # RISK_ON: residual = 1 - max(other four), clipped to [0, 1].
         stacked = pd.concat(
@@ -360,6 +434,31 @@ class RulesBasedClassifier:
             z_df[numeric_cols] = (factor_df[numeric_cols] - mean) / std_safe
 
         return z_df
+
+    @staticmethod
+    def _change_zscore(factor_df: pd.DataFrame, col: str, horizon_days: int) -> pd.Series:
+        """z-score of the ``horizon_days``-calendar-day change of ``col``.
+
+        The change is measured against the trailing
+        ``CHANGE_ZSCORE_WINDOW_DAYS`` distribution of such changes, so a
+        move is judged against how large moves *of that size and horizon*
+        have been -- not against the level history, which any long trend
+        contaminates.  The look-back is TIME based (value at or before
+        ``t - horizon_days``), so it means the same on a calendar-daily or a
+        business-day frame.  All-NaN if the column is absent (Metis EC1).
+        """
+        idx = factor_df.index
+        if col not in factor_df.columns:
+            return pd.Series(np.nan, index=idx, dtype=float)
+        x = pd.to_numeric(factor_df[col], errors="coerce").astype(float)
+        past = x.reindex(idx - pd.Timedelta(days=horizon_days), method="ffill")
+        past.index = idx
+        change = x - past
+        rolling = change.rolling(
+            window=f"{RulesBasedClassifier.CHANGE_ZSCORE_WINDOW_DAYS}D", min_periods=_CHANGE_MIN_PERIODS
+        )
+        std = rolling.std()
+        return (change - rolling.mean()) / std.where(std > 0)
 
     @staticmethod
     def _safe_z(
