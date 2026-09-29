@@ -11,7 +11,9 @@ Two integration fixes were needed on top of the agent branches:
 - `/api/options/macro-context` returned 500 on `numpy.bool`; added `src/api/json_utils.to_builtin` (regression test fails without the fix).
 
 ## Still to do
-1. **T10 — CI green + one format pass** (`T10-ci-green.md`). Last, and merge immediately (it reformats ~158 files). Needs your call on the ruff rule set.
+1. **T10 — CI green + mechanical pass.** Decided 2026-09-29: enforce ruff `F, E9, B, I`, format pass yes, pin ruff 0.16.9, CI on 3.11 + 3.12, delete the `--ignore` list.
+   First the 65 manual findings go to two agents in parallel: **T10a** (`src/api`, 37) and **T10b** (everything else, 28). After both merge, the integrator does `T10-ci-green.md`
+   (config, CI, boot test, then one mechanical commit: safe autofix + import sort + format — already validated in a scratch worktree: clean-room suite still 1075 pass / 32 skip).
 2. **T11 — docs + `docs/STATUS.md`** (`T11-docs-accuracy.md`), after T10.
 3. Frontend: adopt the new additive fields from T7a (`symbol`, `instrument`, `is_proxy`) so DXY/gold are labelled as the real instruments.
    Also note T7a now **withholds fabricated internals unless `MARKETPULSE_ALLOW_MOCK=1`**, so panels that showed made-up numbers will show nothing.

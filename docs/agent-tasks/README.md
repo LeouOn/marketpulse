@@ -1,6 +1,6 @@
 # MarketPulse agent task pack
 
-Sixteen self-contained tasks for parallel agents. Each task file is a complete prompt.
+Eighteen self-contained tasks for parallel agents. Each task file is a complete prompt.
 Baseline: `main` @ `35e5556` — `pytest tests -q` = **919 passed, 20 failed, 6 errors, 20 skipped**
 (the failures are stale legacy tests, owned by T2a/T2b/T2c/T3a/T3b below).
 
@@ -65,7 +65,9 @@ assignment; `config/credentials.yaml` is read relative to the working directory.
 | T7b | [Backtest/viz/options endpoint sweep](T7b-backtest-viz-options.md) | `src/api/backtest_endpoints.py`, `visualization_endpoints.py`, `divergence_endpoints.py`, `ict_endpoints.py`, `risk_endpoints.py`, `src/api/routers/options.py`, `tests/test_api_smoke.py` (new) | — |
 | T8 | [Frontend verification](T8-frontend-verify.md) | `marketpulse-client/**` | — |
 | T9 | [Hermetic tests / CI parity](T9-hermetic-tests.md) | `tests/conftest.py`, other tests that dirty the tree or depend on local config | — |
-| T10 | [CI green + format pass](T10-ci-green.md) | `.github/workflows/ci.yml`, `pyproject.toml`, whole-repo formatting | **T1, T2a, T2b, T2c, T3a, T3b, T5, T9** |
+| T10a | [Manual lint fixes: `src/api`](T10a-lint-fixes-api.md) | `src/api/**` (37 bugbear / unused-variable findings) | — |
+| T10b | [Manual lint fixes: rest of repo](T10b-lint-fixes-rest.md) | `src/**` except `src/api`, and `tests/` (28 findings) | — |
+| T10 | [CI green + mechanical pass](T10-ci-green.md) — integrator | `.github/workflows/ci.yml`, `pyproject.toml`, `tests/test_app_boots.py`, whole-repo autofix + formatting | **T10a, T10b** (T1–T9 already merged) |
 | T11 | [Docs + status map](T11-docs-accuracy.md) | `README.md`, `USAGE.md`, root `*.md`, `tasks`, `docs/STATUS.md` (new) | **T0, T3b, T4, T5, T6, T7a, T10** |
 
 Shared-file hot spots (different hunks, so they merge cleanly if agents keep diffs surgical):
