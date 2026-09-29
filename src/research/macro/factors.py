@@ -66,6 +66,7 @@ from typing import Protocol
 import pandas as pd
 from loguru import logger
 
+from src.research.data import _paths
 from src.research.data.fred import FredProvider
 from src.research.data.yahoo import YahooProvider
 
@@ -157,21 +158,29 @@ class MacroFactorProvider:
             constructor (which requires ``FRED_API_KEY``) if omitted.
         yahoo: Optional :class:`YahooProvider`. Built default if omitted.
         cache_dir: Directory holding ``factors.parquet``. Created if
-            missing. Defaults to ``data/macro`` (same dir FredProvider
-            uses, so FRED primitives and the joined factor frame share
-            a parent -- but distinct filenames).
+            missing. Defaults to the writable, untracked cache root's
+            ``macro/`` directory (``data/cache/macro``, or under
+            ``MARKETPULSE_DATA_DIR``), seeded once from the tracked
+            ``data/macro/factors.parquet`` so a fresh checkout works
+            offline. The tracked seed is only ever read: writing the
+            refreshed frame back to it used to dirty the repo every time
+            ``/api/research/regimes`` ran.
     """
 
     def __init__(
         self,
         fred: _FredLike | None = None,
         yahoo: _YahooLike | None = None,
-        cache_dir: Path = Path("data/macro"),
+        cache_dir: Path | None = None,
     ) -> None:
         self.fred: _FredLike = fred if fred is not None else FredProvider()
         self.yahoo: _YahooLike = yahoo if yahoo is not None else YahooProvider()
-        self.cache_dir: Path = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        if cache_dir is None:
+            _paths.seed_file(f"macro/{_CACHE_FILENAME}")  # copy the tracked seed into the cache once
+            self.cache_dir: Path = _paths.cache_dir("macro")
+        else:
+            self.cache_dir = Path(cache_dir)
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
     # Public API
