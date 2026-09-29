@@ -10,17 +10,19 @@ Centralized state management for:
 Persistence across application restarts.
 """
 
-from dataclasses import dataclass, asdict
-from typing import List, Optional, Dict, Any
-from datetime import datetime, date, timedelta
-from enum import Enum
 import json
+from dataclasses import asdict, dataclass
+from datetime import date, datetime
+from enum import Enum
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 
 class PositionStatus(Enum):
     """Position status"""
+
     OPEN = "open"
     CLOSED = "closed"
     STOPPED_OUT = "stopped_out"
@@ -29,6 +31,7 @@ class PositionStatus(Enum):
 
 class PositionSide(Enum):
     """Position direction"""
+
     LONG = "long"
     SHORT = "short"
 
@@ -36,6 +39,7 @@ class PositionSide(Enum):
 @dataclass
 class Position:
     """Trading position"""
+
     id: str  # Unique identifier
     symbol: str
     side: PositionSide
@@ -102,25 +106,26 @@ class Position:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         data = asdict(self)
-        data['side'] = self.side.value
-        data['status'] = self.status.value
-        data['entry_timestamp'] = self.entry_timestamp.isoformat() if self.entry_timestamp else None
-        data['exit_timestamp'] = self.exit_timestamp.isoformat() if self.exit_timestamp else None
+        data["side"] = self.side.value
+        data["status"] = self.status.value
+        data["entry_timestamp"] = self.entry_timestamp.isoformat() if self.entry_timestamp else None
+        data["exit_timestamp"] = self.exit_timestamp.isoformat() if self.exit_timestamp else None
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Position':
+    def from_dict(cls, data: Dict[str, Any]) -> "Position":
         """Create from dictionary"""
-        data['side'] = PositionSide(data['side'])
-        data['status'] = PositionStatus(data['status'])
-        data['entry_timestamp'] = datetime.fromisoformat(data['entry_timestamp']) if data['entry_timestamp'] else None
-        data['exit_timestamp'] = datetime.fromisoformat(data['exit_timestamp']) if data['exit_timestamp'] else None
+        data["side"] = PositionSide(data["side"])
+        data["status"] = PositionStatus(data["status"])
+        data["entry_timestamp"] = datetime.fromisoformat(data["entry_timestamp"]) if data["entry_timestamp"] else None
+        data["exit_timestamp"] = datetime.fromisoformat(data["exit_timestamp"]) if data["exit_timestamp"] else None
         return cls(**data)
 
 
 @dataclass
 class DailyStats:
     """Daily trading statistics"""
+
     date: date
     starting_balance: float
     ending_balance: float
@@ -136,13 +141,13 @@ class DailyStats:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         data = asdict(self)
-        data['date'] = self.date.isoformat()
+        data["date"] = self.date.isoformat()
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'DailyStats':
+    def from_dict(cls, data: Dict[str, Any]) -> "DailyStats":
         """Create from dictionary"""
-        data['date'] = date.fromisoformat(data['date'])
+        data["date"] = date.fromisoformat(data["date"])
         return cls(**data)
 
 
@@ -191,8 +196,7 @@ class PositionManager:
         """
         self.open_positions[position.id] = position
         logger.info(
-            f"Position added: {position.symbol} {position.side.value} "
-            f"x{position.contracts} @ {position.entry_price}"
+            f"Position added: {position.symbol} {position.side.value} x{position.contracts} @ {position.entry_price}"
         )
         self.save_state()
 
@@ -201,7 +205,7 @@ class PositionManager:
         position_id: str,
         exit_price: float,
         exit_timestamp: Optional[datetime] = None,
-        status: PositionStatus = PositionStatus.CLOSED
+        status: PositionStatus = PositionStatus.CLOSED,
     ) -> Optional[Position]:
         """
         Close position
@@ -298,10 +302,7 @@ class PositionManager:
     def get_todays_trades(self) -> List[Position]:
         """Get all trades closed today"""
         today = date.today()
-        return [
-            p for p in self.closed_positions
-            if p.exit_timestamp and p.exit_timestamp.date() == today
-        ]
+        return [p for p in self.closed_positions if p.exit_timestamp and p.exit_timestamp.date() == today]
 
     def get_consecutive_losses(self) -> int:
         """Count consecutive losing trades"""
@@ -337,7 +338,7 @@ class PositionManager:
                 largest_win=position.realized_pnl if position.realized_pnl > 0 else 0,
                 largest_loss=position.realized_pnl if position.realized_pnl < 0 else 0,
                 gross_profit=position.realized_pnl if position.realized_pnl > 0 else 0,
-                gross_loss=abs(position.realized_pnl) if position.realized_pnl < 0 else 0
+                gross_loss=abs(position.realized_pnl) if position.realized_pnl < 0 else 0,
             )
         else:
             # Update existing stats
@@ -359,19 +360,14 @@ class PositionManager:
         """Persist state to disk"""
         try:
             state = {
-                'current_balance': self.current_balance,
-                'open_positions': {
-                    pid: pos.to_dict() for pid, pos in self.open_positions.items()
-                },
-                'closed_positions': [pos.to_dict() for pos in self.closed_positions[-100:]],  # Last 100
-                'daily_stats': {
-                    d.isoformat(): stats.to_dict()
-                    for d, stats in self.daily_stats.items()
-                },
-                'last_updated': datetime.now().isoformat()
+                "current_balance": self.current_balance,
+                "open_positions": {pid: pos.to_dict() for pid, pos in self.open_positions.items()},
+                "closed_positions": [pos.to_dict() for pos in self.closed_positions[-100:]],  # Last 100
+                "daily_stats": {d.isoformat(): stats.to_dict() for d, stats in self.daily_stats.items()},
+                "last_updated": datetime.now().isoformat(),
             }
 
-            with open(self.state_file, 'w') as f:
+            with open(self.state_file, "w") as f:
                 json.dump(state, f, indent=2)
 
             logger.debug(f"State saved to {self.state_file}")
@@ -386,21 +382,21 @@ class PositionManager:
             return
 
         try:
-            with open(self.state_file, 'r') as f:
+            with open(self.state_file, "r") as f:
                 state = json.load(f)
 
-            self.current_balance = state.get('current_balance', 10000.0)
+            self.current_balance = state.get("current_balance", 10000.0)
 
             # Load open positions
-            for pid, pos_data in state.get('open_positions', {}).items():
+            for pid, pos_data in state.get("open_positions", {}).items():
                 self.open_positions[pid] = Position.from_dict(pos_data)
 
             # Load closed positions
-            for pos_data in state.get('closed_positions', []):
+            for pos_data in state.get("closed_positions", []):
                 self.closed_positions.append(Position.from_dict(pos_data))
 
             # Load daily stats
-            for date_str, stats_data in state.get('daily_stats', {}).items():
+            for date_str, stats_data in state.get("daily_stats", {}).items():
                 self.daily_stats[date.fromisoformat(date_str)] = DailyStats.from_dict(stats_data)
 
             logger.info(
@@ -418,11 +414,11 @@ class PositionManager:
         today_trades = self.get_todays_trades()
 
         return {
-            'current_balance': self.current_balance,
-            'open_positions': len(self.open_positions),
-            'portfolio_risk': self.get_total_portfolio_risk(),
-            'today_pnl': today_pnl,
-            'today_trades': len(today_trades),
-            'consecutive_losses': self.get_consecutive_losses(),
-            'total_closed_trades': len(self.closed_positions)
+            "current_balance": self.current_balance,
+            "open_positions": len(self.open_positions),
+            "portfolio_risk": self.get_total_portfolio_risk(),
+            "today_pnl": today_pnl,
+            "today_trades": len(today_trades),
+            "consecutive_losses": self.get_consecutive_losses(),
+            "total_closed_trades": len(self.closed_positions),
         }

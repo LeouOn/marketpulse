@@ -14,7 +14,6 @@ from typing import Any
 import pandas as pd
 from loguru import logger
 
-
 # ---------------------------------------------------------------------------
 # Tool: detect_divergences
 # ---------------------------------------------------------------------------
@@ -244,8 +243,12 @@ CLASSIFY_REGIME_DEF: dict[str, Any] = {
 
 
 async def classify_regime(
-    symbol: str, current_price: float, vix: float, atr: float,
-    volume: int = 0, avg_volume: int = 0,
+    symbol: str,
+    current_price: float,
+    vix: float,
+    atr: float,
+    volume: int = 0,
+    avg_volume: int = 0,
 ) -> dict[str, Any]:
     """Classify market regime."""
     try:
@@ -311,8 +314,10 @@ CALCULATE_RISK_METRICS_DEF: dict[str, Any] = {
 
 
 async def calculate_risk_metrics(
-    entry_price: float, stop_loss: float,
-    account_size: float = 25000, risk_percent: float = 1.0,
+    entry_price: float,
+    stop_loss: float,
+    account_size: float = 25000,
+    risk_percent: float = 1.0,
 ) -> dict[str, Any]:
     """Calculate position sizing and risk metrics."""
     try:
@@ -373,7 +378,8 @@ SCREEN_OPTIONS_FLOW_DEF: dict[str, Any] = {
 
 
 async def screen_options_flow(
-    symbols: str, strategy: str = "directional",
+    symbols: str,
+    strategy: str = "directional",
 ) -> dict[str, Any]:
     """Screen for unusual options activity."""
     try:
@@ -382,9 +388,7 @@ async def screen_options_flow(
         sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
         screener = OptionsScreener()
 
-        result = await asyncio.to_thread(
-            screener.screen_with_macro_filter, sym_list, strategy or None
-        )
+        result = await asyncio.to_thread(screener.screen_with_macro_filter, sym_list, strategy or None)
 
         return {
             "symbols_screened": sym_list,

@@ -18,7 +18,6 @@ from typing import Any
 import networkx as nx
 from loguru import logger
 
-
 # ---------------------------------------------------------------------------
 # Pre-defined market structure relationships
 # ---------------------------------------------------------------------------
@@ -30,7 +29,6 @@ _MARKET_STRUCTURE_EDGES: list[tuple[str, str, str]] = [
     ("QQQ", "correlated_with", "NQ_F"),
     ("IWM", "correlated_with", "SPY"),
     ("DIA", "correlated_with", "SPY"),
-
     # Inverse relationships
     ("VIX", "inverse_to", "SPY"),
     ("VIX", "inverse_to", "QQQ"),
@@ -38,28 +36,24 @@ _MARKET_STRUCTURE_EDGES: list[tuple[str, str, str]] = [
     ("DXY", "inverse_to", "BTC-USD"),
     ("TNX", "inverse_to", "TLT"),
     ("TNX", "inverse_to", "SPY"),
-
     # Volatility / fear
     ("VIX", "indicates", "fear"),
     ("VIX", "indicates", "complacency"),
     ("put_call_ratio", "confirms", "VIX"),
     ("VOLD", "confirms", "volume"),
     ("TICK", "confirms", "momentum"),
-
     # Breadth components
     ("advance_decline", "component_of", "breadth"),
     ("mcclellan_oscillator", "component_of", "breadth"),
     ("new_highs_lows", "component_of", "breadth"),
     ("breadth", "confirms", "SPY"),
     ("breadth", "confirms", "QQQ"),
-
     # ICT / Smart Money concepts
     ("FVG", "type_of", "imbalance"),
     ("order_block", "type_of", "support_resistance"),
     ("liquidity_sweep", "precedes", "reversal"),
     ("CVD", "confirms", "order_flow"),
     ("OTE", "type_of", "retracement"),
-
     # Crypto-specific
     ("BTC-USD", "correlated_with", "ETH-USD"),
     ("BTC-USD", "correlated_with", "SOL-USD"),
@@ -68,7 +62,6 @@ _MARKET_STRUCTURE_EDGES: list[tuple[str, str, str]] = [
     ("open_interest", "confirms", "trend"),
     ("liquidation_cascade", "affects", "BTC-USD"),
     ("overnight_margin", "triggers", "liquidation_cascade"),
-
     # Macro intermarket
     ("crude_oil", "affects", "XLE"),
     ("crude_oil", "correlated_with", "USD_CAD"),
@@ -76,7 +69,6 @@ _MARKET_STRUCTURE_EDGES: list[tuple[str, str, str]] = [
     ("yield_curve", "indicates", "recession_risk"),
     ("fed_funds", "affects", "SPY"),
     ("fed_funds", "affects", "BTC-USD"),
-
     # Technical indicators
     ("RSI", "indicates", "overbought_oversold"),
     ("MACD", "indicates", "momentum_shift"),
@@ -115,9 +107,7 @@ class KnowledgeGraph:
                 glossary = json.loads(glossary_path.read_text(encoding="utf-8"))
                 for term in glossary:
                     node_id = term.lower().replace(" ", "_").replace("-", "_")
-                    self.graph.add_node(
-                        node_id, type="concept", label=term, source="glossary"
-                    )
+                    self.graph.add_node(node_id, type="concept", label=term, source="glossary")
                 logger.debug(f"KG: added {len(glossary)} glossary nodes")
             except Exception as e:
                 logger.warning(f"KG glossary load error: {e}")
@@ -132,9 +122,7 @@ class KnowledgeGraph:
                     self.graph.add_node(nid, type="entity", label=nid)
             self.graph.add_edge(src_id, dst_id, relation=rel)
 
-        logger.debug(
-            f"KG: {len(_MARKET_STRUCTURE_EDGES)} market structure edges added"
-        )
+        logger.debug(f"KG: {len(_MARKET_STRUCTURE_EDGES)} market structure edges added")
 
         # 3. Hypothesis docs → extract mentioned entities
         hy_dir = self.knowledge_dir / "hypotheses" / "active"
@@ -158,10 +146,7 @@ class KnowledgeGraph:
                     logger.warning(f"KG concept load error {md_file}: {e}")
 
         self._built = True
-        logger.info(
-            f"KnowledgeGraph: {self.graph.number_of_nodes()} nodes, "
-            f"{self.graph.number_of_edges()} edges"
-        )
+        logger.info(f"KnowledgeGraph: {self.graph.number_of_nodes()} nodes, {self.graph.number_of_edges()} edges")
 
     def _link_document_to_graph(self, doc_name: str, content: str) -> None:
         """Scan document content for known graph entities and link them."""
@@ -182,9 +167,7 @@ class KnowledgeGraph:
 
     # -- traversal --------------------------------------------------------
 
-    def traverse(
-        self, entity: str, depth: int = 1, max_results: int = 20
-    ) -> list[dict[str, Any]]:
+    def traverse(self, entity: str, depth: int = 1, max_results: int = 20) -> list[dict[str, Any]]:
         """Return neighbors of an entity up to `depth` hops away.
 
         Args:
@@ -225,13 +208,15 @@ class KnowledgeGraph:
                     seen.add(neighbor)
                     edge_data = self.graph.get_edge_data(node, neighbor) or {}
                     node_data = self.graph.nodes[neighbor]
-                    neighbors.append({
-                        "id": neighbor,
-                        "label": node_data.get("label", neighbor),
-                        "type": node_data.get("type", "entity"),
-                        "relation": edge_data.get("relation", "related"),
-                        "distance": d + 1,
-                    })
+                    neighbors.append(
+                        {
+                            "id": neighbor,
+                            "label": node_data.get("label", neighbor),
+                            "type": node_data.get("type", "entity"),
+                            "relation": edge_data.get("relation", "related"),
+                            "distance": d + 1,
+                        }
+                    )
                     next_frontier.append(neighbor)
             frontier = next_frontier
             if len(neighbors) >= max_results:

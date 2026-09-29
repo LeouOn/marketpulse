@@ -1,6 +1,7 @@
 """Run a comprehensive backtest matrix on the real BTC data we have,
 and persist the results as JSON so the DCA analysis doc can cite them.
 """
+
 from __future__ import annotations
 
 import json
@@ -113,7 +114,9 @@ def main() -> None:
     print(f"Wrote {OUT}")
     print("Best endings by strategy:")
     for s, r in best_by_strategy.items():
-        print(f"  {s:25s} -> ${r['ending_equity']:>15,.2f}  (CAGR {r['cagr_pct']:>6.2f}%, Sharpe {r['sharpe']:>5.2f}, MaxDD {r['max_drawdown_pct']:>5.2f}%)")
+        print(
+            f"  {s:25s} -> ${r['ending_equity']:>15,.2f}  (CAGR {r['cagr_pct']:>6.2f}%, Sharpe {r['sharpe']:>5.2f}, MaxDD {r['max_drawdown_pct']:>5.2f}%)"
+        )
 
 
 if __name__ == "__main__":

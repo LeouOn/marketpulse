@@ -121,16 +121,12 @@ def test_dca_fixed_amount_signals_only_on_buy_days():
 
 
 def test_dca_value_averaging_ramps_to_1():
-    sig = DCAValueAveraging(
-        params={"target_final_usd": 10000.0, "every_n_bars": 1}
-    ).generate_signals(_flat(10))
+    sig = DCAValueAveraging(params={"target_final_usd": 10000.0, "every_n_bars": 1}).generate_signals(_flat(10))
     # Every bar is a buy day; targets are 0, 1/9, 2/9, ..., 1.0
     assert sig.iloc[0] == pytest.approx(0.0, abs=1e-9)
     assert sig.iloc[-1] == pytest.approx(1.0, abs=1e-9)
     # On non-buy days the signal is NaN (interpreted as "no change")
-    sig_sparse = DCAValueAveraging(
-        params={"target_final_usd": 10000.0, "every_n_bars": 5}
-    ).generate_signals(_flat(20))
+    sig_sparse = DCAValueAveraging(params={"target_final_usd": 10000.0, "every_n_bars": 5}).generate_signals(_flat(20))
     assert pd.isna(sig_sparse.iloc[1])  # not a buy day
     assert not pd.isna(sig_sparse.iloc[5])  # buy day
 
@@ -187,9 +183,7 @@ def test_bollinger_enters_after_crash_and_exits_on_recovery():
 
 def test_rsi_enters_on_oversold():
     df = _down_then_up(n=200)
-    sig = MeanReversionRSI(
-        params={"period": 14, "entry_threshold": 30.0, "exit_threshold": 50.0}
-    ).generate_signals(df)
+    sig = MeanReversionRSI(params={"period": 14, "entry_threshold": 30.0, "exit_threshold": 50.0}).generate_signals(df)
     # Should be long at some point during the recovery
     assert sig.sum() > 0
 

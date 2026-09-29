@@ -227,8 +227,7 @@ class MacroRegimeModel:
             mask = rules_probs_df.index <= pd.Timestamp(timestamp)
             if not mask.any():
                 raise ValueError(
-                    f"timestamp {timestamp} is before the start of factor_df "
-                    f"(first index: {rules_probs_df.index[0]})."
+                    f"timestamp {timestamp} is before the start of factor_df (first index: {rules_probs_df.index[0]})."
                 )
             used_idx = rules_probs_df.index[mask][-1]
             rules_probs = rules_probs_df.loc[used_idx].to_dict()
@@ -318,8 +317,7 @@ class MacroRegimeModel:
             # failure mode triggers the rules-only fallback so the
             # caller's pipeline stays up.
             logger.warning(
-                f"MacroRegimeModel: LLMJudgeNarrator failed ({type(exc).__name__}: "
-                f"{exc}); falling back to rules-only."
+                f"MacroRegimeModel: LLMJudgeNarrator failed ({type(exc).__name__}: {exc}); falling back to rules-only."
             )
             return self._normalize_to_regimes(rules_probs), None, "rules"
 
@@ -373,9 +371,7 @@ class MacroRegimeModel:
             out = {k: v / total for k, v in out.items()}
         return out
 
-    def _build_snapshot(
-        self, factor_df: pd.DataFrame, timestamp: datetime | None
-    ) -> dict[str, float | None]:
+    def _build_snapshot(self, factor_df: pd.DataFrame, timestamp: datetime | None) -> dict[str, float | None]:
         """Latest factor values as a flat dict for LLM input.
 
         ``timestamp=None`` means "last row".  NaN values are converted
@@ -395,13 +391,9 @@ class MacroRegimeModel:
                 row = factor_df.loc[mask].iloc[-1]
         else:
             row = factor_df.iloc[-1]
-        return {
-            str(k): (None if pd.isna(v) else float(v)) for k, v in row.items()
-        }
+        return {str(k): (None if pd.isna(v) else float(v)) for k, v in row.items()}
 
-    def _build_trajectory(
-        self, factor_df: pd.DataFrame, timestamp: datetime | None
-    ) -> pd.DataFrame:
+    def _build_trajectory(self, factor_df: pd.DataFrame, timestamp: datetime | None) -> pd.DataFrame:
         """Last ~6 months of factor data for LLM trajectory analysis.
 
         The narrator doesn't do math on this frame -- it precomputes a

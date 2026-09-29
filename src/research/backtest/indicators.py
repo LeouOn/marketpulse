@@ -169,11 +169,7 @@ class IndicatorProvider:
                 from src.research.data.fear_greed import fetch_fear_greed
 
                 fgi_df = fetch_fear_greed()
-                if (
-                    not fgi_df.empty
-                    and "ts" in fgi_df.columns
-                    and "fgi_value" in fgi_df.columns
-                ):
+                if not fgi_df.empty and "ts" in fgi_df.columns and "fgi_value" in fgi_df.columns:
                     for _, row in fgi_df.iterrows():
                         fgi_lookup[str(row["ts"].date())] = float(row["fgi_value"])
             except Exception:
@@ -186,18 +182,12 @@ class IndicatorProvider:
                 from src.research.data.on_chain import fetch_mvrv
 
                 mvrv_df = fetch_mvrv()
-                if (
-                    not mvrv_df.empty
-                    and "ts" in mvrv_df.columns
-                    and "mvrv_z" in mvrv_df.columns
-                ):
+                if not mvrv_df.empty and "ts" in mvrv_df.columns and "mvrv_z" in mvrv_df.columns:
                     # Warn if the entire series is synthetic - a backtest
                     # run on noise is misleading. We do NOT change behavior;
                     # the caller still gets the lookup dict, just with a
                     # visible warning so the user knows the data is fake.
-                    if "source" in mvrv_df.columns and (
-                        mvrv_df["source"] == "synthetic"
-                    ).all():
+                    if "source" in mvrv_df.columns and (mvrv_df["source"] == "synthetic").all():
                         logger.warning(
                             "MVRV data is entirely synthetic - backtest "
                             "results on this series are not meaningful. "

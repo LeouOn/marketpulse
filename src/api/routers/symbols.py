@@ -20,12 +20,14 @@ async def list_symbols():
         symbols = []
 
         for sym in client.market_symbols:
-            symbols.append({
-                "symbol": sym,
-                "name": sym,
-                "asset_type": "equity",
-                "yahoo_symbol": sym,
-            })
+            symbols.append(
+                {
+                    "symbol": sym,
+                    "name": sym,
+                    "asset_type": "equity",
+                    "yahoo_symbol": sym,
+                }
+            )
 
         for name, yahoo_sym in client.macro_symbols.items():
             asset_type = "other"
@@ -40,12 +42,14 @@ async def list_symbols():
             else:
                 asset_type = "etf"
 
-            symbols.append({
-                "symbol": name,
-                "name": name,
-                "asset_type": asset_type,
-                "yahoo_symbol": yahoo_sym,
-            })
+            symbols.append(
+                {
+                    "symbol": name,
+                    "name": name,
+                    "asset_type": asset_type,
+                    "yahoo_symbol": yahoo_sym,
+                }
+            )
 
         return success_response({"symbols": symbols, "total": len(symbols)})
 
@@ -66,21 +70,25 @@ async def search_symbols(q: str = Query(..., min_length=1)):
 
         for sym in client.market_symbols:
             if query in sym.upper():
-                matches.append({
-                    "symbol": sym,
-                    "name": sym,
-                    "asset_type": "equity",
-                    "yahoo_symbol": sym,
-                })
+                matches.append(
+                    {
+                        "symbol": sym,
+                        "name": sym,
+                        "asset_type": "equity",
+                        "yahoo_symbol": sym,
+                    }
+                )
 
         for name, yahoo_sym in client.macro_symbols.items():
             if query in name.upper() or query in yahoo_sym.upper():
-                matches.append({
-                    "symbol": name,
-                    "name": name,
-                    "asset_type": "other",
-                    "yahoo_symbol": yahoo_sym,
-                })
+                matches.append(
+                    {
+                        "symbol": name,
+                        "name": name,
+                        "asset_type": "other",
+                        "yahoo_symbol": yahoo_sym,
+                    }
+                )
 
         return success_response({"query": q, "results": matches[:10]})
 
@@ -131,14 +139,16 @@ async def get_symbol_stats(symbol: str):
         if range_data is None:
             return error_response(f"Could not fetch stats for {symbol}")
 
-        return success_response({
-            "symbol": symbol,
-            "high_52w": range_data["high_52w"],
-            "low_52w": range_data["low_52w"],
-            "pct_from_high": range_data["pct_from_high"],
-            "pct_from_low": range_data["pct_from_low"],
-            "current_price": range_data["current_price"],
-        })
+        return success_response(
+            {
+                "symbol": symbol,
+                "high_52w": range_data["high_52w"],
+                "low_52w": range_data["low_52w"],
+                "pct_from_high": range_data["pct_from_high"],
+                "pct_from_low": range_data["pct_from_low"],
+                "current_price": range_data["current_price"],
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error fetching stats for {symbol}: {e}")

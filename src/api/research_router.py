@@ -36,20 +36,17 @@ of ``token`` (LLM output), ``tool_call``, ``tool_result``, ``final``,
 from __future__ import annotations
 
 import json
-import time
-import uuid
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ..research import tools as research_tools
-from ..research.data import AssetRegistry, AssetConfig
+from ..research.data import AssetConfig, AssetRegistry
 from ..research.strategies import _REGISTRY
 
 router = APIRouter(prefix="/api/research", tags=["research"])
@@ -158,10 +155,7 @@ def _require_asset(asset: str) -> AssetConfig:
     if cfg is None:
         raise HTTPException(
             status_code=404,
-            detail=(
-                f"Unknown asset: {asset}. "
-                f"Supported: {sorted(AssetRegistry)}"
-            ),
+            detail=(f"Unknown asset: {asset}. Supported: {sorted(AssetRegistry)}"),
         )
     return cfg
 
@@ -208,9 +202,7 @@ async def data_summary(start: str | None = None, end: str | None = None, timefra
 @router.post("/backtest")
 async def backtest(req: BacktestRequest):
     """Legacy single-asset backtest. ``asset`` defaults to BTC (back-compat)."""
-    r = research_tools.tool_run_backtest(
-        req.model_dump(exclude_none=True), asset=req.asset
-    )
+    r = research_tools.tool_run_backtest(req.model_dump(exclude_none=True), asset=req.asset)
     if not r.success:
         raise HTTPException(status_code=400, detail=r.error)
     return r.to_dict()
@@ -219,9 +211,7 @@ async def backtest(req: BacktestRequest):
 @router.post("/montecarlo")
 async def montecarlo(req: MonteCarloRequest):
     """Legacy Monte Carlo. ``asset`` defaults to BTC (back-compat)."""
-    r = research_tools.tool_run_montecarlo(
-        req.model_dump(exclude_none=True), asset=req.asset
-    )
+    r = research_tools.tool_run_montecarlo(req.model_dump(exclude_none=True), asset=req.asset)
     if not r.success:
         raise HTTPException(status_code=400, detail=r.error)
     return r.to_dict()
@@ -263,9 +253,7 @@ async def compare(req: CompareRequest):
             status_code=400,
             detail="Provide either 'strategies' (legacy) or 'assets' + 'strategy' (multi-asset)",
         )
-    r = research_tools.execute(
-        "compare_strategies", req.model_dump(exclude_none=True)
-    )
+    r = research_tools.execute("compare_strategies", req.model_dump(exclude_none=True))
     if not r.success:
         raise HTTPException(status_code=400, detail=r.error)
     return r.to_dict()
@@ -397,7 +385,7 @@ def system_prompt(asset: str = "BTC") -> str:
 strategies, position-sizing models, and Monte Carlo outcomes for {asset_name} over multi-year horizons.
 
 Asset context: asset_class={asset_class}, calendar={calendar}. \
-Strategies available: {sorted(_REGISTRY.keys()) if _REGISTRY else 'loading...'}.
+Strategies available: {sorted(_REGISTRY.keys()) if _REGISTRY else "loading..."}.
 
 You have tools to:
 - List and describe strategies and scaling models
@@ -434,9 +422,7 @@ async def _stream_ndjson(req: ChatRequest, asset: str = "BTC"):
         from ..llm.model_router import ModelRouter
     except ImportError:
         # Fall back: just return an error
-        yield _ndjson(
-            {"type": "error", "error": "LLM runtime not available. Install llm dependencies."}
-        )
+        yield _ndjson({"type": "error", "error": "LLM runtime not available. Install llm dependencies."})
         return
 
     # 1. Build the system prompt + tool list
@@ -647,11 +633,7 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
     with a clear message rather than crashing.
     """
     end_d = _parse_iso_date(end, "end") if end else date.today()
-    start_d = (
-        _parse_iso_date(start, "start")
-        if start
-        else end_d - timedelta(days=_REGIME_DEFAULT_WINDOW_DAYS)
-    )
+    start_d = _parse_iso_date(start, "start") if start else end_d - timedelta(days=_REGIME_DEFAULT_WINDOW_DAYS)
     fetch_start = start_d - timedelta(days=_REGIME_LOOKBACK_PAD_DAYS)
 
     try:
@@ -735,9 +717,7 @@ async def get_asset_data(
 ):
     """Return cached OHLCV for ``asset`` as JSON."""
     _require_asset(asset)
-    r = research_tools.tool_get_data_summary(
-        {"start": start, "end": end, "timeframe": timeframe}, asset=asset
-    )
+    r = research_tools.tool_get_data_summary({"start": start, "end": end, "timeframe": timeframe}, asset=asset)
     if not r.success:
         raise HTTPException(status_code=400, detail=r.error)
     # Also return the raw OHLCV rows (capped at ``limit``) for charting.

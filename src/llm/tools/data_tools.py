@@ -19,7 +19,6 @@ get_symbol_52w_stats  Computed from YahooFinanceClient OHLCV data
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import datetime
 from typing import Any
 
@@ -140,9 +139,7 @@ async def get_ohlcv(
 
         client = YahooFinanceClient()
         # get_bars is synchronous -- run in thread to avoid blocking
-        df: pd.DataFrame | None = await asyncio.to_thread(
-            client.get_bars, clean_symbol, period, interval
-        )
+        df: pd.DataFrame | None = await asyncio.to_thread(client.get_bars, clean_symbol, period, interval)
 
         if df is None or df.empty:
             return {
@@ -163,14 +160,16 @@ async def get_ohlcv(
         # Build a compact candle list for the LLM context
         candles: list[dict[str, Any]] = []
         for idx, row in df.tail(50).iterrows():  # cap at 50 candles
-            candles.append({
-                "time": str(idx),
-                "open": round(float(row.get("open", 0)), 4),
-                "high": round(float(row.get("high", 0)), 4),
-                "low": round(float(row.get("low", 0)), 4),
-                "close": round(float(row.get("close", 0)), 4),
-                "volume": int(row.get("volume", 0)),
-            })
+            candles.append(
+                {
+                    "time": str(idx),
+                    "open": round(float(row.get("open", 0)), 4),
+                    "high": round(float(row.get("high", 0)), 4),
+                    "low": round(float(row.get("low", 0)), 4),
+                    "close": round(float(row.get("close", 0)), 4),
+                    "volume": int(row.get("volume", 0)),
+                }
+            )
 
         return {
             "symbol": symbol,
@@ -278,17 +277,10 @@ async def get_symbol_52w_stats(symbol: str) -> dict[str, Any]:
         client = YahooFinanceClient()
 
         # Fetch 1 year of daily data
-        df: pd.DataFrame | None = await asyncio.to_thread(
-            client.get_bars, clean_symbol, "1y", "1d"
-        )
+        df: pd.DataFrame | None = await asyncio.to_thread(client.get_bars, clean_symbol, "1y", "1d")
 
         if df is None or df.empty:
-            return {
-                "error": (
-                    f"No data for {clean_symbol}. yfinance may be "
-                    f"rate-limiting or the symbol is invalid."
-                )
-            }
+            return {"error": (f"No data for {clean_symbol}. yfinance may be rate-limiting or the symbol is invalid.")}
 
         # Normalise yfinance MultiIndex columns
         if isinstance(df.columns, pd.MultiIndex):
@@ -301,10 +293,7 @@ async def get_symbol_52w_stats(symbol: str) -> dict[str, Any]:
         missing = required - set(df.columns)
         if missing:
             return {
-                "error": (
-                    f"Data for {clean_symbol} is missing columns: {missing}. "
-                    f"Got columns: {list(df.columns)}"
-                )
+                "error": (f"Data for {clean_symbol} is missing columns: {missing}. Got columns: {list(df.columns)}")
             }
 
         high_52w = float(df["high"].max())

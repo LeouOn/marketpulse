@@ -24,8 +24,7 @@ from src.research.scaling import InvalidParamsError, ScalingModel
 class RSIModulated(ScalingModel):
     name: ClassVar[str] = "RSIModulated"
     description: ClassVar[str] = (
-        "Multiplies buy size by RSI(14)-derived weight: "
-        "oversold → buy more, overbought → buy less."
+        "Multiplies buy size by RSI(14)-derived weight: oversold → buy more, overbought → buy less."
     )
     default_params: ClassVar[dict[str, Any]] = {
         "lookback": 14,
@@ -34,13 +33,9 @@ class RSIModulated(ScalingModel):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("lookback", 14) <= 0:
-            raise InvalidParamsError(
-                f"lookback must be > 0, got {params['lookback']}"
-            )
+            raise InvalidParamsError(f"lookback must be > 0, got {params['lookback']}")
         if params.get("base_buy_multiplier", 1.0) <= 0:
-            raise InvalidParamsError(
-                f"base_buy_multiplier must be > 0, got {params['base_buy_multiplier']}"
-            )
+            raise InvalidParamsError(f"base_buy_multiplier must be > 0, got {params['base_buy_multiplier']}")
 
     def size(
         self,

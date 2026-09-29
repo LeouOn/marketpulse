@@ -1,4 +1,5 @@
 """Tests for market event shocks (X-factor + black swan)."""
+
 from __future__ import annotations
 
 import random
@@ -20,13 +21,9 @@ def test_all_events_have_valid_probabilities():
     for event in get_all_events():
         assert 0.0 < event.probability, f"{event.name} has zero probability"
         if event.category == "x_factor":
-            assert event.probability < 0.25, (
-                f"X-factor {event.name} probability {event.probability} >= 0.25"
-            )
+            assert event.probability < 0.25, f"X-factor {event.name} probability {event.probability} >= 0.25"
         elif event.category == "black_swan":
-            assert event.probability < 0.06, (
-                f"Black swan {event.name} probability {event.probability} >= 0.06"
-            )
+            assert event.probability < 0.06, f"Black swan {event.name} probability {event.probability} >= 0.06"
         else:
             pytest.fail(f"Unknown category: {event.category}")
 
@@ -34,8 +31,14 @@ def test_all_events_have_valid_probabilities():
 def test_apply_event_modifies_curve():
     """Applying an event with non-zero effects must change the curve."""
     baseline = {
-        "3mo": 3.84, "1y": 4.02, "2y": 4.16, "5y": 4.31,
-        "7y": 4.44, "10y": 4.58, "20y": 5.09, "30y": 5.08,
+        "3mo": 3.84,
+        "1y": 4.02,
+        "2y": 4.16,
+        "5y": 4.31,
+        "7y": 4.44,
+        "10y": 4.58,
+        "20y": 5.09,
+        "30y": 5.08,
     }
     event = next(e for e in get_all_events() if e.curve_effects)
     shocked = apply_event_to_curve(event, baseline)
@@ -65,6 +68,7 @@ def test_roll_event_returns_none_or_valid_event():
 
 def test_black_swan_effects_are_larger_than_x_factor():
     """Average absolute curve effect of black swans must exceed X-factor average."""
+
     def avg_magnitude(events):
         total_bps = 0.0
         n = 0
@@ -77,8 +81,7 @@ def test_black_swan_effects_are_larger_than_x_factor():
     x_factor_avg = avg_magnitude(get_x_factor_events())
     black_swan_avg = avg_magnitude(get_black_swan_events())
     assert black_swan_avg > x_factor_avg, (
-        f"Black swan avg effect {black_swan_avg:.2f}bps not larger than "
-        f"X-factor avg {x_factor_avg:.2f}bps"
+        f"Black swan avg effect {black_swan_avg:.2f}bps not larger than X-factor avg {x_factor_avg:.2f}bps"
     )
 
 

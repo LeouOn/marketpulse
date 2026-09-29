@@ -2,13 +2,13 @@
 
 DAO over market_data.yield_curve_snapshots. Pure DB I/O — no FRED, no alerting.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Optional
 
-from loguru import logger
 from sqlalchemy.orm import Session
 
 from src.core.database import YieldCurveSnapshot
@@ -17,8 +17,9 @@ from src.core.database import YieldCurveSnapshot
 @dataclass
 class SnapshotData:
     """In-memory representation of a daily curve snapshot."""
+
     date: date
-    curve: dict[str, float]              # tenor -> yield in %
+    curve: dict[str, float]  # tenor -> yield in %
     spreads: dict[str, Optional[float]]  # spread name -> bps
     shape: str
     shape_trend: str
@@ -30,8 +31,14 @@ class SnapshotData:
 
 # Map tenor name -> DB column
 _TENOR_COLS: dict[str, str] = {
-    "3mo": "dgs3mo", "1y": "dgs1", "2y": "dgs2", "5y": "dgs5",
-    "7y": "dgs7", "10y": "dgs10", "20y": "dgs20", "30y": "dgs30",
+    "3mo": "dgs3mo",
+    "1y": "dgs1",
+    "2y": "dgs2",
+    "5y": "dgs5",
+    "7y": "dgs7",
+    "10y": "dgs10",
+    "20y": "dgs20",
+    "30y": "dgs30",
 }
 
 
@@ -100,8 +107,14 @@ class YieldCurveHistory:
         s_5d = _spread_on(target_date - timedelta(days=5))
         s_30d = _spread_on(target_date - timedelta(days=30))
 
-        delta_5d = (target.spreads["2s10s"] - s_5d) if (s_5d is not None and target.spreads.get("2s10s") is not None) else None
-        delta_30d = (target.spreads["2s10s"] - s_30d) if (s_30d is not None and target.spreads.get("2s10s") is not None) else None
+        delta_5d = (
+            (target.spreads["2s10s"] - s_5d) if (s_5d is not None and target.spreads.get("2s10s") is not None) else None
+        )
+        delta_30d = (
+            (target.spreads["2s10s"] - s_30d)
+            if (s_30d is not None and target.spreads.get("2s10s") is not None)
+            else None
+        )
 
         # 90d z-score
         history = self.get_history(days=90)
@@ -109,7 +122,7 @@ class YieldCurveHistory:
         if len(values) >= 5:
             mean = sum(values) / len(values)
             var = sum((v - mean) ** 2 for v in values) / len(values)
-            std = var ** 0.5
+            std = var**0.5
             z = (target.spreads["2s10s"] - mean) / std if std > 0 else 0.0
         else:
             z = None
@@ -124,9 +137,7 @@ class YieldCurveHistory:
 
     @staticmethod
     def _row_to_data(row: YieldCurveSnapshot) -> SnapshotData:
-        curve = {tenor: float(getattr(row, col))
-                 for tenor, col in _TENOR_COLS.items()
-                 if getattr(row, col) is not None}
+        curve = {tenor: float(getattr(row, col)) for tenor, col in _TENOR_COLS.items() if getattr(row, col) is not None}
         spreads = {
             "2s10s": float(row.spread_2s10s) if row.spread_2s10s is not None else None,
             "3m10y": float(row.spread_3m10y) if row.spread_3m10y is not None else None,
@@ -139,12 +150,10 @@ class YieldCurveHistory:
             spreads=spreads,
             shape=row.shape,
             shape_trend=row.shape_trend,
-            recession_prob_nyfed=float(row.recession_prob_nyfed)
-                if row.recession_prob_nyfed is not None else None,
-            spread_2s10s_delta_5d=float(row.spread_2s10s_delta_5d)
-                if row.spread_2s10s_delta_5d is not None else None,
+            recession_prob_nyfed=float(row.recession_prob_nyfed) if row.recession_prob_nyfed is not None else None,
+            spread_2s10s_delta_5d=float(row.spread_2s10s_delta_5d) if row.spread_2s10s_delta_5d is not None else None,
             spread_2s10s_delta_30d=float(row.spread_2s10s_delta_30d)
-                if row.spread_2s10s_delta_30d is not None else None,
-            zscore_2s10s_90d=float(row.zscore_2s10s_90d)
-                if row.zscore_2s10s_90d is not None else None,
+            if row.spread_2s10s_delta_30d is not None
+            else None,
+            zscore_2s10s_90d=float(row.zscore_2s10s_90d) if row.zscore_2s10s_90d is not None else None,
         )

@@ -30,7 +30,10 @@ class PriceData(Base):
     """OHLCV price data model"""
 
     __tablename__ = "prices"
-    __table_args__ = (UniqueConstraint("symbol", "timeframe", "timestamp", name="_symbol_timeframe_timestamp_uc"), {"schema": "market_data"})
+    __table_args__ = (
+        UniqueConstraint("symbol", "timeframe", "timestamp", name="_symbol_timeframe_timestamp_uc"),
+        {"schema": "market_data"},
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)
@@ -46,7 +49,7 @@ class PriceData(Base):
     adjusted_close = Column(Float)
     split_factor = Column(Float, default=1.0)
     dividend_amount = Column(Float, default=0.0)
-    source = Column(String(20), default='yahoo')
+    source = Column(String(20), default="yahoo")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -146,13 +149,13 @@ class Symbol(Base):
     exchange = Column(String(20))
     sector = Column(String(50), index=True)
     industry = Column(String(100))
-    currency = Column(String(3), default='USD')
+    currency = Column(String(3), default="USD")
     lot_size = Column(Float, default=1.0)
     tick_size = Column(Float, default=0.01)
     is_active = Column(Boolean, default=True, index=True)
     yahoo_symbol = Column(String(20))
     alpaca_symbol = Column(String(20))
-    data_source = Column(String(20), default='yahoo')
+    data_source = Column(String(20), default="yahoo")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -283,6 +286,7 @@ class Indicator(Base):
 
 class YieldCurveSnapshot(Base):
     """Daily Treasury yield curve snapshot."""
+
     __tablename__ = "yield_curve_snapshots"
     __table_args__ = ({"schema": "market_data"},)
 
@@ -315,6 +319,7 @@ class YieldCurveSnapshot(Base):
 
 class YieldCurveAlert(Base):
     """Persisted yield-curve alert (audit log)."""
+
     __tablename__ = "yield_curve_alerts"
     __table_args__ = ({"schema": "market_data"},)
 
@@ -355,8 +360,10 @@ class DatabaseManager:
 
         if is_sqlite:
             self.engine = create_engine(
-                self.database_url, poolclass=NullPool, connect_args={"check_same_thread": False},
-                execution_options={"schema_translate_map": {"market_data": None, "analysis": None}}
+                self.database_url,
+                poolclass=NullPool,
+                connect_args={"check_same_thread": False},
+                execution_options={"schema_translate_map": {"market_data": None, "analysis": None}},
             )
         elif is_postgres:
             # Fail-fast: connect_timeout avoids the 60s TCP hang when postgres is down.
@@ -398,8 +405,9 @@ class DatabaseManager:
 
         if is_sqlite:
             async_engine = create_async_engine(
-                self.database_url.replace("sqlite://", "sqlite+aiosqlite://"), poolclass=NullPool,
-                execution_options={"schema_translate_map": {"market_data": None, "analysis": None}}
+                self.database_url.replace("sqlite://", "sqlite+aiosqlite://"),
+                poolclass=NullPool,
+                execution_options={"schema_translate_map": {"market_data": None, "analysis": None}},
             )
         else:
             async_url = self.database_url  # URL already has postgresql+psycopg

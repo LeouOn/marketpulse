@@ -5,6 +5,7 @@ Lookup order (env -> .env -> config/credentials.yaml) lives in ``src.core.keys``
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass

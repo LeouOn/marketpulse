@@ -58,11 +58,13 @@ async def search_trading_knowledge(query: str, max_results: int = 3) -> dict[str
             # Truncate long content for LLM context
             if len(content) > 500:
                 content = content[:500] + "..."
-            results.append({
-                "title": chunk.get("title", chunk.get("file", "")),
-                "type": chunk.get("type", "unknown"),
-                "content": content,
-            })
+            results.append(
+                {
+                    "title": chunk.get("title", chunk.get("file", "")),
+                    "type": chunk.get("type", "unknown"),
+                    "content": content,
+                }
+            )
 
         return {"query": query, "results": results, "count": len(results)}
 
@@ -109,8 +111,12 @@ async def get_glossary_term(term: str) -> dict[str, Any]:
         if definition:
             return {"term": term, "definition": definition, "found": True}
         else:
-            return {"term": term, "definition": None, "found": False,
-                    "hint": f"No definition found for '{term}'. Try search_trading_knowledge instead."}
+            return {
+                "term": term,
+                "definition": None,
+                "found": False,
+                "hint": f"No definition found for '{term}'. Try search_trading_knowledge instead.",
+            }
 
     except Exception as e:
         logger.error(f"get_glossary_term error: {e}")

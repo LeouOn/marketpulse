@@ -5,11 +5,9 @@ Each tool wraps ``OHLCAnalyzer`` methods.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-import pandas as pd
 from loguru import logger
 
 if TYPE_CHECKING:  # only the quoted "np.ndarray" annotation needs numpy
@@ -39,8 +37,7 @@ ANALYZE_SYMBOL_TECHNICALS_DEF: dict[str, Any] = {
                 "ohlcv_json": {
                     "type": "string",
                     "description": (
-                        "JSON string of the OHLCV data returned by get_ohlcv. "
-                        "Pass the raw JSON output from that tool."
+                        "JSON string of the OHLCV data returned by get_ohlcv. Pass the raw JSON output from that tool."
                     ),
                 },
             },
@@ -136,7 +133,6 @@ async def find_support_resistance(symbol: str, ohlcv_json: str) -> dict[str, Any
     try:
         import json
 
-        import numpy as np
         import pandas as pd
 
         ohlcv_data = json.loads(ohlcv_json)
@@ -158,19 +154,28 @@ async def find_support_resistance(symbol: str, ohlcv_json: str) -> dict[str, Any
 
         for i in range(2, len(df) - 2):
             # Resistance (pivot high)
-            if highs[i] > highs[i - 1] and highs[i] > highs[i - 2] and highs[i] > highs[i + 1] and highs[i] > highs[i + 2]:
-                resistances.append({
-                    "level": round(float(highs[i]), 4),
-                    "type": "resistance",
-                    "strength": _level_touch_count(highs[i], highs, tolerance_pct=0.5),
-                })
+            if (
+                highs[i] > highs[i - 1]
+                and highs[i] > highs[i - 2]
+                and highs[i] > highs[i + 1]
+                and highs[i] > highs[i + 2]
+            ):
+                resistances.append(
+                    {
+                        "level": round(float(highs[i]), 4),
+                        "type": "resistance",
+                        "strength": _level_touch_count(highs[i], highs, tolerance_pct=0.5),
+                    }
+                )
             # Support (pivot low)
             if lows[i] < lows[i - 1] and lows[i] < lows[i - 2] and lows[i] < lows[i + 1] and lows[i] < lows[i + 2]:
-                supports.append({
-                    "level": round(float(lows[i]), 4),
-                    "type": "support",
-                    "strength": _level_touch_count(lows[i], lows, tolerance_pct=0.5),
-                })
+                supports.append(
+                    {
+                        "level": round(float(lows[i]), 4),
+                        "type": "support",
+                        "strength": _level_touch_count(lows[i], lows, tolerance_pct=0.5),
+                    }
+                )
 
         # Sort by strength, deduplicate nearby levels
         supports = _dedupe_levels(supports)
@@ -196,6 +201,7 @@ async def find_support_resistance(symbol: str, ohlcv_json: str) -> dict[str, Any
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _level_touch_count(level: float, prices: "np.ndarray", tolerance_pct: float = 0.5) -> int:
     """Count how many times price touched within tolerance_pct of a level."""

@@ -5,23 +5,19 @@ All network calls are mocked so tests run offline.
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 
 from src.research.data.on_chain import (
-    MVRV_CSV,
-    PUELL_CSV,
-    fetch_mvrv,
-    fetch_puell,
     _read_mvrv_cache,
     _read_puell_cache,
     _synthetic_mvrv,
     _synthetic_puell,
+    fetch_mvrv,
+    fetch_puell,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -32,6 +28,7 @@ from src.research.data.on_chain import (
 def tmp_data_dir(tmp_path, monkeypatch):
     """Redirect data paths to temp dir so tests don't touch real data/btc."""
     import src.research.data.on_chain as mod
+
     monkeypatch.setattr(mod, "DATA_DIR", tmp_path)
     monkeypatch.setattr(mod, "MVRV_CSV", tmp_path / "mvrv.csv")
     monkeypatch.setattr(mod, "PUELL_CSV", tmp_path / "puell.csv")
@@ -42,9 +39,7 @@ def _mock_glassnode_response(values: list[tuple[int, float]]) -> MagicMock:
     """Build a mock requests.Response returning Glassnode-format JSON."""
     mock_resp = MagicMock()
     mock_resp.raise_for_status.return_value = None
-    mock_resp.json.return_value = [
-        {"t": ts, "v": val} for ts, val in values
-    ]
+    mock_resp.json.return_value = [{"t": ts, "v": val} for ts, val in values]
     return mock_resp
 
 
@@ -56,11 +51,14 @@ def _mock_glassnode_response(values: list[tuple[int, float]]) -> MagicMock:
 def test_fetch_mvrv_returns_dataframe_with_columns(tmp_data_dir, monkeypatch):
     """fetch_mvrv returns a DataFrame with ts and mvrv_z columns."""
     import requests
+
     ts = 1700000000
-    mock_resp = _mock_glassnode_response([
-        (ts, 1.5),
-        (ts + 86400, 2.0),
-    ])
+    mock_resp = _mock_glassnode_response(
+        [
+            (ts, 1.5),
+            (ts + 86400, 2.0),
+        ]
+    )
     monkeypatch.setattr(requests, "get", lambda *a, **kw: mock_resp)
 
     df = fetch_mvrv(force=True)
@@ -73,6 +71,7 @@ def test_fetch_mvrv_returns_dataframe_with_columns(tmp_data_dir, monkeypatch):
 def test_fetch_mvrv_creates_csv_cache(tmp_data_dir, monkeypatch):
     """fetch_mvrv writes a CSV cache file on successful fetch."""
     import requests
+
     ts = 1700000000
     mock_resp = _mock_glassnode_response([(ts, 1.5)])
     monkeypatch.setattr(requests, "get", lambda *a, **kw: mock_resp)
@@ -84,13 +83,16 @@ def test_fetch_mvrv_creates_csv_cache(tmp_data_dir, monkeypatch):
 def test_fetch_mvrv_returns_cached_when_available(tmp_data_dir, monkeypatch):
     """When cache exists and force=False, return cached data without API call."""
     import requests
+
     import src.research.data.on_chain as mod
 
     # Pre-populate cache
-    df_cache = pd.DataFrame({
-        "ts": [pd.Timestamp("2024-01-01")],
-        "mvrv_z": [1.2],
-    })
+    df_cache = pd.DataFrame(
+        {
+            "ts": [pd.Timestamp("2024-01-01")],
+            "mvrv_z": [1.2],
+        }
+    )
     df_cache.to_csv(mod.MVRV_CSV, index=False)
 
     # requests.get should NOT be called
@@ -104,8 +106,10 @@ def test_fetch_mvrv_returns_cached_when_available(tmp_data_dir, monkeypatch):
 def test_fetch_mvrv_network_error_returns_synthetic(tmp_data_dir, monkeypatch):
     """On network failure with no cache, return synthetic fallback (not crash)."""
     import requests
+
     monkeypatch.setattr(
-        requests, "get",
+        requests,
+        "get",
         MagicMock(side_effect=requests.ConnectionError("offline")),
     )
 
@@ -119,6 +123,7 @@ def test_fetch_mvrv_network_error_returns_synthetic(tmp_data_dir, monkeypatch):
 def test_fetch_mvrv_api_error_returns_synthetic(tmp_data_dir, monkeypatch):
     """When API returns an error dict, fall back to synthetic."""
     import requests
+
     mock_resp = MagicMock()
     mock_resp.raise_for_status.return_value = None
     mock_resp.json.return_value = {"error": "API key missing"}
@@ -137,6 +142,7 @@ def test_fetch_mvrv_api_error_returns_synthetic(tmp_data_dir, monkeypatch):
 def test_fetch_puell_creates_csv_cache(tmp_data_dir, monkeypatch):
     """fetch_puell writes a CSV cache file on successful fetch."""
     import requests
+
     ts = 1700000000
     mock_resp = _mock_glassnode_response([(ts, 1.1)])
     monkeypatch.setattr(requests, "get", lambda *a, **kw: mock_resp)
@@ -148,8 +154,10 @@ def test_fetch_puell_creates_csv_cache(tmp_data_dir, monkeypatch):
 def test_fetch_puell_network_error_returns_synthetic(tmp_data_dir, monkeypatch):
     """On network failure with no cache, return synthetic fallback."""
     import requests
+
     monkeypatch.setattr(
-        requests, "get",
+        requests,
+        "get",
         MagicMock(side_effect=requests.ConnectionError("offline")),
     )
 
@@ -168,10 +176,13 @@ def test_synthetic_mvrv_is_cached_on_first_call(tmp_data_dir, monkeypatch):
     """After a network failure, the synthetic fallback should be written to disk
     so the next call hits the cache instead of re-hitting the API."""
     import requests
+
     import src.research.data.on_chain as oc
+
     monkeypatch.setattr(oc, "MVRV_CSV", tmp_data_dir / "mvrv.csv")
     monkeypatch.setattr(
-        requests, "get",
+        requests,
+        "get",
         MagicMock(side_effect=requests.ConnectionError("offline")),
     )
 
@@ -192,10 +203,13 @@ def test_synthetic_mvrv_is_cached_on_first_call(tmp_data_dir, monkeypatch):
 def test_synthetic_puell_is_cached_on_first_call(tmp_data_dir, monkeypatch):
     """Same regression for Puell — synthetic fallback should be cached."""
     import requests
+
     import src.research.data.on_chain as oc
+
     monkeypatch.setattr(oc, "PUELL_CSV", tmp_data_dir / "puell.csv")
     monkeypatch.setattr(
-        requests, "get",
+        requests,
+        "get",
         MagicMock(side_effect=requests.ConnectionError("offline")),
     )
 

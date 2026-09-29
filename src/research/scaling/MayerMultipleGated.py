@@ -19,16 +19,13 @@ class MayerMultipleGated(ScalingModel):
 
     name: ClassVar[str] = "MayerMultipleGated"
     description: ClassVar[str] = (
-        "Gates buy size by Mayer Multiple (price/SMA200). "
-        "Deep value (<0.8) → 1.5x, overheated (>2.4) → 0.5x."
+        "Gates buy size by Mayer Multiple (price/SMA200). Deep value (<0.8) → 1.5x, overheated (>2.4) → 0.5x."
     )
     default_params: ClassVar[dict[str, Any]] = {"base_buy_multiplier": 1.0}
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("base_buy_multiplier", 1.0) <= 0:
-            raise InvalidParamsError(
-                f"base_buy_multiplier must be > 0, got {params['base_buy_multiplier']}"
-            )
+            raise InvalidParamsError(f"base_buy_multiplier must be > 0, got {params['base_buy_multiplier']}")
 
     def size(
         self,

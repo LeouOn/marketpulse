@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from src.research.strategies.LadderLimit import LadderLimit
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -7,21 +7,22 @@ but not econometrically rigorous. Designed for visualization and hypothesis test
 Effect convention: negative = yield DECREASE, positive = yield INCREASE.
 Effects are measured in basis points (bps).
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 
 class ToolName(str, Enum):
     """The six QE-without-QE tools in Warsh's toolkit."""
-    RMP = "rmp"                    # Reserves Management Purchases
-    QT_PACE = "qt_pace"            # Quantitative Tightening pace
-    SRF = "srf"                    # Standing Repo Facility
-    MBS_SALES = "mbs_sales"        # MBS sales (balance sheet composition)
-    FORWARD_GUIDANCE = "fg"        # Forward guidance strength
-    BANK_REGULATION = "bank_reg"   # Bank regulation index
+
+    RMP = "rmp"  # Reserves Management Purchases
+    QT_PACE = "qt_pace"  # Quantitative Tightening pace
+    SRF = "srf"  # Standing Repo Facility
+    MBS_SALES = "mbs_sales"  # MBS sales (balance sheet composition)
+    FORWARD_GUIDANCE = "fg"  # Forward guidance strength
+    BANK_REGULATION = "bank_reg"  # Bank regulation index
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class FedTool:
                        is_boolean: if True, value is 0 or 1 (on/off)
         political_cover: What Warsh calls it publicly
     """
+
     name: ToolName
     display_name: str
     description: str
@@ -94,14 +96,20 @@ def apply_tool_effect(tool: FedTool, value: float) -> dict[str, float]:
 _RMP_EFFECTS = {
     # RMP buys T-bills — suppresses short-end yields
     # Per $10B/month: 3M drops ~2bps, 1Y drops ~1bp, 2Y drops ~0.5bps
-    "3mo": -0.20,   # -2bps per $10B
-    "1y": -0.10,    # -1bp per $10B
-    "2y": -0.05,    # -0.5bps per $10B
+    "3mo": -0.20,  # -2bps per $10B
+    "1y": -0.10,  # -1bp per $10B
+    "2y": -0.05,  # -0.5bps per $10B
 }
 
 _QT_EFFECTS = {
-    "3mo": 0.08, "1y": 0.10, "2y": 0.12, "5y": 0.10,
-    "7y": 0.08, "10y": 0.06, "20y": 0.04, "30y": 0.03,
+    "3mo": 0.08,
+    "1y": 0.10,
+    "2y": 0.12,
+    "5y": 0.10,
+    "7y": 0.08,
+    "10y": 0.06,
+    "20y": 0.04,
+    "30y": 0.03,
 }
 
 _SRF_EFFECTS = {
@@ -122,10 +130,10 @@ _MBS_SALES_EFFECTS = {
 _BANK_REG_EFFECTS = {
     # Regulation relaxation index (0=strict, 1=relaxed)
     # Per 0.1 increase in relaxation index
-    "2y": 0.05,     # short end rises slightly (growth expectations)
+    "2y": 0.05,  # short end rises slightly (growth expectations)
     "5y": 0.08,
     "10y": 0.10,
-    "30y": 0.12,    # long end rises more (growth + inflation expectations)
+    "30y": 0.12,  # long end rises more (growth + inflation expectations)
     # Net effect: curve STEEPENS
 }
 

@@ -56,12 +56,9 @@ def _seed_onchain_caches() -> None:
     _seed_cache_file("btc/mvrv.csv")
     _seed_cache_file("btc/puell.csv")
 
-MVRV_API_URL = (
-    "https://api.glassnode.com/v1/metrics/market/mvrv_z_score?a=BTC&i=24h"
-)
-PUELL_API_URL = (
-    "https://api.glassnode.com/v1/metrics/mining/puell_multiple?a=BTC&i=24h"
-)
+
+MVRV_API_URL = "https://api.glassnode.com/v1/metrics/market/mvrv_z_score?a=BTC&i=24h"
+PUELL_API_URL = "https://api.glassnode.com/v1/metrics/mining/puell_multiple?a=BTC&i=24h"
 
 REQ_TIMEOUT = 30
 

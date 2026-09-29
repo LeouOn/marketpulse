@@ -5,16 +5,18 @@ covered calls, bull call spreads, bear put spreads, and other common strategies.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
 from datetime import datetime
+from typing import Any, Dict, Optional
+
 from loguru import logger
 
-from .options_analyzer import OptionsAnalyzer, SingleLegAnalysis
+from .options_analyzer import OptionsAnalyzer
 
 
 @dataclass
 class CoveredCallAnalysis:
     """Analysis results for covered call strategy"""
+
     symbol: str
     shares_owned: int
     stock_price: float
@@ -52,6 +54,7 @@ class CoveredCallAnalysis:
 @dataclass
 class SpreadAnalysis:
     """Analysis results for vertical spread strategies"""
+
     symbol: str
     spread_type: str  # 'bull_call', 'bear_put', 'bull_put', 'bear_call'
 
@@ -102,12 +105,7 @@ class StrategyBuilder:
         self.analyzer = OptionsAnalyzer(yahoo_client)
 
     def analyze_covered_call(
-        self,
-        symbol: str,
-        shares_owned: int,
-        strike: float,
-        expiration: str,
-        contracts: Optional[int] = None
+        self, symbol: str, shares_owned: int, strike: float, expiration: str, contracts: Optional[int] = None
     ) -> Optional[CoveredCallAnalysis]:
         """Analyze a covered call strategy
 
@@ -135,9 +133,9 @@ class StrategyBuilder:
                 symbol=symbol,
                 strike=strike,
                 expiration=expiration,
-                option_type='call',
-                position_type='short',  # We're selling the call
-                contracts=contracts
+                option_type="call",
+                position_type="short",  # We're selling the call
+                contracts=contracts,
             )
 
             if not call_analysis:
@@ -204,7 +202,7 @@ class StrategyBuilder:
                 delta=call_analysis.greeks.delta,
                 theta=call_analysis.greeks.theta,
                 days_to_expiration=call_analysis.days_to_expiration,
-                probability_max_profit=round(probability_max_profit, 1)
+                probability_max_profit=round(probability_max_profit, 1),
             )
 
         except Exception as e:
@@ -212,12 +210,7 @@ class StrategyBuilder:
             return None
 
     def analyze_bull_call_spread(
-        self,
-        symbol: str,
-        long_strike: float,
-        short_strike: float,
-        expiration: str,
-        contracts: int = 1
+        self, symbol: str, long_strike: float, short_strike: float, expiration: str, contracts: int = 1
     ) -> Optional[SpreadAnalysis]:
         """Analyze a bull call spread
 
@@ -241,9 +234,9 @@ class StrategyBuilder:
                 symbol=symbol,
                 strike=long_strike,
                 expiration=expiration,
-                option_type='call',
-                position_type='long',
-                contracts=contracts
+                option_type="call",
+                position_type="long",
+                contracts=contracts,
             )
 
             # Analyze short call
@@ -251,9 +244,9 @@ class StrategyBuilder:
                 symbol=symbol,
                 strike=short_strike,
                 expiration=expiration,
-                option_type='call',
-                position_type='short',
-                contracts=contracts
+                option_type="call",
+                position_type="short",
+                contracts=contracts,
             )
 
             if not long_call or not short_call:
@@ -292,7 +285,7 @@ class StrategyBuilder:
 
             return SpreadAnalysis(
                 symbol=symbol,
-                spread_type='bull_call',
+                spread_type="bull_call",
                 long_strike=long_strike,
                 short_strike=short_strike,
                 expiration=expiration,
@@ -311,7 +304,7 @@ class StrategyBuilder:
                 net_theta=round(net_theta, 4),
                 net_vega=round(net_vega, 4),
                 days_to_expiration=long_call.days_to_expiration,
-                spread_width=spread_width
+                spread_width=spread_width,
             )
 
         except Exception as e:
@@ -319,12 +312,7 @@ class StrategyBuilder:
             return None
 
     def analyze_bear_put_spread(
-        self,
-        symbol: str,
-        long_strike: float,
-        short_strike: float,
-        expiration: str,
-        contracts: int = 1
+        self, symbol: str, long_strike: float, short_strike: float, expiration: str, contracts: int = 1
     ) -> Optional[SpreadAnalysis]:
         """Analyze a bear put spread
 
@@ -348,9 +336,9 @@ class StrategyBuilder:
                 symbol=symbol,
                 strike=long_strike,
                 expiration=expiration,
-                option_type='put',
-                position_type='long',
-                contracts=contracts
+                option_type="put",
+                position_type="long",
+                contracts=contracts,
             )
 
             # Analyze short put
@@ -358,9 +346,9 @@ class StrategyBuilder:
                 symbol=symbol,
                 strike=short_strike,
                 expiration=expiration,
-                option_type='put',
-                position_type='short',
-                contracts=contracts
+                option_type="put",
+                position_type="short",
+                contracts=contracts,
             )
 
             if not long_put or not short_put:
@@ -397,7 +385,7 @@ class StrategyBuilder:
 
             return SpreadAnalysis(
                 symbol=symbol,
-                spread_type='bear_put',
+                spread_type="bear_put",
                 long_strike=long_strike,
                 short_strike=short_strike,
                 expiration=expiration,
@@ -416,18 +404,14 @@ class StrategyBuilder:
                 net_theta=round(net_theta, 4),
                 net_vega=round(net_vega, 4),
                 days_to_expiration=long_put.days_to_expiration,
-                spread_width=spread_width
+                spread_width=spread_width,
             )
 
         except Exception as e:
             logger.error(f"Error analyzing bear put spread: {e}")
             return None
 
-    def generate_strategy_comparison(
-        self,
-        symbol: str,
-        expiration: str
-    ) -> Dict[str, Any]:
+    def generate_strategy_comparison(self, symbol: str, expiration: str) -> Dict[str, Any]:
         """Generate comparison of multiple strategies for a symbol
 
         Args:
@@ -441,36 +425,32 @@ class StrategyBuilder:
             # Get current stock price
             stock_data = self.yahoo_client.get_single_symbol_data(symbol)
             if not stock_data:
-                return {'error': 'Could not fetch stock data'}
+                return {"error": "Could not fetch stock data"}
 
-            stock_price = stock_data['price']
+            stock_price = stock_data["price"]
 
             # Get options chain
             chain = self.yahoo_client.get_options_chain(symbol, expiration)
-            if 'error' in chain:
-                return {'error': chain['error']}
+            if "error" in chain:
+                return {"error": chain["error"]}
 
             strategies = []
 
             # Example bull call spread (OTM)
-            otm_calls = [c['strike'] for c in chain['calls'] if c['strike'] > stock_price]
+            otm_calls = [c["strike"] for c in chain["calls"] if c["strike"] > stock_price]
             if len(otm_calls) >= 2:
                 otm_calls.sort()
-                bull_spread = {
-                    'type': 'bull_call_spread',
-                    'long_strike': otm_calls[0],
-                    'short_strike': otm_calls[1]
-                }
+                bull_spread = {"type": "bull_call_spread", "long_strike": otm_calls[0], "short_strike": otm_calls[1]}
                 strategies.append(bull_spread)
 
             return {
-                'symbol': symbol,
-                'stock_price': stock_price,
-                'expiration': expiration,
-                'strategies': strategies,
-                'timestamp': datetime.now().isoformat()
+                "symbol": symbol,
+                "stock_price": stock_price,
+                "expiration": expiration,
+                "strategies": strategies,
+                "timestamp": datetime.now().isoformat(),
             }
 
         except Exception as e:
             logger.error(f"Error generating strategy comparison: {e}")
-            return {'error': str(e)}
+            return {"error": str(e)}

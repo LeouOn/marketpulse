@@ -35,10 +35,7 @@ class TestDetectImbalances:
     def test_buy_imbalance_detected_at_ratio(self):
         det = ImbalanceDetector(imbalance_ratio=3.0)
         t0 = datetime(2026, 9, 28, 9, 30)
-        bars = [
-            _bar(t0 + timedelta(minutes=5 * i), buy=300.0, sell=100.0)
-            for i in range(6)
-        ]
+        bars = [_bar(t0 + timedelta(minutes=5 * i), buy=300.0, sell=100.0) for i in range(6)]
         out = det.detect_imbalances(bars, lookback=5)
         assert out and all(imb.type == "buy" for imb in out)
         assert all(imb.ratio == pytest.approx(3.0) for imb in out)
@@ -47,10 +44,7 @@ class TestDetectImbalances:
     def test_sell_imbalance_detected(self):
         det = ImbalanceDetector(imbalance_ratio=3.0)
         t0 = datetime(2026, 9, 28, 9, 30)
-        bars = [
-            _bar(t0 + timedelta(minutes=5 * i), buy=50.0, sell=400.0)
-            for i in range(6)
-        ]
+        bars = [_bar(t0 + timedelta(minutes=5 * i), buy=50.0, sell=400.0) for i in range(6)]
         out = det.detect_imbalances(bars, lookback=5)
         assert out and all(imb.type == "sell" for imb in out)
         assert all(imb.ratio == pytest.approx(8.0) for imb in out)
@@ -58,10 +52,7 @@ class TestDetectImbalances:
     def test_balanced_volume_yields_nothing(self):
         det = ImbalanceDetector(imbalance_ratio=3.0)
         t0 = datetime(2026, 9, 28, 9, 30)
-        bars = [
-            _bar(t0 + timedelta(minutes=5 * i), buy=100.0, sell=110.0)
-            for i in range(6)
-        ]
+        bars = [_bar(t0 + timedelta(minutes=5 * i), buy=100.0, sell=110.0) for i in range(6)]
         assert det.detect_imbalances(bars, lookback=5) == []
 
     def test_short_input_returns_empty(self):
@@ -73,10 +64,7 @@ class TestDetectImbalances:
 
         det = ImbalanceDetector(imbalance_ratio=3.0)
         t0 = datetime(2026, 9, 28, 9, 30)
-        bars = [
-            _bar(t0 + timedelta(minutes=5 * i), buy=300.0, sell=100.0)
-            for i in range(6)
-        ]
+        bars = [_bar(t0 + timedelta(minutes=5 * i), buy=300.0, sell=100.0) for i in range(6)]
         idx = pd.DatetimeIndex([b.timestamp for b in bars])
         candles = pd.DataFrame({"close": [100.0 + i for i in range(len(bars))]}, index=idx)
         out = det.detect_imbalances(bars, candles=candles, lookback=5)
@@ -117,9 +105,7 @@ class TestMiniMaxValidateData:
         result = await client.validate_data(payload, data_type="market_internals")
 
         user_prompt = captured["messages"][1]["content"]
-        assert "VIX" in user_prompt and "0.0" in user_prompt, (
-            "prompt must contain the actual data payload"
-        )
+        assert "VIX" in user_prompt and "0.0" in user_prompt, "prompt must contain the actual data payload"
         assert result == {
             "is_valid": False,
             "issues": ["vix=0"],

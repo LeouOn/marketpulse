@@ -87,9 +87,7 @@ class MortgageCycleAccumulation(CycleAccumulation):
         "down_payment_pct": 0.20,  # 20% down (conventional conforming)
     }
 
-    def _cycle_phase(
-        self, timestamp: pd.Timestamp, factor_df: pd.DataFrame
-    ) -> float:
+    def _cycle_phase(self, timestamp: pd.Timestamp, factor_df: pd.DataFrame) -> float:
         """Return the housing accumulation intensity at ``timestamp``.
 
         Implements the 3-tier phase logic from the v1 spec.  All
@@ -139,9 +137,7 @@ class MortgageCycleAccumulation(CycleAccumulation):
             return float(p["rising_intensity"])
         return float(p["neutral_intensity"])
 
-    def _create_mortgage(
-        self, current_rate: float, purchase_price: float
-    ) -> Any:
+    def _create_mortgage(self, current_rate: float, purchase_price: float) -> Any:
         """Build a :class:`FixedRateLoan` as a 30Y mortgage interest-only proxy.
 
         Convenience helper for downstream engine integration (e.g. T21

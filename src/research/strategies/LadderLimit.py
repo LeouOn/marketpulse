@@ -27,8 +27,7 @@ class LadderLimit(Strategy):
 
     name: ClassVar[str] = "LadderLimit"
     description: ClassVar[str] = (
-        "4-tier limit ladder: buys at -5%, -10%, -15%, -20% drops from "
-        "rolling 3-month high with 30-day cooldowns."
+        "4-tier limit ladder: buys at -5%, -10%, -15%, -20% drops from rolling 3-month high with 30-day cooldowns."
     )
     default_params: ClassVar[dict[str, Any]] = {
         "tranche_pcts": [-0.05, -0.10, -0.15, -0.20],
@@ -43,14 +42,10 @@ class LadderLimit(Strategy):
             raise InvalidParamsError("tranche_pcts must be non-empty, got []")
         for p in pcts:
             if p >= 0:
-                raise InvalidParamsError(
-                    f"all tranche_pcts must be negative, got {p}"
-                )
+                raise InvalidParamsError(f"all tranche_pcts must be negative, got {p}")
         cooldown = params.get("cooldown_calendar_days", 30)
         if cooldown <= 0:
-            raise InvalidParamsError(
-                f"cooldown_calendar_days must be > 0, got {cooldown}"
-            )
+            raise InvalidParamsError(f"cooldown_calendar_days must be > 0, got {cooldown}")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         """Return a pd.Series indexed like ``df`` with values in {0.0, 1.0}.

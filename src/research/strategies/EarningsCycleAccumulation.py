@@ -60,9 +60,7 @@ class EarningsCycleAccumulation(CycleAccumulation):
     """
 
     name: ClassVar[str] = "EarningsCycleAccumulation"
-    description: ClassVar[str] = (
-        "Equity accumulation driven by NBER recession + CAPE valuation regime"
-    )
+    description: ClassVar[str] = "Equity accumulation driven by NBER recession + CAPE valuation regime"
     default_params: ClassVar[dict[str, Any]] = {
         "recession_intensity": 1.5,
         "mania_intensity": 0.3,
@@ -70,9 +68,7 @@ class EarningsCycleAccumulation(CycleAccumulation):
         "cape_z_mania_threshold": 2.0,
     }
 
-    def _cycle_phase(
-        self, timestamp: pd.Timestamp, factor_df: pd.DataFrame
-    ) -> float:
+    def _cycle_phase(self, timestamp: pd.Timestamp, factor_df: pd.DataFrame) -> float:
         """Return the equity accumulation intensity at ``timestamp``.
 
         Implements the v1 phase logic.  All fallback paths return the

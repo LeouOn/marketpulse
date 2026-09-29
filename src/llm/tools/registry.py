@@ -10,12 +10,12 @@ from typing import Any
 
 from loguru import logger
 
+from .alert_tools import ALERT_TOOL_DEFINITIONS, ALERT_TOOL_HANDLERS
+from .backtest_tools import BACKTEST_TOOL_DEFINITIONS, BACKTEST_TOOL_HANDLERS
 from .data_tools import DATA_TOOL_DEFINITIONS, DATA_TOOL_HANDLERS
 from .hypothesis_tools import HYPOTHESIS_TOOL_DEFINITIONS, HYPOTHESIS_TOOL_HANDLERS
 from .knowledge_tools import KNOWLEDGE_TOOL_DEFINITIONS, KNOWLEDGE_TOOL_HANDLERS
 from .technical_tools import TECHNICAL_TOOL_DEFINITIONS, TECHNICAL_TOOL_HANDLERS
-from .alert_tools import ALERT_TOOL_DEFINITIONS, ALERT_TOOL_HANDLERS
-from .backtest_tools import BACKTEST_TOOL_DEFINITIONS, BACKTEST_TOOL_HANDLERS
 from .upstream_tools import UPSTREAM_TOOL_DEFINITIONS, UPSTREAM_TOOL_HANDLERS
 
 
@@ -60,10 +60,7 @@ class ToolRegistry:
                 if name in handlers:
                     self._handlers[name] = handlers[name]
 
-        logger.info(
-            f"ToolRegistry: {len(self._definitions)} tools registered "
-            f"({', '.join(sorted(seen))})"
-        )
+        logger.info(f"ToolRegistry: {len(self._definitions)} tools registered ({', '.join(sorted(seen))})")
 
     # -- public API -------------------------------------------------------
 

@@ -27,10 +27,7 @@ import pandas as pd
 import pytest
 
 from src.research import cli as research_cli
-from src.research import data as data_mod
-from src.research import tools as tools_mod
 from src.research.data import AssetRegistry, DataProvider
-
 
 # ---------------------------------------------------------------------------
 # Stub providers -- return synthetic OHLCV so tests never hit the network
@@ -168,11 +165,15 @@ def test_gold_backtest_exits_zero(stub_registry, capsys):
     """``--asset GOLD backtest`` runs against the stubbed provider and emits JSON."""
     rc = research_cli.main(
         [
-            "--asset", "GOLD",
+            "--asset",
+            "GOLD",
             "backtest",
-            "--strategy", "DCAFixedAmount",
-            "--start", "2018-01-01",
-            "--end", "2024-12-31",
+            "--strategy",
+            "DCAFixedAmount",
+            "--start",
+            "2018-01-01",
+            "--end",
+            "2024-12-31",
         ]
     )
     assert rc == 0
@@ -209,9 +210,12 @@ def test_btc_default_back_compat(stub_registry, capsys):
     rc = research_cli.main(
         [
             "backtest",
-            "--strategy", "BuyAndHold",
-            "--start", "2018-01-01",
-            "--end", "2024-12-31",
+            "--strategy",
+            "BuyAndHold",
+            "--start",
+            "2018-01-01",
+            "--end",
+            "2024-12-31",
         ]
     )
     assert rc == 0
@@ -243,13 +247,18 @@ def test_gated_flag_accepted_graceful_fallback(stub_registry, monkeypatch, capsy
 
     rc = research_cli.main(
         [
-            "--asset", "GOLD",
+            "--asset",
+            "GOLD",
             "backtest",
-            "--strategy", "DCAFixedAmount",
+            "--strategy",
+            "DCAFixedAmount",
             "--gated",
-            "--regime-alpha", "1.0",
-            "--start", "2018-01-01",
-            "--end", "2024-12-31",
+            "--regime-alpha",
+            "1.0",
+            "--start",
+            "2018-01-01",
+            "--end",
+            "2024-12-31",
         ]
     )
     assert rc == 0
@@ -263,12 +272,16 @@ def test_gated_flag_runs_with_stub_macro(stub_registry, stub_macro_factors, caps
     """``--gated`` flag happy path: macro stub returns factors, gate applies."""
     rc = research_cli.main(
         [
-            "--asset", "GOLD",
+            "--asset",
+            "GOLD",
             "backtest",
-            "--strategy", "DCAFixedAmount",
+            "--strategy",
+            "DCAFixedAmount",
             "--gated",
-            "--start", "2018-01-01",
-            "--end", "2024-12-31",
+            "--start",
+            "2018-01-01",
+            "--end",
+            "2024-12-31",
         ]
     )
     assert rc == 0
@@ -288,10 +301,14 @@ def test_compare_multi_asset(stub_registry, capsys):
     rc = research_cli.main(
         [
             "compare",
-            "--assets", "GOLD,EQUITIES",
-            "--strategy", "DCAFixedAmount",
-            "--start", "2020-01-01",
-            "--end", "2024-12-31",
+            "--assets",
+            "GOLD,EQUITIES",
+            "--strategy",
+            "DCAFixedAmount",
+            "--start",
+            "2020-01-01",
+            "--end",
+            "2024-12-31",
         ]
     )
     assert rc == 0

@@ -44,7 +44,6 @@ from src.research.macro.factors import (  # noqa: E402
     MacroFactorProvider,
 )
 
-
 # ---------------------------------------------------------------------------
 # Live-test opt-in
 # ---------------------------------------------------------------------------
@@ -154,9 +153,7 @@ def _full_fred_response() -> dict[str, pd.DataFrame]:
 
 def _full_yahoo_response() -> dict[str, pd.DataFrame]:
     return {
-        "CL=F": _metis(
-            [f"2020-01-{d:02d}" for d in range(1, 32)], [80.0] * 31, "yahoo:CL=F"
-        ),
+        "CL=F": _metis([f"2020-01-{d:02d}" for d in range(1, 32)], [80.0] * 31, "yahoo:CL=F"),
         # CL12 (12-month forward) proxy -- spec uses ticker chosen by impl.
         # Tests don't hard-code it; they read OIL_BACK_TICKER from the impl.
     }
@@ -341,9 +338,7 @@ class TestSahmRule:
         # diff = 1.0 -> Sahm fires.
         unemployment_values = [5.0] * 12 + [6.5] * 8
         dates = pd.date_range("2020-01-01", periods=20, freq="MS")
-        unrate_frame = _metis(
-            [d.strftime("%Y-%m-%d") for d in dates], unemployment_values, "fred:UNRATE"
-        )
+        unrate_frame = _metis([d.strftime("%Y-%m-%d") for d in dates], unemployment_values, "fred:UNRATE")
 
         responses = _full_fred_response()
         responses["UNRATE"] = unrate_frame
@@ -365,7 +360,8 @@ class TestSahmRule:
         # 24 months of flat 5.0% -- never triggers.
         responses = _full_fred_response()
         provider = MacroFactorProvider(
-            fred=StubFred(responses), yahoo=StubYahoo(_full_yahoo_response()),
+            fred=StubFred(responses),
+            yahoo=StubYahoo(_full_yahoo_response()),
             cache_dir=tmp_path,
         )
         df = provider.load_factors(date(2020, 1, 1), date(2021, 12, 31))
@@ -462,9 +458,7 @@ class TestComputeZscores:
         idx = pd.date_range("2020-01-01", periods=200, freq="D")
         factor_df = pd.DataFrame({"x": [1.0] * 200}, index=idx)
 
-        provider = MacroFactorProvider(
-            fred=StubFred({}), yahoo=StubYahoo({}), cache_dir=tmp_path
-        )
+        provider = MacroFactorProvider(fred=StubFred({}), yahoo=StubYahoo({}), cache_dir=tmp_path)
         z = provider.compute_zscores(factor_df, window_days=60)
 
         assert z["x"].isna().all(), "constant column -> undefined z-score -> NaN"
@@ -474,26 +468,20 @@ class TestComputeZscores:
         idx = pd.date_range("2020-01-01", periods=200, freq="D")
         factor_df = pd.DataFrame({"x": np.arange(200, dtype=float)}, index=idx)
 
-        provider = MacroFactorProvider(
-            fred=StubFred({}), yahoo=StubYahoo({}), cache_dir=tmp_path
-        )
+        provider = MacroFactorProvider(fred=StubFred({}), yahoo=StubYahoo({}), cache_dir=tmp_path)
         z = provider.compute_zscores(factor_df, window_days=60)
 
         # Hand-check: at the last index, the rolling 60-day window covers
         # values 140..199 (mean=169.5, std~=17.6), value=199 -> z ~= 1.67.
         last_z = z["x"].iloc[-1]
-        rolling = factor_df["x"].rolling(f"60D")
+        rolling = factor_df["x"].rolling("60D")
         expected = (factor_df["x"] - rolling.mean()) / rolling.std()
         assert last_z == pytest.approx(expected.iloc[-1], nan_ok=True, abs=1e-9)
 
     def test_zscores_preserves_index_and_columns(self, tmp_path: Path):
         idx = pd.date_range("2020-01-01", periods=100, freq="D")
-        factor_df = pd.DataFrame(
-            {"a": np.arange(100.0), "b": np.arange(100.0) * 2}, index=idx
-        )
-        provider = MacroFactorProvider(
-            fred=StubFred({}), yahoo=StubYahoo({}), cache_dir=tmp_path
-        )
+        factor_df = pd.DataFrame({"a": np.arange(100.0), "b": np.arange(100.0) * 2}, index=idx)
+        provider = MacroFactorProvider(fred=StubFred({}), yahoo=StubYahoo({}), cache_dir=tmp_path)
         z = provider.compute_zscores(factor_df, window_days=30)
 
         assert list(z.columns) == ["a", "b"]
@@ -522,12 +510,8 @@ class TestSahmRuleLiveValidation:
 
         assert not unrate.empty, "Real FRED UNRATE fetch returned no rows"
 
-        provider = MacroFactorProvider(
-            fred=fred, yahoo=StubYahoo({}), cache_dir=Path("data/macro")
-        )
-        sahm = provider._compute_sahm(
-            unrate.set_index("ts")["close"]
-        )
+        provider = MacroFactorProvider(fred=fred, yahoo=StubYahoo({}), cache_dir=Path("data/macro"))
+        sahm = provider._compute_sahm(unrate.set_index("ts")["close"])
 
         # GFC window: 2008-04 to 2009-06
         gfc_window = sahm.loc["2008-04":"2009-06"]

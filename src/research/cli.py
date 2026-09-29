@@ -199,9 +199,7 @@ def _build_regime_tape(
     ts_col = pd.to_datetime(df["ts"])
     tape_idx = pd.to_datetime(dominant.index)
     dominant = pd.Series(dominant.to_numpy(), index=tape_idx)
-    aligned = ts_col.apply(
-        lambda ts: dominant.asof(ts) if pd.notna(ts) else None
-    )
+    aligned = ts_col.apply(lambda ts: dominant.asof(ts) if pd.notna(ts) else None)
     aligned.index = df.index
     return aligned
 
@@ -459,10 +457,7 @@ def cmd_compare(args) -> int:
             errors[key] = "non-positive starting equity"
             continue
         normalized = (equity / base) * 100.0
-        series[key] = [
-            {"date": str(ts.date()), "normalized_return": float(val)}
-            for ts, val in normalized.items()
-        ]
+        series[key] = [{"date": str(ts.date()), "normalized_return": float(val)} for ts, val in normalized.items()]
 
     output: dict[str, Any] = {"strategy": args.strategy, "series": series}
     if errors:
@@ -718,12 +713,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_lr.add_argument("--limit", type=int, default=20)
     p_lr.set_defaults(func=cmd_list_reports)
 
-    sub.add_parser("list-strategies", help="List available strategies").set_defaults(
-        func=cmd_list_strategies
-    )
-    sub.add_parser("list-scaling", help="List available scaling models").set_defaults(
-        func=cmd_list_scaling
-    )
+    sub.add_parser("list-strategies", help="List available strategies").set_defaults(func=cmd_list_strategies)
+    sub.add_parser("list-scaling", help="List available scaling models").set_defaults(func=cmd_list_scaling)
 
     return p
 

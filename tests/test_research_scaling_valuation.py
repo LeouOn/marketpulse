@@ -14,8 +14,6 @@ when the state/driver is missing or NaN.
 
 from __future__ import annotations
 
-import math
-
 import pandas as pd
 import pytest
 
@@ -40,8 +38,11 @@ def _pe_size(cape_z):
     scaler = PEZScoreGated()
     state = None if cape_z is _MISSING else {"cape_z": cape_z}
     return scaler.size(
-        equity=EQUITY, position_value=0.0, price=1.0,
-        recent_returns=_R, state=state,
+        equity=EQUITY,
+        position_value=0.0,
+        price=1.0,
+        recent_returns=_R,
+        state=state,
     )
 
 
@@ -105,7 +106,11 @@ def test_pe_boundary_3_0_is_expensive_not_manic():
 def test_pe_missing_state_returns_default():
     scaler = PEZScoreGated()
     buy, sell = scaler.size(
-        EQUITY, 0.0, 1.0, _R, state=None,
+        EQUITY,
+        0.0,
+        1.0,
+        _R,
+        state=None,
     )
     assert buy == pytest.approx(EQUITY * 1.0)
     assert sell == 0.0
@@ -115,7 +120,11 @@ def test_pe_missing_driver_returns_default():
     """Empty state dict (no cape_z key) → default multiplier."""
     scaler = PEZScoreGated()
     buy, sell = scaler.size(
-        EQUITY, 0.0, 1.0, _R, state={},
+        EQUITY,
+        0.0,
+        1.0,
+        _R,
+        state={},
     )
     assert buy == pytest.approx(EQUITY * 1.0)
     assert sell == 0.0
@@ -147,8 +156,11 @@ def _rr_size(real_z):
     scaler = RealRateZScoreGated()
     state = None if real_z is _MISSING else {"real_yield_10y_z": real_z}
     return scaler.size(
-        equity=EQUITY, position_value=0.0, price=1.0,
-        recent_returns=_R, state=state,
+        equity=EQUITY,
+        position_value=0.0,
+        price=1.0,
+        recent_returns=_R,
+        state=state,
     )
 
 
@@ -221,8 +233,11 @@ def _inv_size(inv_z):
     scaler = InventoryZScoreGated()
     state = None if inv_z is _MISSING else {"oil_inventories_z": inv_z}
     return scaler.size(
-        equity=EQUITY, position_value=0.0, price=1.0,
-        recent_returns=_R, state=state,
+        equity=EQUITY,
+        position_value=0.0,
+        price=1.0,
+        recent_returns=_R,
+        state=state,
     )
 
 
@@ -293,8 +308,11 @@ def _aff_size(aff):
     scaler = AffordabilityGated()
     state = None if aff is _MISSING else {"affordability_index": aff}
     return scaler.size(
-        equity=EQUITY, position_value=0.0, price=1.0,
-        recent_returns=_R, state=state,
+        equity=EQUITY,
+        position_value=0.0,
+        price=1.0,
+        recent_returns=_R,
+        state=state,
     )
 
 
@@ -377,6 +395,7 @@ def test_multiplier_floor_and_cap_in_defaults(scaler_cls):
 )
 def test_extends_scaling_model_abc(scaler_cls):
     from src.research.scaling import ScalingModel
+
     assert issubclass(scaler_cls, ScalingModel)
 
 

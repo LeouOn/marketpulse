@@ -1,12 +1,12 @@
 """Alert rule engine tests."""
+
 from datetime import date, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
-from src.yield_curve.alerts import AlertEvent, YieldCurveAlerts
+from src.yield_curve.alerts import YieldCurveAlerts
 from src.yield_curve.config import YieldCurveConfig
-from src.yield_curve.curves import CurveShape
 from src.yield_curve.history import SnapshotData
 
 
@@ -119,6 +119,7 @@ async def test_antispam_suppresses_recent_same_rule(monkeypatch):
 
     # Pretend inversion_2s10s_start fired 1 hour ago.
     from datetime import datetime, timezone
+
     recent = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
     alerts._last_fired = lambda rule_name: recent if rule_name == "inversion_2s10s_start" else None
 

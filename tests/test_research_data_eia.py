@@ -228,7 +228,10 @@ def test_stale_cache_with_fetch_failure_raises_data_pipeline_error(
     df_stale = pd.DataFrame(
         {
             "ts": pd.to_datetime(["2024-01-02"]),
-            "open": [70.0], "high": [70.0], "low": [70.0], "close": [70.0],
+            "open": [70.0],
+            "high": [70.0],
+            "low": [70.0],
+            "close": [70.0],
             "volume": [float("nan")],
             "source": ["eia:PET.RWTC.D"],
         }

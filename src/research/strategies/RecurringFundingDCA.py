@@ -41,16 +41,14 @@ class RecurringFundingDCA(Strategy):
     description: ClassVar[str] = (
         "Signals buy days to pair with backtest inflows. On each buy day, "
         "returns 1.0 (spend the deposit). On other days, returns NaN (skip). "
-        "Pair with inflows=[{\"every_n_bars\": 30, \"amount_usd\": 500}] "
+        'Pair with inflows=[{"every_n_bars": 30, "amount_usd": 500}] '
         "for income-based DCA."
     )
     default_params: ClassVar[dict[str, Any]] = {"every_n_bars": 30}
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("every_n_bars", 1) <= 0:
-            raise InvalidParamsError(
-                f"every_n_bars must be > 0, got {params['every_n_bars']}"
-            )
+            raise InvalidParamsError(f"every_n_bars must be > 0, got {params['every_n_bars']}")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         every = max(1, int(self.params["every_n_bars"]))

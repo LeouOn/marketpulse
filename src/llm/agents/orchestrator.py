@@ -18,8 +18,8 @@ from typing import Any, AsyncGenerator
 
 from loguru import logger
 
-from .base import AgentResult, strip_think, MarketAgent
 from .alert_agent import AlertAgent
+from .base import AgentResult, MarketAgent, strip_think
 from .critique_agent import CritiqueAgent
 from .data_agent import DataAgent
 from .hypothesis_agent import HypothesisAgent
@@ -31,7 +31,6 @@ from .risk_agent import RiskAgent
 from .risk_quant_agent import RiskQuantAgent
 from .strategy_agent import StrategyProposalAgent
 from .technical_agent import TechnicalAgent
-
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -92,9 +91,10 @@ class OrchestratorResult:
 @dataclass
 class PhaseEvent:
     """Emitted during streaming analysis for progressive UI updates."""
-    phase: str          # "plan" | "data_fetching" | "data_complete" |
-                        # "agents_running" | "agent_done" |
-                        # "draft_ready" | "critiquing" | "final_ready"
+
+    phase: str  # "plan" | "data_fetching" | "data_complete" |
+    # "agents_running" | "agent_done" |
+    # "draft_ready" | "critiquing" | "final_ready"
     content: str = ""
     agent_name: str = ""
     tools_used: list[str] = field(default_factory=list)
@@ -104,6 +104,7 @@ class PhaseEvent:
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
+
 
 class MarketAnalysisOrchestrator:
     """Multi-agent market analysis orchestrator with 5 specialised agents."""
@@ -217,9 +218,7 @@ trading-actionable."""
             raise RuntimeError("Orchestrator not entered -- use 'async with'")
 
         symbols = symbols or ["SPY"]
-        logger.info(
-            f"Orchestrator: query='{query[:80]}...' symbols={symbols}"
-        )
+        logger.info(f"Orchestrator: query='{query[:80]}...' symbols={symbols}")
 
         result = OrchestratorResult(query=query)
 
@@ -245,23 +244,19 @@ trading-actionable."""
             async with DataAgent(settings=self.settings) as agent:
                 result.data_result = await agent.execute(data_task)
                 logger.info(
-                    f"DataAgent: {len(result.data_result.content)} chars, "
-                    f"tools={result.data_result.tool_calls_made}"
+                    f"DataAgent: {len(result.data_result.content)} chars, tools={result.data_result.tool_calls_made}"
                 )
         except Exception as e:
             logger.error(f"DataAgent failed: {e}")
             result.data_result = AgentResult(
                 agent_name="data_agent",
                 content=f"Data fetch failed: {e}",
-                success=False, error=str(e),
+                success=False,
+                error=str(e),
             )
 
         # -- Phase 3: Parallel agent dispatch ------------------------------
-        data_ok = (
-            result.data_result
-            and (result.data_result.success
-                 or len(result.data_result.tool_calls_made) > 0)
-        )
+        data_ok = result.data_result and (result.data_result.success or len(result.data_result.tool_calls_made) > 0)
         if data_ok:
             data_context = result.data_result.content or ""
             await self._dispatch_agents(result, query, symbols, data_context)
@@ -271,30 +266,29 @@ trading-actionable."""
             # nothing under an optimistic `success` flag.
             result.success = False
             result.error = (
-                (result.data_result.error if result.data_result else None)
-                or "DataAgent returned no usable data; no analysis was performed"
-            )
+                result.data_result.error if result.data_result else None
+            ) or "DataAgent returned no usable data; no analysis was performed"
             logger.error(f"Orchestrator: {result.error}")
             for attr, _, _ in self.all_agents:
-                setattr(result, attr, AgentResult(
-                    agent_name=attr,
-                    content="Skipped -- DataAgent did not return valid data.",
-                    success=False, error="No data available",
-                ))
+                setattr(
+                    result,
+                    attr,
+                    AgentResult(
+                        agent_name=attr,
+                        content="Skipped -- DataAgent did not return valid data.",
+                        success=False,
+                        error="No data available",
+                    ),
+                )
 
         # -- Phase 4: Draft synthesis --------------------------------------
         result.draft_synthesis = await self._synthesise_draft(result)
-        logger.info(
-            f"Orchestrator: draft synthesis {len(result.draft_synthesis)} chars"
-        )
+        logger.info(f"Orchestrator: draft synthesis {len(result.draft_synthesis)} chars")
 
         # -- Phase 5: Critique ---------------------------------------------
         try:
             async with CritiqueAgent(settings=self.settings) as critic:
-                crit_task = (
-                    f"Critique this draft market analysis:\n\n"
-                    f"{result.draft_synthesis}"
-                )
+                crit_task = f"Critique this draft market analysis:\n\n{result.draft_synthesis}"
                 crit_result = await critic.execute(crit_task)
                 result.critique = crit_result.content
                 logger.info(f"CritiqueAgent: {len(result.critique)} chars")
@@ -308,9 +302,7 @@ trading-actionable."""
         else:
             result.synthesis = result.draft_synthesis
 
-        logger.info(
-            f"Orchestrator: final synthesis {len(result.synthesis)} chars"
-        )
+        logger.info(f"Orchestrator: final synthesis {len(result.synthesis)} chars")
         return result
 
     # -- streaming entry point --------------------------------------------
@@ -334,10 +326,13 @@ trading-actionable."""
         symbols = symbols or ["SPY"]
 
         # Yield plan
-        yield PhaseEvent(phase="plan", data={
-            "symbols": symbols,
-            "agents": ["Data"] + [a[2] for a in self.all_agents] + ["Critique"],
-        })
+        yield PhaseEvent(
+            phase="plan",
+            data={
+                "symbols": symbols,
+                "agents": ["Data"] + [a[2] for a in self.all_agents] + ["Critique"],
+            },
+        )
 
         # Data Agent
         yield PhaseEvent(phase="data_fetching", agent_name="data_agent")
@@ -349,25 +344,29 @@ trading-actionable."""
                 result.data_result = await agent.execute(data_task)
         except Exception as e:
             result.data_result = AgentResult(
-                agent_name="data_agent", content=f"Error: {e}",
-                success=False, error=str(e),
+                agent_name="data_agent",
+                content=f"Error: {e}",
+                success=False,
+                error=str(e),
             )
 
         yield PhaseEvent(
-            phase="data_complete", agent_name="data_agent",
+            phase="data_complete",
+            agent_name="data_agent",
             content=result.data_result.content[:500] if result.data_result else "",
             tools_used=result.data_result.tool_calls_made if result.data_result else [],
         )
 
         # Parallel agents
-        data_ok = result.data_result and (
-            result.data_result.success or len(result.data_result.tool_calls_made) > 0
-        )
+        data_ok = result.data_result and (result.data_result.success or len(result.data_result.tool_calls_made) > 0)
         if data_ok:
             data_context = result.data_result.content or ""
-            yield PhaseEvent(phase="agents_running", data={
-                "agents": [a[2] for a in self.all_agents],
-            })
+            yield PhaseEvent(
+                phase="agents_running",
+                data={
+                    "agents": [a[2] for a in self.all_agents],
+                },
+            )
 
             # Run in parallel, yielding as each completes
             tasks = []
@@ -379,19 +378,25 @@ trading-actionable."""
                 agent_result = await coro
                 setattr(result, attr, agent_result)
                 yield PhaseEvent(
-                    phase="agent_done", agent_name=label,
+                    phase="agent_done",
+                    agent_name=label,
                     content=(agent_result.content or "")[:300],
                     tools_used=agent_result.tool_calls_made,
                 )
         else:
             for attr, _, label in self.all_agents:
-                setattr(result, attr, AgentResult(
-                    agent_name=attr,
-                    content="Skipped -- no data available.",
-                    success=False,
-                ))
+                setattr(
+                    result,
+                    attr,
+                    AgentResult(
+                        agent_name=attr,
+                        content="Skipped -- no data available.",
+                        success=False,
+                    ),
+                )
                 yield PhaseEvent(
-                    phase="agent_done", agent_name=label,
+                    phase="agent_done",
+                    agent_name=label,
                     content="Skipped -- no data available.",
                 )
 
@@ -406,9 +411,7 @@ trading-actionable."""
         yield PhaseEvent(phase="critiquing", agent_name="critique_agent")
         try:
             async with CritiqueAgent(settings=self.settings) as critic:
-                crit_result = await critic.execute(
-                    f"Critique this draft market analysis:\n\n{result.draft_synthesis}"
-                )
+                crit_result = await critic.execute(f"Critique this draft market analysis:\n\n{result.draft_synthesis}")
                 result.critique = crit_result.content
         except Exception as e:
             result.critique = f"[Critique unavailable: {e}]"
@@ -422,37 +425,43 @@ trading-actionable."""
         yield PhaseEvent(
             phase="final_ready",
             content=result.synthesis[:1000],
-            data={"draft_len": len(result.draft_synthesis),
-                   "critique_len": len(result.critique),
-                   "final_len": len(result.synthesis)},
+            data={
+                "draft_len": len(result.draft_synthesis),
+                "critique_len": len(result.critique),
+                "final_len": len(result.synthesis),
+            },
         )
 
     # -- agent dispatch ---------------------------------------------------
 
     async def _dispatch_agents(
-        self, result: OrchestratorResult,
-        query: str, symbols: list[str], data_context: str,
+        self,
+        result: OrchestratorResult,
+        query: str,
+        symbols: list[str],
+        data_context: str,
     ) -> None:
         """Run agents in 2-wave roundtable with context injection."""
-        logger.info(
-            f"Orchestrator: Wave 1 — {len(self.AGENTS_WAVE_1)} agents..."
-        )
+        logger.info(f"Orchestrator: Wave 1 — {len(self.AGENTS_WAVE_1)} agents...")
 
         async def _run(attr: str, agent_cls: type, task: str) -> None:
             try:
                 async with agent_cls(settings=self.settings) as agent:
                     r = await agent.execute(task)
                     setattr(result, attr, r)
-                    logger.info(
-                        f"{agent.AGENT_NAME}: {len(r.content)} chars, "
-                        f"tools={r.tool_calls_made}"
-                    )
+                    logger.info(f"{agent.AGENT_NAME}: {len(r.content)} chars, tools={r.tool_calls_made}")
             except Exception as e:
                 logger.error(f"{attr} failed: {e}")
-                setattr(result, attr, AgentResult(
-                    agent_name=attr, content=f"Error: {e}",
-                    success=False, error=str(e),
-                ))
+                setattr(
+                    result,
+                    attr,
+                    AgentResult(
+                        agent_name=attr,
+                        content=f"Error: {e}",
+                        success=False,
+                        error=str(e),
+                    ),
+                )
 
         # -- Wave 1 -------------------------------------------------------
         wave1_tasks = []
@@ -465,14 +474,15 @@ trading-actionable."""
         rt_context = self._build_roundtable_context(result)
 
         # -- Wave 2 (with context) ----------------------------------------
-        logger.info(
-            f"Orchestrator: Wave 2 — {len(self.AGENTS_WAVE_2)} agents "
-            f"(with roundtable context)"
-        )
+        logger.info(f"Orchestrator: Wave 2 — {len(self.AGENTS_WAVE_2)} agents (with roundtable context)")
         wave2_tasks = []
         for attr, agent_cls, _ in self.AGENTS_WAVE_2:
             task = self._build_agent_task(
-                query, symbols, data_context, attr, roundtable_context=rt_context,
+                query,
+                symbols,
+                data_context,
+                attr,
+                roundtable_context=rt_context,
             )
             wave2_tasks.append(_run(attr, agent_cls, task))
         await asyncio.gather(*wave2_tasks)
@@ -502,7 +512,10 @@ trading-actionable."""
         return header + "\n".join(parts)
 
     async def _run_agent(
-        self, agent_cls: type, attr: str, task: str,
+        self,
+        agent_cls: type,
+        attr: str,
+        task: str,
     ) -> AgentResult:
         """Run a single agent and return its result."""
         try:
@@ -511,14 +524,19 @@ trading-actionable."""
         except Exception as e:
             logger.error(f"{attr} failed: {e}")
             return AgentResult(
-                agent_name=attr, content=f"Error: {e}",
-                success=False, error=str(e),
+                agent_name=attr,
+                content=f"Error: {e}",
+                success=False,
+                error=str(e),
             )
 
     # -- task builders ----------------------------------------------------
 
     def _build_data_task(
-        self, query: str, symbols: list[str], include_breadth: bool,
+        self,
+        query: str,
+        symbols: list[str],
+        include_breadth: bool,
     ) -> str:
         sym_list = ", ".join(symbols)
         task = (
@@ -532,19 +550,17 @@ trading-actionable."""
             task += f"{step}. Call get_breadth for advance/decline data.\n"
             step += 1
         for sym in symbols:
-            task += (
-                f"{step}. Call get_ohlcv for {sym} (period=1mo, interval=1d) "
-                f"AND get_symbol_52w_stats for {sym}.\n"
-            )
+            task += f"{step}. Call get_ohlcv for {sym} (period=1mo, interval=1d) AND get_symbol_52w_stats for {sym}.\n"
             step += 1
-        task += (
-            f"\nAfter all fetches, summarise key data points "
-            f"(prices, changes, volume, breadth) in 2-3 sentences."
-        )
+        task += "\nAfter all fetches, summarise key data points (prices, changes, volume, breadth) in 2-3 sentences."
         return task
 
     def _build_agent_task(
-        self, query: str, symbols: list[str], data_context: str, agent_attr: str,
+        self,
+        query: str,
+        symbols: list[str],
+        data_context: str,
+        agent_attr: str,
         roundtable_context: str = "",
     ) -> str:
         """Build a task prompt for a specific agent type."""
@@ -743,6 +759,7 @@ trading-actionable."""
 # Demo / smoke test
 # ---------------------------------------------------------------------------
 
+
 async def _demo():
     """Quick smoke test -- requires DEEPSEEK_API_KEY set."""
     print("=" * 60)
@@ -781,12 +798,12 @@ async def _demo():
             print(_safe(ar.content))
             print(f"Tools: {ar.tool_calls_made}")
 
-    print(f"\n--- DRAFT SYNTHESIS ---")
+    print("\n--- DRAFT SYNTHESIS ---")
     print(_safe(result.draft_synthesis, 600))
     if result.critique:
-        print(f"\n--- CRITIQUE ---")
+        print("\n--- CRITIQUE ---")
         print(_safe(result.critique, 400))
-    print(f"\n--- FINAL SYNTHESIS ---")
+    print("\n--- FINAL SYNTHESIS ---")
     print(_safe(result.synthesis, 800))
     print("\nDone.")
 

@@ -26,14 +26,14 @@ from src.research.backtest import run_backtest
 from src.research.data import data_summary
 from src.research.strategies import BuyAndHold
 
-
 # ---------------------------------------------------------------------------
 # Synthetic price data
 # ---------------------------------------------------------------------------
 
 
-def _noisy_growing(n: int = 400, start: float = 100.0, drift: float = 0.0005,
-                   vol: float = 0.02, seed: int = 0) -> pd.DataFrame:
+def _noisy_growing(
+    n: int = 400, start: float = 100.0, drift: float = 0.0005, vol: float = 0.02, seed: int = 0
+) -> pd.DataFrame:
     """Daily price series with positive drift + noise so Sharpe/Sortino are meaningful."""
     rng = np.random.default_rng(seed)
     log_rets = rng.normal(drift, vol, n)

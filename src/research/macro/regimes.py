@@ -62,7 +62,6 @@ from enum import Enum
 
 import numpy as np
 import pandas as pd
-from loguru import logger
 
 # ---------------------------------------------------------------------------
 # Regime enum (canonical -- T13 LLMJudgeNarrator imports this)
@@ -271,15 +270,13 @@ class RulesBasedClassifier:
         # ------------------------------------------------------------
 
         # INFLATION_ACCEL: rising breakevens AND rising CPI
-        p_infl = (
-            self._sigmoid_fillna(breakeven_z, _TH_INFL_BREAKEVEN, _SL_INFL_BREAKEVEN)
-            * self._sigmoid_fillna(cpi_z, _TH_INFL_CPI, _SL_INFL_CPI)
+        p_infl = self._sigmoid_fillna(breakeven_z, _TH_INFL_BREAKEVEN, _SL_INFL_BREAKEVEN) * self._sigmoid_fillna(
+            cpi_z, _TH_INFL_CPI, _SL_INFL_CPI
         )
 
         # DEFLATION_SCARE: vol spike AND breakevens collapsing
-        p_defl = (
-            self._sigmoid_fillna(vix_z, _TH_DEFL_VIX, _SL_DEFL_VIX)
-            * self._sigmoid_fillna(-breakeven_z, _TH_DEFL_BREAKEVEN, _SL_DEFL_BREAKEVEN)
+        p_defl = self._sigmoid_fillna(vix_z, _TH_DEFL_VIX, _SL_DEFL_VIX) * self._sigmoid_fillna(
+            -breakeven_z, _TH_DEFL_BREAKEVEN, _SL_DEFL_BREAKEVEN
         )
 
         # RECESSION: hard flag from Sahm rule (overrides ISM fallback).
@@ -291,9 +288,8 @@ class RulesBasedClassifier:
         p_rec = pd.Series(p_rec_values, index=idx, dtype=float)
 
         # REAL_YIELD_SHOCK: real yields spiking AND breakevens NOT rising
-        p_ry = (
-            self._sigmoid_fillna(real_yield_z, _TH_RY_REAL, _SL_RY_REAL)
-            * self._sigmoid_fillna(-breakeven_z, _TH_RY_BREAKEVEN, _SL_RY_BREAKEVEN)
+        p_ry = self._sigmoid_fillna(real_yield_z, _TH_RY_REAL, _SL_RY_REAL) * self._sigmoid_fillna(
+            -breakeven_z, _TH_RY_BREAKEVEN, _SL_RY_BREAKEVEN
         )
 
         # RISK_ON: residual = 1 - max(other four), clipped to [0, 1].
@@ -373,7 +369,7 @@ class RulesBasedClassifier:
     ) -> pd.Series:
         """Return ``z_df[col]`` as float or all-NaN if absent/non-numeric."""
         if col in z_df.columns:
-            return pd.to_numeric(z_df[col], errors='coerce').astype(float)
+            return pd.to_numeric(z_df[col], errors="coerce").astype(float)
         return pd.Series(np.nan, index=index, dtype=float)
 
     @staticmethod

@@ -11,17 +11,19 @@ Multi-channel notifications for trading signals:
 Priority levels: low, medium, high, critical
 """
 
-from dataclasses import dataclass
-from typing import Optional, List, Dict, Any
-from enum import Enum
-from datetime import datetime
 import asyncio
 import os
+from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 
 class AlertPriority(Enum):
     """Alert priority levels"""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -30,6 +32,7 @@ class AlertPriority(Enum):
 
 class AlertChannel(Enum):
     """Available alert channels"""
+
     DESKTOP = "desktop"
     TELEGRAM = "telegram"
     EMAIL = "email"
@@ -40,6 +43,7 @@ class AlertChannel(Enum):
 @dataclass
 class Alert:
     """Alert message"""
+
     title: str
     message: str
     priority: AlertPriority
@@ -57,6 +61,7 @@ class DesktopNotifier:
             try:
                 # Try to import notification library
                 import plyer
+
                 self.plyer = plyer
                 self.available = True
                 logger.info("Desktop notifications enabled")
@@ -75,8 +80,8 @@ class DesktopNotifier:
             self.plyer.notification.notify(
                 title=alert.title,
                 message=alert.message,
-                app_name='MarketPulse',
-                timeout=10 if alert.priority != AlertPriority.CRITICAL else 30
+                app_name="MarketPulse",
+                timeout=10 if alert.priority != AlertPriority.CRITICAL else 30,
             )
             logger.debug(f"Desktop notification sent: {alert.title}")
             return True
@@ -89,14 +94,9 @@ class DesktopNotifier:
 class TelegramNotifier:
     """Telegram bot notifications"""
 
-    def __init__(
-        self,
-        token: Optional[str] = None,
-        chat_id: Optional[str] = None,
-        enabled: bool = True
-    ):
-        self.token = token or os.getenv('TELEGRAM_BOT_TOKEN')
-        self.chat_id = chat_id or os.getenv('TELEGRAM_CHAT_ID')
+    def __init__(self, token: Optional[str] = None, chat_id: Optional[str] = None, enabled: bool = True):
+        self.token = token or os.getenv("TELEGRAM_BOT_TOKEN")
+        self.chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
         self.enabled = enabled and self.token and self.chat_id
 
         if self.enabled:
@@ -118,11 +118,7 @@ class TelegramNotifier:
             emoji = self._get_emoji(alert.priority)
             formatted_message = f"{emoji} *{alert.title}*\n\n{alert.message}"
 
-            payload = {
-                'chat_id': self.chat_id,
-                'text': formatted_message,
-                'parse_mode': 'Markdown'
-            }
+            payload = {"chat_id": self.chat_id, "text": formatted_message, "parse_mode": "Markdown"}
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload) as response:
@@ -143,7 +139,7 @@ class TelegramNotifier:
             AlertPriority.LOW: "ℹ️",
             AlertPriority.MEDIUM: "📊",
             AlertPriority.HIGH: "🎯",
-            AlertPriority.CRITICAL: "🚨"
+            AlertPriority.CRITICAL: "🚨",
         }
         return emoji_map.get(priority, "📢")
 
@@ -159,19 +155,16 @@ class EmailNotifier:
         password: Optional[str] = None,
         from_email: Optional[str] = None,
         to_email: Optional[str] = None,
-        enabled: bool = True
+        enabled: bool = True,
     ):
-        self.smtp_host = smtp_host or os.getenv('SMTP_HOST')
-        self.smtp_port = smtp_port or int(os.getenv('SMTP_PORT', '587'))
-        self.username = username or os.getenv('SMTP_USERNAME')
-        self.password = password or os.getenv('SMTP_PASSWORD')
-        self.from_email = from_email or os.getenv('EMAIL_FROM')
-        self.to_email = to_email or os.getenv('EMAIL_TO')
+        self.smtp_host = smtp_host or os.getenv("SMTP_HOST")
+        self.smtp_port = smtp_port or int(os.getenv("SMTP_PORT", "587"))
+        self.username = username or os.getenv("SMTP_USERNAME")
+        self.password = password or os.getenv("SMTP_PASSWORD")
+        self.from_email = from_email or os.getenv("EMAIL_FROM")
+        self.to_email = to_email or os.getenv("EMAIL_TO")
 
-        self.enabled = enabled and all([
-            self.smtp_host, self.username, self.password,
-            self.from_email, self.to_email
-        ])
+        self.enabled = enabled and all([self.smtp_host, self.username, self.password, self.from_email, self.to_email])
 
         if self.enabled:
             logger.info("Email notifications enabled")
@@ -185,25 +178,25 @@ class EmailNotifier:
 
         try:
             import smtplib
-            from email.mime.text import MIMEText
             from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
 
             msg = MIMEMultipart()
-            msg['From'] = self.from_email
-            msg['To'] = self.to_email
-            msg['Subject'] = f"[{alert.priority.value.upper()}] {alert.title}"
+            msg["From"] = self.from_email
+            msg["To"] = self.to_email
+            msg["Subject"] = f"[{alert.priority.value.upper()}] {alert.title}"
 
             body = f"""
 {alert.message}
 
 ---
 Priority: {alert.priority.value}
-Timestamp: {alert.timestamp.strftime('%Y-%m-%d %H:%M:%S')}
+Timestamp: {alert.timestamp.strftime("%Y-%m-%d %H:%M:%S")}
 
 MarketPulse Trading System
             """
 
-            msg.attach(MIMEText(body, 'plain'))
+            msg.attach(MIMEText(body, "plain"))
 
             # Send via SMTP
             server = smtplib.SMTP(self.smtp_host, self.smtp_port)
@@ -223,12 +216,8 @@ MarketPulse Trading System
 class WebhookNotifier:
     """Webhook notifications (for custom integrations)"""
 
-    def __init__(
-        self,
-        webhook_url: Optional[str] = None,
-        enabled: bool = True
-    ):
-        self.webhook_url = webhook_url or os.getenv('WEBHOOK_URL')
+    def __init__(self, webhook_url: Optional[str] = None, enabled: bool = True):
+        self.webhook_url = webhook_url or os.getenv("WEBHOOK_URL")
         self.enabled = enabled and self.webhook_url
 
         if self.enabled:
@@ -245,11 +234,11 @@ class WebhookNotifier:
             import aiohttp
 
             payload = {
-                'title': alert.title,
-                'message': alert.message,
-                'priority': alert.priority.value,
-                'timestamp': alert.timestamp.isoformat(),
-                'data': alert.data
+                "title": alert.title,
+                "message": alert.message,
+                "priority": alert.priority.value,
+                "timestamp": alert.timestamp.isoformat(),
+                "data": alert.data,
             }
 
             async with aiohttp.ClientSession() as session:
@@ -281,7 +270,7 @@ class ConsoleNotifier:
             AlertPriority.LOW: "ℹ️",
             AlertPriority.MEDIUM: "📊",
             AlertPriority.HIGH: "🎯",
-            AlertPriority.CRITICAL: "🚨"
+            AlertPriority.CRITICAL: "🚨",
         }
 
         symbol = priority_symbols.get(alert.priority, "📢")
@@ -297,9 +286,7 @@ class AlertManager:
     """
 
     def __init__(
-        self,
-        enabled_channels: Optional[List[AlertChannel]] = None,
-        min_priority: AlertPriority = AlertPriority.LOW
+        self, enabled_channels: Optional[List[AlertChannel]] = None, min_priority: AlertPriority = AlertPriority.LOW
     ):
         """
         Initialize alert manager
@@ -316,19 +303,17 @@ class AlertManager:
             AlertChannel.TELEGRAM: TelegramNotifier(),
             AlertChannel.EMAIL: EmailNotifier(),
             AlertChannel.WEBHOOK: WebhookNotifier(),
-            AlertChannel.CONSOLE: ConsoleNotifier()
+            AlertChannel.CONSOLE: ConsoleNotifier(),
         }
 
         # Filter by enabled channels
         if enabled_channels:
-            self.notifiers = {
-                ch: notif for ch, notif in self.notifiers.items()
-                if ch in enabled_channels
-            }
+            self.notifiers = {ch: notif for ch, notif in self.notifiers.items() if ch in enabled_channels}
 
         active_channels = [
-            ch.value for ch, notif in self.notifiers.items()
-            if getattr(notif, 'enabled', True) and getattr(notif, 'available', True)
+            ch.value
+            for ch, notif in self.notifiers.items()
+            if getattr(notif, "enabled", True) and getattr(notif, "available", True)
         ]
 
         logger.info(f"Alert Manager initialized. Active channels: {active_channels}")
@@ -339,7 +324,7 @@ class AlertManager:
         message: str,
         priority: AlertPriority = AlertPriority.MEDIUM,
         data: Optional[Dict[str, Any]] = None,
-        channels: Optional[List[AlertChannel]] = None
+        channels: Optional[List[AlertChannel]] = None,
     ) -> Dict[AlertChannel, bool]:
         """
         Send alert to specified channels
@@ -359,21 +344,12 @@ class AlertManager:
             logger.debug(f"Alert skipped (below min priority): {title}")
             return {}
 
-        alert = Alert(
-            title=title,
-            message=message,
-            priority=priority,
-            timestamp=datetime.now(),
-            data=data
-        )
+        alert = Alert(title=title, message=message, priority=priority, timestamp=datetime.now(), data=data)
 
         # Determine which channels to use
         target_notifiers = self.notifiers
         if channels:
-            target_notifiers = {
-                ch: notif for ch, notif in self.notifiers.items()
-                if ch in channels
-            }
+            target_notifiers = {ch: notif for ch, notif in self.notifiers.items() if ch in channels}
 
         # Send to all channels concurrently
         results = {}
@@ -393,12 +369,7 @@ class AlertManager:
 
         return results
 
-    async def _send_to_channel(
-        self,
-        channel: AlertChannel,
-        notifier: Any,
-        alert: Alert
-    ) -> bool:
+    async def _send_to_channel(self, channel: AlertChannel, notifier: Any, alert: Alert) -> bool:
         """Send alert to specific channel"""
         try:
             return await notifier.send(alert)
@@ -417,7 +388,7 @@ class AlertManager:
         reward: float,
         confidence: float,
         reasoning: str,
-        priority: AlertPriority = AlertPriority.HIGH
+        priority: AlertPriority = AlertPriority.HIGH,
     ) -> Dict[AlertChannel, bool]:
         """
         Send trading signal alert
@@ -459,23 +430,20 @@ Confidence: {confidence:.0f}%
             message=message,
             priority=priority,
             data={
-                'symbol': symbol,
-                'type': signal_type,
-                'entry': entry_price,
-                'stop': stop_loss,
-                'target': take_profit,
-                'risk': risk,
-                'reward': reward,
-                'rr': rr_ratio,
-                'confidence': confidence
-            }
+                "symbol": symbol,
+                "type": signal_type,
+                "entry": entry_price,
+                "stop": stop_loss,
+                "target": take_profit,
+                "risk": risk,
+                "reward": reward,
+                "rr": rr_ratio,
+                "confidence": confidence,
+            },
         )
 
     async def send_risk_alert(
-        self,
-        alert_type: str,
-        message: str,
-        priority: AlertPriority = AlertPriority.CRITICAL
+        self, alert_type: str, message: str, priority: AlertPriority = AlertPriority.CRITICAL
     ) -> Dict[AlertChannel, bool]:
         """
         Send risk management alert
@@ -488,11 +456,7 @@ Confidence: {confidence:.0f}%
         Returns:
             Dictionary of channel -> success status
         """
-        return await self.send_alert(
-            title=f"Risk Alert: {alert_type}",
-            message=message,
-            priority=priority
-        )
+        return await self.send_alert(title=f"Risk Alert: {alert_type}", message=message, priority=priority)
 
     async def send_position_update(
         self,
@@ -500,7 +464,7 @@ Confidence: {confidence:.0f}%
         action: str,
         price: float,
         pnl: Optional[float] = None,
-        priority: AlertPriority = AlertPriority.MEDIUM
+        priority: AlertPriority = AlertPriority.MEDIUM,
     ) -> Dict[AlertChannel, bool]:
         """
         Send position update alert
@@ -524,10 +488,5 @@ Confidence: {confidence:.0f}%
             title=f"Position {action}",
             message=message,
             priority=priority,
-            data={
-                'symbol': symbol,
-                'action': action,
-                'price': price,
-                'pnl': pnl
-            }
+            data={"symbol": symbol, "action": action, "price": price, "pnl": pnl},
         )

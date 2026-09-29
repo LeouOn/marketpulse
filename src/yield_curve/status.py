@@ -42,7 +42,7 @@ class PipelineStatusStore:
     ) -> None:
         status = self.load() or {}
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        runs = (status.get("runs") or [])[-(_MAX_RUNS - 1):]
+        runs = (status.get("runs") or [])[-(_MAX_RUNS - 1) :]
         runs.append({"at": now, "ok": ok, "saved": saved, "error": error})
         status["runs"] = runs
         status["last_run_at"] = now

@@ -23,7 +23,6 @@ from src.research.loans import (
     VariableRateLoan,
 )
 
-
 START = pd.Timestamp("2024-01-01")
 DAYS_PER_YEAR = 365.25
 
@@ -114,7 +113,9 @@ def test_fixed_rate_loan_validate_zero_term():
     """Non-positive term_years is rejected."""
     with pytest.raises(InvalidParamsError, match="term_years must be > 0"):
         FixedRateLoan(
-            principal=10_000, apr=0.08, start_date=START,
+            principal=10_000,
+            apr=0.08,
+            start_date=START,
             params={"term_years": 0},
         )
 
@@ -174,7 +175,9 @@ def test_fixed_rate_loan_scheduled_payment_non_payment_day():
 def test_fixed_rate_loan_scheduled_payment_after_maturity():
     """After maturity the balloon is separate; scheduled payment is zero."""
     loan = FixedRateLoan(
-        principal=10_000, apr=0.08, start_date=START,
+        principal=10_000,
+        apr=0.08,
+        start_date=START,
         params={"term_years": 1.0},
     )
     after = START + pd.Timedelta(days=400)
@@ -192,7 +195,9 @@ def test_fixed_rate_loan_remaining_principal_before_maturity():
 def test_fixed_rate_loan_remaining_principal_at_maturity():
     """Principal is still outstanding at maturity (balloon due)."""
     loan = FixedRateLoan(
-        principal=10_000, apr=0.08, start_date=START,
+        principal=10_000,
+        apr=0.08,
+        start_date=START,
         params={"term_years": 1.0},
     )
     d = START + pd.Timedelta(days=400)
@@ -203,7 +208,9 @@ def test_fixed_rate_loan_remaining_principal_at_maturity():
 def test_fixed_rate_loan_is_matured():
     """is_matured is False before the term and True after."""
     loan = FixedRateLoan(
-        principal=10_000, apr=0.08, start_date=START,
+        principal=10_000,
+        apr=0.08,
+        start_date=START,
         params={"term_years": 2.0},
     )
     before = START + pd.Timedelta(days=500)  # < 2*365.25
@@ -229,7 +236,9 @@ def test_variable_rate_loan_creation():
 def test_variable_rate_loan_default_rate():
     """Without rate_changes the loan accrues at the initial rate."""
     loan = VariableRateLoan(
-        principal=10_000, apr=0.08, start_date=START,
+        principal=10_000,
+        apr=0.08,
+        start_date=START,
         params={"initial_rate": 0.08},
     )
     d = START + pd.Timedelta(days=90)
@@ -241,11 +250,15 @@ def test_variable_rate_loan_default_rate():
 def test_variable_rate_loan_with_rate_changes():
     """A rate hike causes faster accrual after the change date."""
     loan_flat = VariableRateLoan(
-        principal=10_000, apr=0.08, start_date=START,
+        principal=10_000,
+        apr=0.08,
+        start_date=START,
         params={"initial_rate": 0.08},
     )
     loan_hike = VariableRateLoan(
-        principal=10_000, apr=0.08, start_date=START,
+        principal=10_000,
+        apr=0.08,
+        start_date=START,
         params={
             "initial_rate": 0.08,
             "rate_changes": {"2024-06-01": 0.20},
@@ -253,9 +266,7 @@ def test_variable_rate_loan_with_rate_changes():
     )
     # Before the change date both accrue identically.
     before = pd.Timestamp("2024-05-01")
-    assert loan_flat.accrued_interest(before) == pytest.approx(
-        loan_hike.accrued_interest(before), rel=1e-9
-    )
+    assert loan_flat.accrued_interest(before) == pytest.approx(loan_hike.accrued_interest(before), rel=1e-9)
     # After the change date the hiked loan accrues more.
     after = pd.Timestamp("2024-12-01")
     assert loan_hike.accrued_interest(after) > loan_flat.accrued_interest(after)
@@ -265,7 +276,9 @@ def test_variable_rate_loan_validate_negative_initial_rate():
     """Negative initial_rate is rejected."""
     with pytest.raises(InvalidParamsError, match="initial_rate must be >= 0"):
         VariableRateLoan(
-            principal=10_000, apr=0.08, start_date=START,
+            principal=10_000,
+            apr=0.08,
+            start_date=START,
             params={"initial_rate": -0.01},
         )
 
@@ -274,7 +287,9 @@ def test_variable_rate_loan_validate_negative_change_rate():
     """A negative rate inside rate_changes is rejected."""
     with pytest.raises(InvalidParamsError, match="must be >= 0"):
         VariableRateLoan(
-            principal=10_000, apr=0.08, start_date=START,
+            principal=10_000,
+            apr=0.08,
+            start_date=START,
             params={
                 "initial_rate": 0.08,
                 "rate_changes": {"2024-06-01": -0.05},
@@ -292,7 +307,9 @@ def test_variable_rate_loan_is_matured_never():
 def test_variable_rate_loan_scheduled_payment():
     """Interest-only payment is due on payment dates."""
     loan = VariableRateLoan(
-        principal=10_000, apr=0.08, start_date=START,
+        principal=10_000,
+        apr=0.08,
+        start_date=START,
         params={"initial_rate": 0.08, "payment_freq_days": 30},
     )
     pay_day = START + pd.Timedelta(days=30)
@@ -338,34 +355,38 @@ def test_margin_loan_liquidation_price_calculation():
     """liquidation_price = threshold * principal."""
     loan = MarginLoan(principal=10_000, apr=0.08, start_date=START)
     # 0.30 * 10_000 = 3_000
-    assert loan.liquidation_price() == pytest.approx(
-        3_000.0
-    )
+    assert loan.liquidation_price() == pytest.approx(3_000.0)
     # Custom threshold
     loan2 = MarginLoan(
-        principal=50_000, apr=0.05, start_date=START,
+        principal=50_000,
+        apr=0.05,
+        start_date=START,
         params={"liquidation_threshold": 0.50},
     )
-    assert loan2.liquidation_price() == pytest.approx(
-        25_000.0
-    )
+    assert loan2.liquidation_price() == pytest.approx(25_000.0)
 
 
 def test_margin_loan_validate_threshold_out_of_range():
     """liquidation_threshold must be strictly in (0, 1)."""
     with pytest.raises(InvalidParamsError, match="liquidation_threshold"):
         MarginLoan(
-            principal=10_000, apr=0.08, start_date=START,
+            principal=10_000,
+            apr=0.08,
+            start_date=START,
             params={"liquidation_threshold": 0.0},
         )
     with pytest.raises(InvalidParamsError, match="liquidation_threshold"):
         MarginLoan(
-            principal=10_000, apr=0.08, start_date=START,
+            principal=10_000,
+            apr=0.08,
+            start_date=START,
             params={"liquidation_threshold": 1.0},
         )
     with pytest.raises(InvalidParamsError, match="liquidation_threshold"):
         MarginLoan(
-            principal=10_000, apr=0.08, start_date=START,
+            principal=10_000,
+            apr=0.08,
+            start_date=START,
             params={"liquidation_threshold": 1.5},
         )
 
@@ -414,7 +435,9 @@ def test_margin_call_recovery_buffer():
       - ratio >= 0.60         → should_clear_margin_call True
     """
     loan = MarginLoan(
-        principal=80_000, apr=0.05, start_date=START,
+        principal=80_000,
+        apr=0.05,
+        start_date=START,
         params={"liquidation_threshold": 0.50, "margin_call_recovery_buffer": 0.10},
     )
     # ratio 0.45 (36_000/80_000) → below 0.50, margin call fires
@@ -442,7 +465,9 @@ def test_margin_call_recovery_buffer_negative_rejected():
     """A negative recovery buffer is rejected at construction."""
     with pytest.raises(InvalidParamsError, match="margin_call_recovery_buffer"):
         MarginLoan(
-            principal=10_000, apr=0.08, start_date=START,
+            principal=10_000,
+            apr=0.08,
+            start_date=START,
             params={"margin_call_recovery_buffer": -0.05},
         )
 
@@ -476,7 +501,9 @@ def test_no_recourse_loan_default_when_equity_below_debt():
 def test_no_recourse_loan_is_matured():
     """NoRecourseLoan matures after its term."""
     loan = NoRecourseLoan(
-        principal=10_000, apr=0.08, start_date=START,
+        principal=10_000,
+        apr=0.08,
+        start_date=START,
         params={"term_years": 1.0},
     )
     before = START + pd.Timedelta(days=300)
@@ -524,7 +551,9 @@ def test_loan_repr_contains_class_name():
 def test_default_params_not_mutated_by_instances():
     """Each instance gets its own params dict (no shared mutable state)."""
     loan1 = FixedRateLoan(
-        principal=10_000, apr=0.08, start_date=START,
+        principal=10_000,
+        apr=0.08,
+        start_date=START,
         params={"term_years": 3.0},
     )
     loan2 = FixedRateLoan(principal=10_000, apr=0.08, start_date=START)
@@ -565,7 +594,9 @@ def test_variable_rate_loan_scheduled_payment_amount():
       payment = 12000 * (1 + 0.12/365.25)^30 - 12000 ≈ 118.84
     """
     loan = VariableRateLoan(
-        principal=12_000, apr=0.12, start_date=START,
+        principal=12_000,
+        apr=0.12,
+        start_date=START,
         params={"initial_rate": 0.12, "payment_freq_days": 30},
     )
     pay_day = START + pd.Timedelta(days=30)

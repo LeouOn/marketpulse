@@ -31,7 +31,10 @@ CREATE_ALERT_DEF: dict[str, Any] = {
             "properties": {
                 "title": {"type": "string", "description": "Alert title, e.g. 'SPY above 760'"},
                 "message": {"type": "string", "description": "Detailed alert message"},
-                "condition": {"type": "string", "description": "Human-readable condition, e.g. 'SPY price > 760 AND VIX < 15'"},
+                "condition": {
+                    "type": "string",
+                    "description": "Human-readable condition, e.g. 'SPY price > 760 AND VIX < 15'",
+                },
                 "priority": {"type": "string", "description": "low, medium, high, critical"},
                 "symbol": {"type": "string", "description": "Primary symbol for this alert"},
             },
@@ -42,8 +45,11 @@ CREATE_ALERT_DEF: dict[str, Any] = {
 
 
 async def create_alert(
-    title: str, message: str, condition: str,
-    priority: str = "medium", symbol: str = "",
+    title: str,
+    message: str,
+    condition: str,
+    priority: str = "medium",
+    symbol: str = "",
 ) -> dict[str, Any]:
     """Create a new alert condition."""
     try:
@@ -119,12 +125,14 @@ async def check_alerts(market_snapshot_json: str) -> dict[str, Any]:
                     fired = True  # Simplified — real impl would parse the condition
 
             if fired or "always" in condition.lower():
-                firing.append({
-                    "id": alert["id"],
-                    "title": alert["title"],
-                    "priority": alert["priority"],
-                    "condition": alert["condition"],
-                })
+                firing.append(
+                    {
+                        "id": alert["id"],
+                        "title": alert["title"],
+                        "priority": alert["priority"],
+                        "condition": alert["condition"],
+                    }
+                )
 
         return {
             "alerts_firing": firing,

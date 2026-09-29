@@ -4,8 +4,9 @@ Revision ID: 003_yield_curve
 Revises: 002_btc_research
 Create Date: 2026-06-23
 """
-from alembic import op
+
 import sqlalchemy as sa
+from alembic import op
 
 revision = "003_yield_curve"
 down_revision = "002_btc_research"
@@ -55,8 +56,7 @@ def upgrade() -> None:
         sa.Column("triggered_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("rule_name", sa.String(64), nullable=False),
         sa.Column("priority", sa.String(16), nullable=False),
-        sa.Column("snapshot_date", sa.Date,
-                  sa.ForeignKey("market_data.yield_curve_snapshots.date"), nullable=False),
+        sa.Column("snapshot_date", sa.Date, sa.ForeignKey("market_data.yield_curve_snapshots.date"), nullable=False),
         sa.Column("trigger_value", sa.Numeric(10, 4)),
         sa.Column("prior_value", sa.Numeric(10, 4)),
         sa.Column("delta", sa.Numeric(10, 4)),

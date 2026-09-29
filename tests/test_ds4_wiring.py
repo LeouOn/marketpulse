@@ -22,7 +22,6 @@ from fastapi.testclient import TestClient
 from src.core.config import Settings
 from src.llm.model_router import ModelRouter
 
-
 # ---------------------------------------------------------------------------
 # Fakes (session-level, no real HTTP)
 # ---------------------------------------------------------------------------
@@ -119,9 +118,7 @@ def fresh_settings(tmp_path, monkeypatch) -> Settings:
 class TestDS4Config:
     def test_defaults(self, fresh_settings):
         s = fresh_settings
-        assert s.llm.ds4.base_url == "http://127.0.0.1:8001/v1", (
-            "default port must not be 8000 (the API's own port)"
-        )
+        assert s.llm.ds4.base_url == "http://127.0.0.1:8001/v1", "default port must not be 8000 (the API's own port)"
         assert s.llm.ds4.model == "deepseek-v4-flash"
         assert s.llm.ds4.api_key == "not-needed"
         assert s.llm.ds4.timeout > 0
@@ -134,10 +131,7 @@ class TestDS4Config:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "config").mkdir()
         (tmp_path / "config" / "credentials.yaml").write_text(
-            "llm:\n"
-            "  ds4:\n"
-            "    base_url: http://127.0.0.1:9999/v1\n"
-            "    model: my-local-model\n"
+            "llm:\n  ds4:\n    base_url: http://127.0.0.1:9999/v1\n    model: my-local-model\n"
         )
         s = Settings()
         assert s.llm.ds4.base_url == "http://127.0.0.1:9999/v1"
@@ -181,12 +175,8 @@ class TestDS4Client:
 
     def test_completion_preserves_reasoning_content(self, fresh_settings):
         client = self._client(fresh_settings)
-        client.session = _FakeSession(
-            [_FakeResponse(200, "application/json", _completion_body())]
-        )
-        out = asyncio.run(
-            client.generate_completion(messages=[{"role": "user", "content": "hi"}])
-        )
+        client.session = _FakeSession([_FakeResponse(200, "application/json", _completion_body())])
+        out = asyncio.run(client.generate_completion(messages=[{"role": "user", "content": "hi"}]))
         msg = out["choices"][0]["message"]
         assert msg["content"] == "ds4 says hi"
         assert msg["reasoning_content"] == "thinking hard"
@@ -201,9 +191,7 @@ class TestDS4Client:
         client.session = _FakeSession([_FakeResponse(200, "text/event-stream", None, sse)])
 
         async def _drain():
-            return [chunk async for chunk in client.stream_completion(
-                messages=[{"role": "user", "content": "hi"}]
-            )]
+            return [chunk async for chunk in client.stream_completion(messages=[{"role": "user", "content": "hi"}])]
 
         chunks = asyncio.run(_drain())
         tokens = [c["token"] for c in chunks]
@@ -217,14 +205,17 @@ class TestDS4Client:
 
 
 def _ds4_primary_settings(fresh_settings) -> Settings:
-    return _apply(fresh_settings, {
-        "llm.model_routing.primary_provider": "ds4",
-        "llm.model_routing.reasoning": "ds4/deepseek-v4-flash",
-        "llm.model_routing.fast": "ds4/deepseek-v4-flash",
-        "llm.model_routing.standard": "ds4/deepseek-v4-flash",
-        "llm.model_routing.structured_output": "ds4/deepseek-v4-flash",
-        "llm.model_routing.fallback_providers": "minimax,deepseek,lm_studio,openrouter",
-    })
+    return _apply(
+        fresh_settings,
+        {
+            "llm.model_routing.primary_provider": "ds4",
+            "llm.model_routing.reasoning": "ds4/deepseek-v4-flash",
+            "llm.model_routing.fast": "ds4/deepseek-v4-flash",
+            "llm.model_routing.standard": "ds4/deepseek-v4-flash",
+            "llm.model_routing.structured_output": "ds4/deepseek-v4-flash",
+            "llm.model_routing.fallback_providers": "minimax,deepseek,lm_studio,openrouter",
+        },
+    )
 
 
 class TestRouterDS4:
@@ -287,17 +278,13 @@ class TestRouterDS4:
 
         s = _ds4_primary_settings(fresh_settings)
         fake_client = DS4Client(s)
-        fake_client.session = _FakeSession(
-            [_FakeResponse(200, "application/json", _completion_body())]
-        )
+        fake_client.session = _FakeSession([_FakeResponse(200, "application/json", _completion_body())])
 
         async def _generate():
             async with ModelRouter(s) as router:
                 router._providers["ds4"].client = fake_client
                 router._providers["ds4"].healthy = True
-                return await router.generate(
-                    [{"role": "user", "content": "hi"}], capability="standard"
-                )
+                return await router.generate([{"role": "user", "content": "hi"}], capability="standard")
 
         out = asyncio.run(_generate())
         assert out["choices"][0]["message"]["reasoning_content"] == "thinking hard"

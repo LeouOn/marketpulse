@@ -4,6 +4,7 @@ No I/O. Logic ported from scripts/yield_curve_monitor.py.
 All yields are expressed in PERCENT (e.g. 4.40 == 4.40%).
 All spreads are expressed in BASIS POINTS (e.g. -10.0 == -10bps).
 """
+
 from __future__ import annotations
 
 import math
@@ -13,10 +14,11 @@ from typing import Optional
 
 class CurveShape(str, Enum):
     """Curve shape classification."""
-    NORMAL = "NORMAL"              # Upward sloping, 2s10s > 0 and 2s30s > 0
-    FLAT = "FLAT"                  # All spreads within 25bps band
-    INVERTED = "INVERTED"          # 2s10s < 0
-    HUMPED = "HUMPED"              # Mid-curve above both ends
+
+    NORMAL = "NORMAL"  # Upward sloping, 2s10s > 0 and 2s30s > 0
+    FLAT = "FLAT"  # All spreads within 25bps band
+    INVERTED = "INVERTED"  # 2s10s < 0
+    HUMPED = "HUMPED"  # Mid-curve above both ends
     INVERTED_HUMPED = "INVERTED_HUMPED"  # Mid-curve below both ends
 
 

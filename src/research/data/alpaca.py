@@ -74,9 +74,7 @@ class AlpacaProvider(DataProvider):
         # Default cache lives under the writable cache root (T3b); an
         # explicit cache_dir is caller-managed. (No tracked seeds exist
         # for alpaca_cache, so there is nothing to seed.)
-        self.cache_dir = (
-            _cache_dir("alpaca_cache") if cache_dir is None else Path(cache_dir)
-        )
+        self.cache_dir = _cache_dir("alpaca_cache") if cache_dir is None else Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.symbol = symbol
 
@@ -122,10 +120,7 @@ class AlpacaProvider(DataProvider):
             # Client signalled failure (AlpacaClient returns None on non-200).
             # Do NOT write an empty cache; serve whatever we have, or empty.
             if not cached.empty:
-                logger.warning(
-                    f"Alpaca fetch for {symbol} ({timeframe}) returned no bars; "
-                    f"serving stale cache slice"
-                )
+                logger.warning(f"Alpaca fetch for {symbol} ({timeframe}) returned no bars; serving stale cache slice")
                 return self._slice(cached, start, end)
             logger.warning(f"Alpaca fetch for {symbol} ({timeframe}) returned no bars and no cache")
             return self._empty_df()

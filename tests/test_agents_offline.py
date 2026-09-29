@@ -143,8 +143,7 @@ async def test_data_agent_without_tool_support_does_not_report_success():
     result = await agent.execute("Fetch market data for SPY")
 
     assert not result.success, (
-        "agent reported success without ever calling a tool -- the answer is "
-        "model memory, not market data"
+        "agent reported success without ever calling a tool -- the answer is model memory, not market data"
     )
     assert result.error, "a failed agent must say why"
     assert "generate_with_tools" in result.error

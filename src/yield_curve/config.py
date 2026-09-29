@@ -1,4 +1,5 @@
 """Config for yield curve monitor. All thresholds env-var driven."""
+
 from __future__ import annotations
 
 import os
@@ -35,6 +36,7 @@ TENORS: dict[str, str] = {
 @dataclass(frozen=True)
 class YieldCurveConfig:
     """All tunables. Read via :func:`get_config`."""
+
     # Alert thresholds (basis points)
     steepen_bps_5d: int = 20
     flatten_bps_5d: int = -20

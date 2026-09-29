@@ -13,7 +13,7 @@ class DataAgent(MarketAgent):
     """Agent that fetches market data."""
 
     AGENT_NAME = "data_agent"
-    CAPABILITY = "fast"         # Data fetching is simple lookups
+    CAPABILITY = "fast"  # Data fetching is simple lookups
     MAX_TOKENS = 600
     TEMPERATURE = 0.2
 

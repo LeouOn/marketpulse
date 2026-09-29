@@ -11,9 +11,10 @@ Calculates common technical indicators:
 - Volume indicators
 """
 
-import pandas as pd
+from typing import Dict, List, Optional
+
 import numpy as np
-from typing import Dict, Any, List, Optional, Tuple
+import pandas as pd
 from loguru import logger
 
 
@@ -79,12 +80,7 @@ class TechnicalIndicators:
         return rsi
 
     @staticmethod
-    def macd(
-        data: pd.Series,
-        fast: int = 12,
-        slow: int = 26,
-        signal: int = 9
-    ) -> pd.DataFrame:
+    def macd(data: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
         """
         MACD (Moving Average Convergence Divergence)
 
@@ -104,18 +100,10 @@ class TechnicalIndicators:
         signal_line = macd_line.ewm(span=signal, adjust=False).mean()
         histogram = macd_line - signal_line
 
-        return pd.DataFrame({
-            'macd': macd_line,
-            'signal': signal_line,
-            'histogram': histogram
-        })
+        return pd.DataFrame({"macd": macd_line, "signal": signal_line, "histogram": histogram})
 
     @staticmethod
-    def bollinger_bands(
-        data: pd.Series,
-        period: int = 20,
-        std_dev: float = 2.0
-    ) -> pd.DataFrame:
+    def bollinger_bands(data: pd.Series, period: int = 20, std_dev: float = 2.0) -> pd.DataFrame:
         """
         Bollinger Bands
 
@@ -133,19 +121,10 @@ class TechnicalIndicators:
         upper = middle + (std * std_dev)
         lower = middle - (std * std_dev)
 
-        return pd.DataFrame({
-            'upper': upper,
-            'middle': middle,
-            'lower': lower
-        })
+        return pd.DataFrame({"upper": upper, "middle": middle, "lower": lower})
 
     @staticmethod
-    def atr(
-        high: pd.Series,
-        low: pd.Series,
-        close: pd.Series,
-        period: int = 14
-    ) -> pd.Series:
+    def atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
         """
         Average True Range
 
@@ -169,12 +148,7 @@ class TechnicalIndicators:
 
     @staticmethod
     def stochastic(
-        high: pd.Series,
-        low: pd.Series,
-        close: pd.Series,
-        period: int = 14,
-        smooth_k: int = 3,
-        smooth_d: int = 3
+        high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14, smooth_k: int = 3, smooth_d: int = 3
     ) -> pd.DataFrame:
         """
         Stochastic Oscillator
@@ -197,18 +171,10 @@ class TechnicalIndicators:
         k_smooth = k.rolling(window=smooth_k).mean()
         d = k_smooth.rolling(window=smooth_d).mean()
 
-        return pd.DataFrame({
-            'k': k_smooth,
-            'd': d
-        })
+        return pd.DataFrame({"k": k_smooth, "d": d})
 
     @staticmethod
-    def vwap(
-        high: pd.Series,
-        low: pd.Series,
-        close: pd.Series,
-        volume: pd.Series
-    ) -> pd.Series:
+    def vwap(high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series) -> pd.Series:
         """
         Volume Weighted Average Price
 
@@ -243,12 +209,7 @@ class TechnicalIndicators:
         return pd.Series(obv, index=close.index)
 
     @staticmethod
-    def adx(
-        high: pd.Series,
-        low: pd.Series,
-        close: pd.Series,
-        period: int = 14
-    ) -> pd.DataFrame:
+    def adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.DataFrame:
         """
         Average Directional Index (ADX)
 
@@ -287,19 +248,11 @@ class TechnicalIndicators:
         dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
         adx = dx.rolling(window=period).mean()
 
-        return pd.DataFrame({
-            'adx': adx,
-            'plus_di': plus_di,
-            'minus_di': minus_di
-        })
+        return pd.DataFrame({"adx": adx, "plus_di": plus_di, "minus_di": minus_di})
 
     @staticmethod
     def supertrend(
-        high: pd.Series,
-        low: pd.Series,
-        close: pd.Series,
-        period: int = 10,
-        multiplier: float = 3.0
+        high: pd.Series, low: pd.Series, close: pd.Series, period: int = 10, multiplier: float = 3.0
     ) -> pd.DataFrame:
         """
         Supertrend Indicator
@@ -332,37 +285,36 @@ class TechnicalIndicators:
                 direction.iloc[i] = -1 if close.iloc[i] <= upper_band.iloc[i] else 1
             else:
                 # Update upper band: don't let it increase unless price broke above
-                if upper_band.iloc[i] > upper_band.iloc[i-1] and close.iloc[i-1] <= upper_band.iloc[i-1]:
-                    upper_band.iloc[i] = upper_band.iloc[i-1]
+                if upper_band.iloc[i] > upper_band.iloc[i - 1] and close.iloc[i - 1] <= upper_band.iloc[i - 1]:
+                    upper_band.iloc[i] = upper_band.iloc[i - 1]
 
                 # Update lower band: don't let it decrease unless price broke below
-                if lower_band.iloc[i] < lower_band.iloc[i-1] and close.iloc[i-1] >= lower_band.iloc[i-1]:
-                    lower_band.iloc[i] = lower_band.iloc[i-1]
+                if lower_band.iloc[i] < lower_band.iloc[i - 1] and close.iloc[i - 1] >= lower_band.iloc[i - 1]:
+                    lower_band.iloc[i] = lower_band.iloc[i - 1]
 
                 # Determine supertrend
-                if supertrend.iloc[i-1] == upper_band.iloc[i-1] and close.iloc[i] <= upper_band.iloc[i]:
+                if supertrend.iloc[i - 1] == upper_band.iloc[i - 1] and close.iloc[i] <= upper_band.iloc[i]:
                     supertrend.iloc[i] = upper_band.iloc[i]
                     direction.iloc[i] = -1
-                elif supertrend.iloc[i-1] == upper_band.iloc[i-1] and close.iloc[i] > upper_band.iloc[i]:
+                elif supertrend.iloc[i - 1] == upper_band.iloc[i - 1] and close.iloc[i] > upper_band.iloc[i]:
                     supertrend.iloc[i] = lower_band.iloc[i]
                     direction.iloc[i] = 1
-                elif supertrend.iloc[i-1] == lower_band.iloc[i-1] and close.iloc[i] >= lower_band.iloc[i]:
+                elif supertrend.iloc[i - 1] == lower_band.iloc[i - 1] and close.iloc[i] >= lower_band.iloc[i]:
                     supertrend.iloc[i] = lower_band.iloc[i]
                     direction.iloc[i] = 1
-                elif supertrend.iloc[i-1] == lower_band.iloc[i-1] and close.iloc[i] < lower_band.iloc[i]:
+                elif supertrend.iloc[i - 1] == lower_band.iloc[i - 1] and close.iloc[i] < lower_band.iloc[i]:
                     supertrend.iloc[i] = upper_band.iloc[i]
                     direction.iloc[i] = -1
 
-        return pd.DataFrame({
-            'supertrend': supertrend,
-            'direction': direction  # 1 = bullish, -1 = bearish
-        })
+        return pd.DataFrame(
+            {
+                "supertrend": supertrend,
+                "direction": direction,  # 1 = bullish, -1 = bearish
+            }
+        )
 
     @staticmethod
-    def calculate_all(
-        df: pd.DataFrame,
-        indicators: Optional[List[str]] = None
-    ) -> pd.DataFrame:
+    def calculate_all(df: pd.DataFrame, indicators: Optional[List[str]] = None) -> pd.DataFrame:
         """
         Calculate all technical indicators
 
@@ -377,10 +329,21 @@ class TechnicalIndicators:
 
         # Available indicators
         all_indicators = [
-            'sma_20', 'sma_50', 'sma_200',
-            'ema_9', 'ema_21', 'ema_50',
-            'rsi', 'macd', 'bollinger', 'atr',
-            'stochastic', 'vwap', 'obv', 'adx', 'supertrend'
+            "sma_20",
+            "sma_50",
+            "sma_200",
+            "ema_9",
+            "ema_21",
+            "ema_50",
+            "rsi",
+            "macd",
+            "bollinger",
+            "atr",
+            "stochastic",
+            "vwap",
+            "obv",
+            "adx",
+            "supertrend",
         ]
 
         # Use specified indicators or all
@@ -388,78 +351,68 @@ class TechnicalIndicators:
 
         try:
             # Moving Averages
-            if 'sma_20' in to_calculate:
-                result['sma_20'] = TechnicalIndicators.sma(df['close'], 20)
-            if 'sma_50' in to_calculate:
-                result['sma_50'] = TechnicalIndicators.sma(df['close'], 50)
-            if 'sma_200' in to_calculate:
-                result['sma_200'] = TechnicalIndicators.sma(df['close'], 200)
+            if "sma_20" in to_calculate:
+                result["sma_20"] = TechnicalIndicators.sma(df["close"], 20)
+            if "sma_50" in to_calculate:
+                result["sma_50"] = TechnicalIndicators.sma(df["close"], 50)
+            if "sma_200" in to_calculate:
+                result["sma_200"] = TechnicalIndicators.sma(df["close"], 200)
 
-            if 'ema_9' in to_calculate:
-                result['ema_9'] = TechnicalIndicators.ema(df['close'], 9)
-            if 'ema_21' in to_calculate:
-                result['ema_21'] = TechnicalIndicators.ema(df['close'], 21)
-            if 'ema_50' in to_calculate:
-                result['ema_50'] = TechnicalIndicators.ema(df['close'], 50)
+            if "ema_9" in to_calculate:
+                result["ema_9"] = TechnicalIndicators.ema(df["close"], 9)
+            if "ema_21" in to_calculate:
+                result["ema_21"] = TechnicalIndicators.ema(df["close"], 21)
+            if "ema_50" in to_calculate:
+                result["ema_50"] = TechnicalIndicators.ema(df["close"], 50)
 
             # RSI
-            if 'rsi' in to_calculate:
-                result['rsi'] = TechnicalIndicators.rsi(df['close'])
+            if "rsi" in to_calculate:
+                result["rsi"] = TechnicalIndicators.rsi(df["close"])
 
             # MACD
-            if 'macd' in to_calculate:
-                macd_df = TechnicalIndicators.macd(df['close'])
-                result['macd'] = macd_df['macd']
-                result['macd_signal'] = macd_df['signal']
-                result['macd_histogram'] = macd_df['histogram']
+            if "macd" in to_calculate:
+                macd_df = TechnicalIndicators.macd(df["close"])
+                result["macd"] = macd_df["macd"]
+                result["macd_signal"] = macd_df["signal"]
+                result["macd_histogram"] = macd_df["histogram"]
 
             # Bollinger Bands
-            if 'bollinger' in to_calculate:
-                bb_df = TechnicalIndicators.bollinger_bands(df['close'])
-                result['bb_upper'] = bb_df['upper']
-                result['bb_middle'] = bb_df['middle']
-                result['bb_lower'] = bb_df['lower']
+            if "bollinger" in to_calculate:
+                bb_df = TechnicalIndicators.bollinger_bands(df["close"])
+                result["bb_upper"] = bb_df["upper"]
+                result["bb_middle"] = bb_df["middle"]
+                result["bb_lower"] = bb_df["lower"]
 
             # ATR
-            if 'atr' in to_calculate:
-                result['atr'] = TechnicalIndicators.atr(
-                    df['high'], df['low'], df['close']
-                )
+            if "atr" in to_calculate:
+                result["atr"] = TechnicalIndicators.atr(df["high"], df["low"], df["close"])
 
             # Stochastic
-            if 'stochastic' in to_calculate:
-                stoch_df = TechnicalIndicators.stochastic(
-                    df['high'], df['low'], df['close']
-                )
-                result['stoch_k'] = stoch_df['k']
-                result['stoch_d'] = stoch_df['d']
+            if "stochastic" in to_calculate:
+                stoch_df = TechnicalIndicators.stochastic(df["high"], df["low"], df["close"])
+                result["stoch_k"] = stoch_df["k"]
+                result["stoch_d"] = stoch_df["d"]
 
             # VWAP
-            if 'vwap' in to_calculate:
-                result['vwap'] = TechnicalIndicators.vwap(
-                    df['high'], df['low'], df['close'], df['volume']
-                )
+            if "vwap" in to_calculate:
+                result["vwap"] = TechnicalIndicators.vwap(df["high"], df["low"], df["close"], df["volume"])
 
             # OBV
-            if 'obv' in to_calculate:
-                result['obv'] = TechnicalIndicators.obv(df['close'], df['volume'])
+            if "obv" in to_calculate:
+                result["obv"] = TechnicalIndicators.obv(df["close"], df["volume"])
 
             # ADX
-            if 'adx' in to_calculate:
-                adx_df = TechnicalIndicators.adx(
-                    df['high'], df['low'], df['close']
-                )
-                result['adx'] = adx_df['adx']
-                result['plus_di'] = adx_df['plus_di']
-                result['minus_di'] = adx_df['minus_di']
+            if "adx" in to_calculate:
+                adx_df = TechnicalIndicators.adx(df["high"], df["low"], df["close"])
+                result["adx"] = adx_df["adx"]
+                result["plus_di"] = adx_df["plus_di"]
+                result["minus_di"] = adx_df["minus_di"]
 
             # Supertrend
-            if 'supertrend' in to_calculate:
-                st_df = TechnicalIndicators.supertrend(
-                    df['high'], df['low'], df['close']
-                )
-                result['supertrend'] = st_df['supertrend']
-                result['supertrend_direction'] = st_df['direction']
+            if "supertrend" in to_calculate:
+                st_df = TechnicalIndicators.supertrend(df["high"], df["low"], df["close"])
+                result["supertrend"] = st_df["supertrend"]
+                result["supertrend_direction"] = st_df["direction"]
 
             logger.info(f"Calculated {len(to_calculate)} technical indicators")
 
@@ -470,6 +423,7 @@ class TechnicalIndicators:
 
 
 # Utility functions
+
 
 def identify_trends(df: pd.DataFrame) -> Dict[str, str]:
     """
@@ -486,39 +440,39 @@ def identify_trends(df: pd.DataFrame) -> Dict[str, str]:
     trends = {}
 
     # SMA trend
-    if 'sma_20' in df.columns and 'sma_50' in df.columns:
-        if latest['close'] > latest['sma_20'] > latest['sma_50']:
-            trends['sma_trend'] = 'strong_bullish'
-        elif latest['close'] > latest['sma_20']:
-            trends['sma_trend'] = 'bullish'
-        elif latest['close'] < latest['sma_20'] < latest['sma_50']:
-            trends['sma_trend'] = 'strong_bearish'
+    if "sma_20" in df.columns and "sma_50" in df.columns:
+        if latest["close"] > latest["sma_20"] > latest["sma_50"]:
+            trends["sma_trend"] = "strong_bullish"
+        elif latest["close"] > latest["sma_20"]:
+            trends["sma_trend"] = "bullish"
+        elif latest["close"] < latest["sma_20"] < latest["sma_50"]:
+            trends["sma_trend"] = "strong_bearish"
         else:
-            trends['sma_trend'] = 'bearish'
+            trends["sma_trend"] = "bearish"
 
     # RSI
-    if 'rsi' in df.columns:
-        rsi = latest['rsi']
+    if "rsi" in df.columns:
+        rsi = latest["rsi"]
         if rsi > 70:
-            trends['rsi_signal'] = 'overbought'
+            trends["rsi_signal"] = "overbought"
         elif rsi < 30:
-            trends['rsi_signal'] = 'oversold'
+            trends["rsi_signal"] = "oversold"
         else:
-            trends['rsi_signal'] = 'neutral'
+            trends["rsi_signal"] = "neutral"
 
     # MACD
-    if 'macd' in df.columns and 'macd_signal' in df.columns:
-        if latest['macd'] > latest['macd_signal']:
-            trends['macd_signal'] = 'bullish'
+    if "macd" in df.columns and "macd_signal" in df.columns:
+        if latest["macd"] > latest["macd_signal"]:
+            trends["macd_signal"] = "bullish"
         else:
-            trends['macd_signal'] = 'bearish'
+            trends["macd_signal"] = "bearish"
 
     # Supertrend
-    if 'supertrend_direction' in df.columns:
-        if latest['supertrend_direction'] == 1:
-            trends['supertrend'] = 'bullish'
+    if "supertrend_direction" in df.columns:
+        if latest["supertrend_direction"] == 1:
+            trends["supertrend"] = "bullish"
         else:
-            trends['supertrend'] = 'bearish'
+            trends["supertrend"] = "bearish"
 
     return trends
 
@@ -542,16 +496,18 @@ def get_support_resistance(df: pd.DataFrame, lookback: int = 20) -> Dict[str, Li
 
     for i in range(lookback, len(recent) - lookback):
         # Pivot high
-        if all(recent['high'].iloc[i] > recent['high'].iloc[i-j] for j in range(1, lookback+1)) and \
-           all(recent['high'].iloc[i] > recent['high'].iloc[i+j] for j in range(1, lookback+1)):
-            resistance_levels.append(recent['high'].iloc[i])
+        if all(recent["high"].iloc[i] > recent["high"].iloc[i - j] for j in range(1, lookback + 1)) and all(
+            recent["high"].iloc[i] > recent["high"].iloc[i + j] for j in range(1, lookback + 1)
+        ):
+            resistance_levels.append(recent["high"].iloc[i])
 
         # Pivot low
-        if all(recent['low'].iloc[i] < recent['low'].iloc[i-j] for j in range(1, lookback+1)) and \
-           all(recent['low'].iloc[i] < recent['low'].iloc[i+j] for j in range(1, lookback+1)):
-            support_levels.append(recent['low'].iloc[i])
+        if all(recent["low"].iloc[i] < recent["low"].iloc[i - j] for j in range(1, lookback + 1)) and all(
+            recent["low"].iloc[i] < recent["low"].iloc[i + j] for j in range(1, lookback + 1)
+        ):
+            support_levels.append(recent["low"].iloc[i])
 
     return {
-        'resistance': sorted(resistance_levels, reverse=True)[:3],  # Top 3
-        'support': sorted(support_levels)[-3:]  # Bottom 3
+        "resistance": sorted(resistance_levels, reverse=True)[:3],  # Top 3
+        "support": sorted(support_levels)[-3:],  # Bottom 3
     }

@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import math
-
 import pandas as pd
 import pytest
 
 from src.research.scaling.SentimentModulated import SentimentModulated
-
 
 EQUITY = 10_000.0
 

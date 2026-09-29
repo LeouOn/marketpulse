@@ -9,23 +9,25 @@ Endpoints for:
 - Alert management
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-from datetime import datetime, date
-from loguru import logger
-
-from src.analysis.risk_manager import RiskManager, RiskLevel
-from src.state.position_manager import PositionManager, Position, PositionSide, PositionStatus
-from src.journal.trade_tracker import TradeJournal
-from src.alerts.alert_manager import AlertManager, AlertPriority
 import uuid
+from datetime import date, datetime
+from typing import List, Optional
 
+from fastapi import APIRouter, HTTPException, Query
+from loguru import logger
+from pydantic import BaseModel
+
+from src.alerts.alert_manager import AlertManager, AlertPriority
+from src.analysis.risk_manager import RiskManager
+from src.journal.trade_tracker import TradeJournal
+from src.state.position_manager import Position, PositionManager, PositionSide, PositionStatus
 
 # Request/Response models
 
+
 class TradeValidationRequest(BaseModel):
     """Request to validate a trade"""
+
     symbol: str
     entry_price: float
     stop_loss: float
@@ -37,6 +39,7 @@ class TradeValidationRequest(BaseModel):
 
 class PositionRequest(BaseModel):
     """Request to open a position"""
+
     symbol: str
     side: str  # "long" or "short"
     entry_price: float
@@ -55,6 +58,7 @@ class PositionRequest(BaseModel):
 
 class ClosePositionRequest(BaseModel):
     """Request to close a position"""
+
     position_id: str
     exit_price: float
     exit_reason: Optional[str] = None  # "target_hit", "stopped_out", "manual"
@@ -62,11 +66,13 @@ class ClosePositionRequest(BaseModel):
 
 class RecordTradeRequest(BaseModel):
     """Request to record trade P&L"""
+
     pnl: float
 
 
 class PerformanceRequest(BaseModel):
     """Request for performance analysis"""
+
     days: Optional[int] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
@@ -74,6 +80,7 @@ class PerformanceRequest(BaseModel):
 
 class SendAlertRequest(BaseModel):
     """Request to send an alert"""
+
     title: str
     message: str
     priority: str = "medium"  # low, medium, high, critical
@@ -95,6 +102,7 @@ alert_manager = AlertManager()
 # RISK MANAGEMENT ENDPOINTS
 # ============================================================================
 
+
 @risk_router.post("/validate-trade")
 async def validate_trade(request: TradeValidationRequest):
     """
@@ -110,7 +118,7 @@ async def validate_trade(request: TradeValidationRequest):
             take_profit=request.take_profit,
             direction=request.direction,
             contracts=request.contracts,
-            point_value=request.point_value
+            point_value=request.point_value,
         )
 
         return {
@@ -127,9 +135,11 @@ async def validate_trade(request: TradeValidationRequest):
                     "total_risk": validation.risk_metrics.total_risk if validation.risk_metrics else None,
                     "total_reward": validation.risk_metrics.total_reward if validation.risk_metrics else None,
                     "risk_reward_ratio": validation.risk_metrics.risk_reward_ratio if validation.risk_metrics else None,
-                    "risk_percentage": validation.risk_metrics.risk_percentage if validation.risk_metrics else None
-                } if validation.risk_metrics else None
-            }
+                    "risk_percentage": validation.risk_metrics.risk_percentage if validation.risk_metrics else None,
+                }
+                if validation.risk_metrics
+                else None,
+            },
         }
 
     except Exception as e:
@@ -143,7 +153,7 @@ async def calculate_position_size(
     stop_loss: float = Query(...),
     direction: str = Query(...),
     risk_amount: Optional[float] = Query(None),
-    point_value: float = Query(2.0)
+    point_value: float = Query(2.0),
 ):
     """
     Calculate optimal position size based on risk
@@ -164,7 +174,7 @@ async def calculate_position_size(
             stop_loss=stop_loss,
             direction=direction,
             risk_amount=risk_amount,
-            point_value=point_value
+            point_value=point_value,
         )
 
         # Calculate actual risk
@@ -181,8 +191,8 @@ async def calculate_position_size(
                 "contracts": contracts,
                 "risk_points": abs(risk_points),
                 "total_risk": total_risk,
-                "risk_per_contract": abs(risk_points) * point_value
-            }
+                "risk_per_contract": abs(risk_points) * point_value,
+            },
         }
 
     except Exception as e:
@@ -206,11 +216,11 @@ async def record_trade_result(request: RecordTradeRequest):
             "success": True,
             "data": {
                 "trade_recorded": True,
-                "daily_pnl": summary['daily_pnl'],
-                "consecutive_losses": summary['consecutive_losses'],
-                "can_trade": summary['can_trade'],
-                "risk_level": summary['risk_level']
-            }
+                "daily_pnl": summary["daily_pnl"],
+                "consecutive_losses": summary["consecutive_losses"],
+                "can_trade": summary["can_trade"],
+                "risk_level": summary["risk_level"],
+            },
         }
 
     except Exception as e:
@@ -228,10 +238,7 @@ async def get_risk_summary():
     try:
         summary = risk_manager.get_risk_summary()
 
-        return {
-            "success": True,
-            "data": summary
-        }
+        return {"success": True, "data": summary}
 
     except Exception as e:
         logger.error(f"Error getting risk summary: {e}")
@@ -246,10 +253,7 @@ async def reset_daily_stats():
     try:
         risk_manager.reset_daily_stats()
 
-        return {
-            "success": True,
-            "message": "Daily statistics reset"
-        }
+        return {"success": True, "message": "Daily statistics reset"}
 
     except Exception as e:
         logger.error(f"Error resetting daily stats: {e}")
@@ -259,6 +263,7 @@ async def reset_daily_stats():
 # ============================================================================
 # POSITION MANAGEMENT ENDPOINTS
 # ============================================================================
+
 
 @risk_router.post("/positions/open")
 async def open_position(request: PositionRequest):
@@ -276,15 +281,11 @@ async def open_position(request: PositionRequest):
             take_profit=request.take_profit,
             direction=request.side,
             contracts=request.contracts,
-            point_value=request.point_value
+            point_value=request.point_value,
         )
 
         if not validation.approved:
-            return {
-                "success": False,
-                "error": validation.reason,
-                "warnings": validation.warnings
-            }
+            return {"success": False, "error": validation.reason, "warnings": validation.warnings}
 
         # Create position
         position = Position(
@@ -303,7 +304,7 @@ async def open_position(request: PositionRequest):
             vix_at_entry=request.vix_at_entry,
             session=request.session,
             tags=request.tags,
-            point_value=request.point_value
+            point_value=request.point_value,
         )
 
         # Add to position manager
@@ -316,27 +317,18 @@ async def open_position(request: PositionRequest):
             stop_loss=request.stop_loss,
             contracts=request.contracts,
             direction=request.side,
-            point_value=request.point_value
+            point_value=request.point_value,
         )
 
         # Send alert (if configured)
         try:
             await alert_manager.send_position_update(
-                symbol=request.symbol,
-                action="OPENED",
-                price=request.entry_price,
-                priority=AlertPriority.MEDIUM
+                symbol=request.symbol, action="OPENED", price=request.entry_price, priority=AlertPriority.MEDIUM
             )
         except:
             pass  # Don't fail if alert fails
 
-        return {
-            "success": True,
-            "data": {
-                "position_id": position.id,
-                "warnings": validation.warnings
-            }
-        }
+        return {"success": True, "data": {"position_id": position.id, "warnings": validation.warnings}}
 
     except Exception as e:
         logger.error(f"Error opening position: {e}")
@@ -353,15 +345,13 @@ async def close_position(request: ClosePositionRequest):
         status_map = {
             "target_hit": PositionStatus.TARGET_HIT,
             "stopped_out": PositionStatus.STOPPED_OUT,
-            "manual": PositionStatus.CLOSED
+            "manual": PositionStatus.CLOSED,
         }
         status = status_map.get(request.exit_reason, PositionStatus.CLOSED)
 
         # Close position
         position = position_manager.close_position(
-            position_id=request.position_id,
-            exit_price=request.exit_price,
-            status=status
+            position_id=request.position_id, exit_price=request.exit_price, status=status
         )
 
         if not position:
@@ -381,7 +371,7 @@ async def close_position(request: ClosePositionRequest):
                 action=status.value.upper(),
                 price=request.exit_price,
                 pnl=position.realized_pnl,
-                priority=AlertPriority.HIGH if position.realized_pnl > 0 else AlertPriority.MEDIUM
+                priority=AlertPriority.HIGH if position.realized_pnl > 0 else AlertPriority.MEDIUM,
             )
         except:
             pass
@@ -392,8 +382,8 @@ async def close_position(request: ClosePositionRequest):
                 "position_id": position.id,
                 "realized_pnl": position.realized_pnl,
                 "exit_price": request.exit_price,
-                "status": status.value
-            }
+                "status": status.value,
+            },
         }
 
     except HTTPException:
@@ -423,13 +413,13 @@ async def get_open_positions():
                         "contracts": p.contracts,
                         "entry_timestamp": p.entry_timestamp.isoformat(),
                         "setup_type": p.setup_type,
-                        "risk_amount": p.risk_amount
+                        "risk_amount": p.risk_amount,
                     }
                     for p in positions
                 ],
                 "total_positions": len(positions),
-                "total_risk": position_manager.get_total_portfolio_risk()
-            }
+                "total_risk": position_manager.get_total_portfolio_risk(),
+            },
         }
 
     except Exception as e:
@@ -443,10 +433,7 @@ async def get_position_state():
     try:
         summary = position_manager.get_state_summary()
 
-        return {
-            "success": True,
-            "data": summary
-        }
+        return {"success": True, "data": summary}
 
     except Exception as e:
         logger.error(f"Error getting position state: {e}")
@@ -456,6 +443,7 @@ async def get_position_state():
 # ============================================================================
 # TRADE JOURNAL ENDPOINTS
 # ============================================================================
+
 
 @journal_router.post("/analyze")
 async def analyze_performance(request: PerformanceRequest):
@@ -469,9 +457,7 @@ async def analyze_performance(request: PerformanceRequest):
         trade_journal.load_trades(position_manager.closed_positions)
 
         stats = trade_journal.analyze_performance(
-            days=request.days,
-            start_date=request.start_date,
-            end_date=request.end_date
+            days=request.days, start_date=request.start_date, end_date=request.end_date
         )
 
         return {
@@ -501,8 +487,8 @@ async def analyze_performance(request: PerformanceRequest):
                 "best_setup": stats.best_setup,
                 "worst_setup": stats.worst_setup,
                 "best_session": stats.best_session,
-                "worst_session": stats.worst_session
-            }
+                "worst_session": stats.worst_session,
+            },
         }
 
     except Exception as e:
@@ -521,10 +507,7 @@ async def get_insights(days: int = Query(30)):
         trade_journal.load_trades(position_manager.closed_positions)
         insights = trade_journal.get_insights(days=days)
 
-        return {
-            "success": True,
-            "data": insights
-        }
+        return {"success": True, "data": insights}
 
     except Exception as e:
         logger.error(f"Error getting insights: {e}")
@@ -550,11 +533,11 @@ async def analyze_by_setup(days: Optional[int] = Query(None)):
                         "total_pnl": a.total_pnl,
                         "average_pnl": a.average_pnl,
                         "best_trade": a.best_trade,
-                        "worst_trade": a.worst_trade
+                        "worst_trade": a.worst_trade,
                     }
                     for a in analyses
                 ]
-            }
+            },
         }
 
     except Exception as e:
@@ -578,11 +561,11 @@ async def analyze_by_session(days: Optional[int] = Query(None)):
                         "total_trades": a.total_trades,
                         "win_rate": f"{a.win_rate:.2f}%",
                         "total_pnl": a.total_pnl,
-                        "average_pnl": a.average_pnl
+                        "average_pnl": a.average_pnl,
                     }
                     for a in analyses
                 ]
-            }
+            },
         }
 
     except Exception as e:
@@ -594,6 +577,7 @@ async def analyze_by_session(days: Optional[int] = Query(None)):
 # ALERT ENDPOINTS
 # ============================================================================
 
+
 @alerts_router.post("/send")
 async def send_alert(request: SendAlertRequest):
     """Send a custom alert"""
@@ -602,23 +586,19 @@ async def send_alert(request: SendAlertRequest):
             "low": AlertPriority.LOW,
             "medium": AlertPriority.MEDIUM,
             "high": AlertPriority.HIGH,
-            "critical": AlertPriority.CRITICAL
+            "critical": AlertPriority.CRITICAL,
         }
 
         priority = priority_map.get(request.priority.lower(), AlertPriority.MEDIUM)
 
-        results = await alert_manager.send_alert(
-            title=request.title,
-            message=request.message,
-            priority=priority
-        )
+        results = await alert_manager.send_alert(title=request.title, message=request.message, priority=priority)
 
         return {
             "success": True,
             "data": {
                 "sent_to": [ch.value for ch, success in results.items() if success],
-                "failed": [ch.value for ch, success in results.items() if not success]
-            }
+                "failed": [ch.value for ch, success in results.items() if not success],
+            },
         }
 
     except Exception as e:

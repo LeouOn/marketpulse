@@ -9,7 +9,6 @@ import pytest
 from src.research.strategies import InvalidParamsError, list_strategies
 from src.research.strategies.HalvingCycleAccumulation import HalvingCycleAccumulation
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -85,9 +84,7 @@ class TestHalvingCycleAccumulation:
     def test_validate_rejects_inverted(self) -> None:
         """aggressive_frac < conservative_frac should raise InvalidParamsError."""
         with pytest.raises(InvalidParamsError, match="aggressive_frac"):
-            HalvingCycleAccumulation(
-                params={"aggressive_frac": 0.3, "conservative_frac": 0.9}
-            )
+            HalvingCycleAccumulation(params={"aggressive_frac": 0.3, "conservative_frac": 0.9})
 
     def test_registry_includes(self) -> None:
         """Verify HalvingCycleAccumulation is in the strategy registry."""

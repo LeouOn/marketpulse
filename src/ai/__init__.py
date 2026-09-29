@@ -7,4 +7,4 @@ for intelligent market insights and trade recommendations.
 
 from .massive_analyst import MassiveAIAnalyst, TradingContext
 
-__all__ = ['MassiveAIAnalyst', 'TradingContext']
+__all__ = ["MassiveAIAnalyst", "TradingContext"]

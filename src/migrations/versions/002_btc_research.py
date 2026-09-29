@@ -5,6 +5,7 @@ Revises: 001
 Create Date: 2026-06-10
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -31,9 +32,7 @@ def upgrade() -> None:
         sa.Column("volume", sa.Numeric(20, 8)),
         sa.Column("source", sa.String(50), nullable=False, server_default="unknown"),
     )
-    op.create_index(
-        "ix_btc_ohlcv_daily_ts", "btc_ohlcv_daily", ["ts"], schema="market_data"
-    )
+    op.create_index("ix_btc_ohlcv_daily_ts", "btc_ohlcv_daily", ["ts"], schema="market_data")
 
     op.create_table(
         "btc_ohlcv_hourly",
@@ -46,9 +45,7 @@ def upgrade() -> None:
         sa.Column("volume", sa.Numeric(20, 8)),
         sa.Column("source", sa.String(50), nullable=False, server_default="unknown"),
     )
-    op.create_index(
-        "ix_btc_ohlcv_hourly_ts", "btc_ohlcv_hourly", ["ts"], schema="market_data"
-    )
+    op.create_index("ix_btc_ohlcv_hourly_ts", "btc_ohlcv_hourly", ["ts"], schema="market_data")
 
     # research_reports: persistent metadata for every backtest/MC the
     # agent or CLI ran. ``metrics`` is JSON so we can store whatever the

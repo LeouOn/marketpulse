@@ -28,7 +28,6 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.table import Table
 
 # Import our existing analysis systems
 from src.analysis.divergence_detector import scan_for_divergences
@@ -107,8 +106,7 @@ def _resolve_provider(settings) -> ProviderSpec:
         )
     if not (spec.model or "").strip():
         raise ValueError(
-            f"No model id configured for provider {spec.name!r}; set the matching "
-            f"llm.<provider>.model value"
+            f"No model id configured for provider {spec.name!r}; set the matching llm.<provider>.model value"
         )
 
     return spec
@@ -131,11 +129,11 @@ def _to_model_messages(history: list[dict[str, str]]) -> list[ModelMessage]:
     """
     messages: list[ModelMessage] = []
     for entry in history:
-        role = entry['role']
-        content = entry['content']
-        if role == 'user':
+        role = entry["role"]
+        content = entry["content"]
+        if role == "user":
             messages.append(ModelRequest(parts=[UserPromptPart(content)]))
-        elif role == 'assistant':
+        elif role == "assistant":
             messages.append(ModelResponse(parts=[TextPart(content)]))
         else:
             # Never guess: a system or tool entry replayed as the wrong kind of
@@ -147,6 +145,7 @@ def _to_model_messages(history: list[dict[str, str]]) -> list[ModelMessage]:
 @dataclass
 class TradingContext:
     """Context for trading decisions"""
+
     symbol: str
     timeframe: str = "1d"
     period: str = "3mo"
@@ -186,7 +185,7 @@ class MassiveAIAnalyst:
         self.provider = provider or _resolve_provider(self.settings)
         self.model = _build_model(self.provider)
 
-        self.massive_api_key = massive_api_key or os.getenv('MASSIVE_API_KEY')
+        self.massive_api_key = massive_api_key or os.getenv("MASSIVE_API_KEY")
 
         if not self.massive_api_key:
             logger.warning("No Massive.com API key found - MCP server features disabled")
@@ -217,19 +216,15 @@ class MassiveAIAnalyst:
 
         # Environment for MCP server
         env = os.environ.copy()
-        env['MASSIVE_API_KEY'] = self.massive_api_key
+        env["MASSIVE_API_KEY"] = self.massive_api_key
 
         logger.info("Creating Massive.com MCP server connection")
 
         return MCPToolset(
             StdioTransport(
                 command="uvx",
-                args=[
-                    "--from",
-                    "git+https://github.com/massive-com/mcp_massive@v0.4.0",
-                    "mcp_massive"
-                ],
-                env=env
+                args=["--from", "git+https://github.com/massive-com/mcp_massive@v0.4.0", "mcp_massive"],
+                env=env,
             )
         )
 
@@ -294,17 +289,13 @@ class MassiveAIAnalyst:
             # `instructions=` is the pydantic-ai 2.x parameter. The legacy
             # `system_prompt=` still reaches the model, but as a separate
             # SystemPromptPart that bypasses instruction ids and caching.
-            instructions=system_prompt
+            instructions=system_prompt,
         )
 
         logger.info(f"AI agent created on {self.provider.name}/{self.provider.model}")
         return self.agent
 
-    async def analyze_with_marketpulse(
-        self,
-        symbol: str,
-        context: TradingContext
-    ) -> Dict[str, Any]:
+    async def analyze_with_marketpulse(self, symbol: str, context: TradingContext) -> Dict[str, Any]:
         """
         Run MarketPulse technical analysis
 
@@ -337,42 +328,42 @@ class MassiveAIAnalyst:
 
             # 3. ICT Analysis
             ict_analysis = {
-                'fvgs': self.ict_analyzer.detect_fair_value_gaps(df),
-                'order_blocks': self.ict_analyzer.detect_order_blocks(df),
-                'liquidity': self.ict_analyzer.detect_liquidity_pools(df)
+                "fvgs": self.ict_analyzer.detect_fair_value_gaps(df),
+                "order_blocks": self.ict_analyzer.detect_order_blocks(df),
+                "liquidity": self.ict_analyzer.detect_liquidity_pools(df),
             }
 
             # 4. Current price and key levels
-            current_price = float(df['close'].iloc[-1])
-            recent_high = float(df['high'].iloc[-20:].max())
-            recent_low = float(df['low'].iloc[-20:].min())
+            current_price = float(df["close"].iloc[-1])
+            recent_high = float(df["high"].iloc[-20:].max())
+            recent_low = float(df["low"].iloc[-20:].min())
 
             # 5. Combine into analysis
             analysis = {
-                'symbol': symbol,
-                'current_price': current_price,
-                'timeframe': context.timeframe,
-                'period': context.period,
-                'divergences': {
-                    'total': divergences['total_divergences'],
-                    'signal': divergences['signal'],
-                    'by_type': divergences['by_type'],
-                    'strongest': divergences['strongest'],
-                    'list': divergences['divergences'][:3]  # Top 3
+                "symbol": symbol,
+                "current_price": current_price,
+                "timeframe": context.timeframe,
+                "period": context.period,
+                "divergences": {
+                    "total": divergences["total_divergences"],
+                    "signal": divergences["signal"],
+                    "by_type": divergences["by_type"],
+                    "strongest": divergences["strongest"],
+                    "list": divergences["divergences"][:3],  # Top 3
                 },
-                'trends': trends,
-                'ict': {
-                    'bullish_fvgs': len(ict_analysis['fvgs']['bullish']),
-                    'bearish_fvgs': len(ict_analysis['fvgs']['bearish']),
-                    'order_blocks': len(ict_analysis['order_blocks']),
-                    'liquidity_pools': len(ict_analysis['liquidity'])
+                "trends": trends,
+                "ict": {
+                    "bullish_fvgs": len(ict_analysis["fvgs"]["bullish"]),
+                    "bearish_fvgs": len(ict_analysis["fvgs"]["bearish"]),
+                    "order_blocks": len(ict_analysis["order_blocks"]),
+                    "liquidity_pools": len(ict_analysis["liquidity"]),
                 },
-                'key_levels': {
-                    'current': current_price,
-                    'recent_high': recent_high,
-                    'recent_low': recent_low,
-                    'range': recent_high - recent_low
-                }
+                "key_levels": {
+                    "current": current_price,
+                    "recent_high": recent_high,
+                    "recent_low": recent_low,
+                    "range": recent_high - recent_low,
+                },
             }
 
             logger.info(f"MarketPulse analysis complete for {symbol}")
@@ -383,13 +374,7 @@ class MassiveAIAnalyst:
             return {"error": str(e)}
 
     async def validate_trade(
-        self,
-        symbol: str,
-        entry_price: float,
-        stop_loss: float,
-        take_profit: float,
-        direction: str,
-        contracts: int = 1
+        self, symbol: str, entry_price: float, stop_loss: float, take_profit: float, direction: str, contracts: int = 1
     ) -> Dict[str, Any]:
         """
         Validate trade with risk management
@@ -413,22 +398,19 @@ class MassiveAIAnalyst:
             stop_loss=stop_loss,
             take_profit=take_profit,
             direction=direction,
-            contracts=contracts
+            contracts=contracts,
         )
 
         return {
-            'approved': validation.approved,
-            'reason': validation.reason,
-            'warnings': validation.warnings,
-            'risk_metrics': validation.risk_metrics,
-            'suggested_contracts': validation.suggested_contracts
+            "approved": validation.approved,
+            "reason": validation.reason,
+            "warnings": validation.warnings,
+            "risk_metrics": validation.risk_metrics,
+            "suggested_contracts": validation.suggested_contracts,
         }
 
     async def query(
-        self,
-        question: str,
-        context: Optional[TradingContext] = None,
-        include_technical_analysis: bool = True
+        self, question: str, context: Optional[TradingContext] = None, include_technical_analysis: bool = True
     ) -> str:
         """
         Query the AI analyst with natural language
@@ -448,25 +430,137 @@ class MassiveAIAnalyst:
         # Extract symbol from question if context not provided
         if not context and include_technical_analysis:
             import re
+
             STOPWORDS = {
-                'I', 'A', 'AN', 'THE', 'IS', 'IT', 'IN', 'ON', 'AT', 'TO', 'OF',
-                'AND', 'OR', 'FOR', 'BUT', 'NOT', 'BE', 'AS', 'IF', 'SO', 'DO',
-                'BY', 'UP', 'NO', 'MY', 'ME', 'WE', 'HE', 'SHE', 'AM', 'ARE',
-                'WAS', 'HAS', 'HAD', 'HIS', 'HER', 'ITS', 'OUR', 'ALL', 'ANY',
-                'CAN', 'GET', 'GOT', 'HOW', 'OUT', 'OWN', 'SAY', 'WHO', 'DID',
-                'DOES', 'WHAT', 'WHEN', 'WITH', 'FROM', 'THAT', 'THIS', 'WILL',
-                'HAVE', 'BEEN', 'EACH', 'MAKE', 'LIKE', 'THAN', 'INTO', 'SOME',
-                'COULD', 'THEM', 'THESE', 'THOSE', 'WOULD', 'SHOULD', 'ABOUT',
-                'WHICH', 'THEIR', 'THERE', 'WHERE', 'AFTER', 'BEFORE', 'BETWEEN',
-                'THROUGH', 'DURING', 'ABOVE', 'BELOW', 'MUCH', 'MANY', 'MORE',
-                'MOST', 'VERY', 'JUST', 'ALSO', 'STILL', 'EVEN', 'ONLY', 'THEN',
-                'NOW', 'HERE', 'WHY', 'ASK', 'ANALYZE', 'ANALYSIS', 'ANALYZING',
-                'GIVE', 'SHOW', 'TELL', 'THINK', 'KNOW', 'TAKE', 'COME', 'GO',
-                'BUY', 'SELL', 'LONG', 'SHORT', 'TRADE', 'TRADING', 'STOCK',
-                'MARKET', 'PRICE', 'TARGET', 'STOP', 'LOSS', 'PROFIT', 'RISK',
-                'POSITION', 'RECOMMEND', 'RECOMMENDATION', 'PLEASE',
+                "I",
+                "A",
+                "AN",
+                "THE",
+                "IS",
+                "IT",
+                "IN",
+                "ON",
+                "AT",
+                "TO",
+                "OF",
+                "AND",
+                "OR",
+                "FOR",
+                "BUT",
+                "NOT",
+                "BE",
+                "AS",
+                "IF",
+                "SO",
+                "DO",
+                "BY",
+                "UP",
+                "NO",
+                "MY",
+                "ME",
+                "WE",
+                "HE",
+                "SHE",
+                "AM",
+                "ARE",
+                "WAS",
+                "HAS",
+                "HAD",
+                "HIS",
+                "HER",
+                "ITS",
+                "OUR",
+                "ALL",
+                "ANY",
+                "CAN",
+                "GET",
+                "GOT",
+                "HOW",
+                "OUT",
+                "OWN",
+                "SAY",
+                "WHO",
+                "DID",
+                "DOES",
+                "WHAT",
+                "WHEN",
+                "WITH",
+                "FROM",
+                "THAT",
+                "THIS",
+                "WILL",
+                "HAVE",
+                "BEEN",
+                "EACH",
+                "MAKE",
+                "LIKE",
+                "THAN",
+                "INTO",
+                "SOME",
+                "COULD",
+                "THEM",
+                "THESE",
+                "THOSE",
+                "WOULD",
+                "SHOULD",
+                "ABOUT",
+                "WHICH",
+                "THEIR",
+                "THERE",
+                "WHERE",
+                "AFTER",
+                "BEFORE",
+                "BETWEEN",
+                "THROUGH",
+                "DURING",
+                "ABOVE",
+                "BELOW",
+                "MUCH",
+                "MANY",
+                "MORE",
+                "MOST",
+                "VERY",
+                "JUST",
+                "ALSO",
+                "STILL",
+                "EVEN",
+                "ONLY",
+                "THEN",
+                "NOW",
+                "HERE",
+                "WHY",
+                "ASK",
+                "ANALYZE",
+                "ANALYSIS",
+                "ANALYZING",
+                "GIVE",
+                "SHOW",
+                "TELL",
+                "THINK",
+                "KNOW",
+                "TAKE",
+                "COME",
+                "GO",
+                "BUY",
+                "SELL",
+                "LONG",
+                "SHORT",
+                "TRADE",
+                "TRADING",
+                "STOCK",
+                "MARKET",
+                "PRICE",
+                "TARGET",
+                "STOP",
+                "LOSS",
+                "PROFIT",
+                "RISK",
+                "POSITION",
+                "RECOMMEND",
+                "RECOMMENDATION",
+                "PLEASE",
             }
-            symbols = [s for s in re.findall(r'\b[A-Z]{1,5}\b', question.upper()) if s not in STOPWORDS]
+            symbols = [s for s in re.findall(r"\b[A-Z]{1,5}\b", question.upper()) if s not in STOPWORDS]
             if symbols:
                 context = TradingContext(symbol=symbols[0])
 
@@ -476,14 +570,14 @@ class MassiveAIAnalyst:
             tech_analysis = await self.analyze_with_marketpulse(context.symbol, context)
 
             # Add technical analysis to question
-            if 'error' not in tech_analysis:
+            if "error" not in tech_analysis:
                 question += f"\n\nMarketPulse Technical Analysis for {context.symbol}:\n"
                 question += f"- Current Price: ${tech_analysis['current_price']:.2f}\n"
                 question += f"- Divergence Signal: {tech_analysis['divergences']['signal']}\n"
                 question += f"- Total Divergences: {tech_analysis['divergences']['total']}\n"
 
-                if tech_analysis['divergences']['strongest']:
-                    strongest = tech_analysis['divergences']['strongest']
+                if tech_analysis["divergences"]["strongest"]:
+                    strongest = tech_analysis["divergences"]["strongest"]
                     question += f"- Strongest Divergence: {strongest['indicator'].upper()} "
                     question += f"{strongest['type'].replace('_', ' ').title()} "
                     question += f"(strength: {strongest['strength']:.0f})\n"
@@ -499,20 +593,11 @@ class MassiveAIAnalyst:
 
         try:
             # Run agent
-            response = await self.agent.run(
-                question,
-                message_history=_to_model_messages(self.message_history)
-            )
+            response = await self.agent.run(question, message_history=_to_model_messages(self.message_history))
 
             # Update message history
-            self.message_history.append({
-                'role': 'user',
-                'content': question
-            })
-            self.message_history.append({
-                'role': 'assistant',
-                'content': response.output
-            })
+            self.message_history.append({"role": "user", "content": question})
+            self.message_history.append({"role": "assistant", "content": response.output})
 
             # Keep only last 10 messages
             if len(self.message_history) > 10:
@@ -524,11 +609,7 @@ class MassiveAIAnalyst:
             logger.error(f"Error querying AI analyst: {e}")
             return f"Error: {str(e)}"
 
-    async def get_trade_recommendation(
-        self,
-        symbol: str,
-        context: Optional[TradingContext] = None
-    ) -> Dict[str, Any]:
+    async def get_trade_recommendation(self, symbol: str, context: Optional[TradingContext] = None) -> Dict[str, Any]:
         """
         Get comprehensive trade recommendation
 
@@ -567,29 +648,23 @@ class MassiveAIAnalyst:
         # Get AI recommendation
         response = await self.query(query, context=context, include_technical_analysis=True)
 
-        return {
-            'symbol': symbol,
-            'recommendation': response,
-            'timestamp': datetime.now().isoformat()
-        }
+        return {"symbol": symbol, "recommendation": response, "timestamp": datetime.now().isoformat()}
 
     def display_response(self, response: str, title: str = "AI Trading Analyst"):
         """Display AI response with rich formatting"""
-        console.print(Panel(
-            Markdown(response),
-            title=f"[bold cyan]{title}[/bold cyan]",
-            border_style="cyan"
-        ))
+        console.print(Panel(Markdown(response), title=f"[bold cyan]{title}[/bold cyan]", border_style="cyan"))
 
     async def interactive_session(self):
         """Run interactive Q&A session"""
-        console.print(Panel(
-            "[bold green]AI Trading Analyst[/bold green]\n\n"
-            f"Powered by Massive.com + {self.provider.name} + MarketPulse\n\n"
-            "Ask questions about markets, get trade recommendations, or analyze symbols.\n"
-            "Type 'exit' to quit.",
-            border_style="green"
-        ))
+        console.print(
+            Panel(
+                "[bold green]AI Trading Analyst[/bold green]\n\n"
+                f"Powered by Massive.com + {self.provider.name} + MarketPulse\n\n"
+                "Ask questions about markets, get trade recommendations, or analyze symbols.\n"
+                "Type 'exit' to quit.",
+                border_style="green",
+            )
+        )
 
         # Create agent
         await self.create_agent()
@@ -599,7 +674,7 @@ class MassiveAIAnalyst:
             console.print()
             question = console.input("[bold yellow]You:[/bold yellow] ")
 
-            if question.lower() in ['exit', 'quit', 'q']:
+            if question.lower() in ["exit", "quit", "q"]:
                 console.print("[green]Goodbye![/green]")
                 break
 
@@ -621,5 +696,5 @@ async def main():
     await analyst.interactive_session()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

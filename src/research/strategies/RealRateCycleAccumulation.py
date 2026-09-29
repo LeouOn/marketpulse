@@ -58,9 +58,7 @@ class RealRateCycleAccumulation(CycleAccumulation):
         "neutral_intensity": 1.0,
     }
 
-    def _cycle_phase(
-        self, timestamp: pd.Timestamp, factor_df: pd.DataFrame
-    ) -> float:
+    def _cycle_phase(self, timestamp: pd.Timestamp, factor_df: pd.DataFrame) -> float:
         """Return the gold accumulation intensity at ``timestamp``.
 
         Implements the 3-tier phase logic from the v1 spec.  All fallback

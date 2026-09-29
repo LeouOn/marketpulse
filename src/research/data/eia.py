@@ -58,10 +58,10 @@ _CONTRACT_COLUMNS = ["ts", "open", "high", "low", "close", "volume", "source"]
 # CRITICAL: v2 API facets[series][] expects SHORT codes (e.g. RWTC), not
 # legacy dotted IDs. Filtering by dotted ID silently returns 0 rows.
 _SERIES_ROUTE: dict[str, tuple[str, str, str]] = {
-    "PET.RWTC.D":          ("petroleum/pri/spt/data",   "daily",  "RWTC"),
-    "PET.RBRTE.D":         ("petroleum/pri/spt/data",   "daily",  "RBRTE"),
-    "PET.WGFUPUS2.W":      ("petroleum/stoc/wstk/data", "weekly", "WCRSTUS1"),
-    "PET.WPULEUS3.W":      ("petroleum/stoc/wstk/data", "weekly", "WGTSTUS1"),
+    "PET.RWTC.D": ("petroleum/pri/spt/data", "daily", "RWTC"),
+    "PET.RBRTE.D": ("petroleum/pri/spt/data", "daily", "RBRTE"),
+    "PET.WGFUPUS2.W": ("petroleum/stoc/wstk/data", "weekly", "WCRSTUS1"),
+    "PET.WPULEUS3.W": ("petroleum/stoc/wstk/data", "weekly", "WGTSTUS1"),
     "PET.WPUP_NUS-Z1_2.W": ("petroleum/stoc/wstk/data", "weekly", "WDISTUS1"),
 }
 
@@ -101,9 +101,7 @@ class EiaProvider(DataProvider):
         # from the tracked data/eia_cache parquets on first use; an
         # explicit cache_dir is caller-managed and never seeded.
         self._seeded_cache_root: bool = cache_dir is None
-        self.cache_dir: Path = (
-            _cache_dir("eia_cache") if cache_dir is None else Path(cache_dir)
-        )
+        self.cache_dir: Path = _cache_dir("eia_cache") if cache_dir is None else Path(cache_dir)
         self.max_staleness_days: int = max_staleness_days
         # Default series used by load_daily() — WTI spot daily.
         self.series_id: str = series_id
@@ -160,8 +158,7 @@ class EiaProvider(DataProvider):
             end = date.fromisoformat(end)
         if series_id not in self.SUPPORTED_SERIES:
             raise ValueError(
-                f"Unsupported EIA series: {series_id!r}. "
-                f"Supported (oil only): {sorted(self.SUPPORTED_SERIES)}"
+                f"Unsupported EIA series: {series_id!r}. Supported (oil only): {sorted(self.SUPPORTED_SERIES)}"
             )
 
         cache_path = self._cache_path(series_id)
@@ -176,8 +173,7 @@ class EiaProvider(DataProvider):
             payload = self._fetch_raw(series_id, start, end)
         except Exception as exc:
             raise DataPipelineError(
-                f"EIA fetch failed for {series_id} ({start} → {end}) "
-                f"and no fresh cache is available: {exc}"
+                f"EIA fetch failed for {series_id} ({start} → {end}) and no fresh cache is available: {exc}"
             ) from exc
 
         new_df = self._parse_payload(payload, series_id)
@@ -214,12 +210,8 @@ class EiaProvider(DataProvider):
         url = self._build_url(series_id, start, end)
         retryer = Retrying(
             stop=stop_after_attempt(self.retry_attempts),
-            wait=wait_exponential_jitter(
-                initial=self.retry_initial_wait, max=self.retry_max_wait
-            ),
-            retry=retry_if_exception_type(
-                (requests.HTTPError, requests.Timeout, requests.ConnectionError)
-            ),
+            wait=wait_exponential_jitter(initial=self.retry_initial_wait, max=self.retry_max_wait),
+            retry=retry_if_exception_type((requests.HTTPError, requests.Timeout, requests.ConnectionError)),
             reraise=True,
         )
         for attempt in retryer:
@@ -287,9 +279,7 @@ class EiaProvider(DataProvider):
         try:
             df = pd.read_parquet(cache_path)
         except Exception as exc:
-            logger.warning(
-                f"Corrupt EIA parquet cache {cache_path}: {exc}; treating as empty"
-            )
+            logger.warning(f"Corrupt EIA parquet cache {cache_path}: {exc}; treating as empty")
             return empty
         if df.empty:
             return empty
@@ -312,11 +302,7 @@ class EiaProvider(DataProvider):
             combined = existing.copy()
         else:
             combined = pd.concat([existing, new], ignore_index=True)
-        combined = (
-            combined.drop_duplicates(subset=["ts"], keep="last")
-            .sort_values("ts")
-            .reset_index(drop=True)
-        )
+        combined = combined.drop_duplicates(subset=["ts"], keep="last").sort_values("ts").reset_index(drop=True)
         return combined
 
     @staticmethod

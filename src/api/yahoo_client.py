@@ -456,36 +456,38 @@ class YahooFinanceClient:
         try:
             ticker = yf.Ticker(symbol)
 
-            hist = ticker.history(period='1d')
-            underlying_price = float(hist['Close'].iloc[-1]) if not hist.empty else None
+            hist = ticker.history(period="1d")
+            underlying_price = float(hist["Close"].iloc[-1]) if not hist.empty else None
 
             chain = ticker.option_chain(expiration)
 
-            calls_dict = chain.calls.to_dict('records') if not chain.calls.empty else []
-            puts_dict = chain.puts.to_dict('records') if not chain.puts.empty else []
+            calls_dict = chain.calls.to_dict("records") if not chain.calls.empty else []
+            puts_dict = chain.puts.to_dict("records") if not chain.puts.empty else []
 
             result = {
-                'symbol': symbol,
-                'expiration': expiration,
-                'underlying_price': underlying_price,
-                'calls': calls_dict,
-                'puts': puts_dict,
-                'timestamp': datetime.now().isoformat()
+                "symbol": symbol,
+                "expiration": expiration,
+                "underlying_price": underlying_price,
+                "calls": calls_dict,
+                "puts": puts_dict,
+                "timestamp": datetime.now().isoformat(),
             }
 
-            logger.info(f"Retrieved options chain for {symbol} expiring {expiration}: {len(calls_dict)} calls, {len(puts_dict)} puts")
+            logger.info(
+                f"Retrieved options chain for {symbol} expiring {expiration}: {len(calls_dict)} calls, {len(puts_dict)} puts"
+            )
             return result
 
         except Exception as e:
             logger.error(f"Error fetching options chain for {symbol} {expiration}: {e}")
             return {
-                'symbol': symbol,
-                'expiration': expiration,
-                'underlying_price': None,
-                'calls': [],
-                'puts': [],
-                'timestamp': datetime.now().isoformat(),
-                'error': str(e)
+                "symbol": symbol,
+                "expiration": expiration,
+                "underlying_price": None,
+                "calls": [],
+                "puts": [],
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e),
             }
 
     def get_risk_free_rate(self) -> float:
@@ -495,14 +497,14 @@ class YahooFinanceClient:
             Risk-free rate as decimal (e.g., 0.045 for 4.5%)
         """
         try:
-            ticker = yf.Ticker('^TNX')
-            hist = ticker.history(period='5d')
+            ticker = yf.Ticker("^TNX")
+            hist = ticker.history(period="5d")
 
             if hist.empty:
                 logger.warning("Could not fetch Treasury yield, using default 4.5%")
                 return 0.045
 
-            tnx_value = float(hist['Close'].iloc[-1])
+            tnx_value = float(hist["Close"].iloc[-1])
             rate = tnx_value / 100.0
 
             logger.info(f"Current risk-free rate: {rate:.4f} ({tnx_value:.2f}%)")
@@ -525,19 +527,19 @@ class YahooFinanceClient:
             ticker = yf.Ticker(symbol)
             info = ticker.info
 
-            div_yield = info.get('dividendYield', 0.0)
+            div_yield = info.get("dividendYield", 0.0)
 
             if div_yield is None:
                 div_yield = 0.0
 
-            logger.info(f"Dividend yield for {symbol}: {div_yield:.4f} ({div_yield*100:.2f}%)")
+            logger.info(f"Dividend yield for {symbol}: {div_yield:.4f} ({div_yield * 100:.2f}%)")
             return float(div_yield)
 
         except Exception as e:
             logger.error(f"Error fetching dividend yield for {symbol}: {e}")
             return 0.0
 
-    def get_bars(self, symbol: str, period: str = '1mo', interval: str = '1d') -> pd.DataFrame | None:
+    def get_bars(self, symbol: str, period: str = "1mo", interval: str = "1d") -> pd.DataFrame | None:
         """Get historical OHLC data for a symbol
 
         Args:
@@ -630,12 +632,8 @@ class YahooFinanceClient:
                                 "symbol": str(row.get("Symbol", "")),
                                 "name": str(row.get("Name", "")),
                                 "price": float(str(row.get("Price (Intraday)", 0)).replace(",", "")),
-                                "change_pct": float(
-                                    str(row.get("% Change", "0")).replace("%", "").replace(",", "")
-                                ),
-                                "volume": int(
-                                    str(row.get("Volume", "0")).replace(",", "").replace("-", "0")
-                                ),
+                                "change_pct": float(str(row.get("% Change", "0")).replace("%", "").replace(",", "")),
+                                "volume": int(str(row.get("Volume", "0")).replace(",", "").replace("-", "0")),
                                 "market_cap": 0,
                             }
                         )

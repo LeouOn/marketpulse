@@ -35,14 +35,10 @@ Spec: .omo/plans/multi-asset-macro-research-lab.md W4 T16-T17.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
-from dataclasses import dataclass
-
 import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.strategies import Strategy
 from src.research.strategies.cycle_base import CycleAccumulation
 from src.research.strategies.EarningsCycleAccumulation import (
     EarningsCycleAccumulation,
@@ -53,7 +49,6 @@ from src.research.strategies.OPECCycleAccumulation import (
 from src.research.strategies.RealRateCycleAccumulation import (
     RealRateCycleAccumulation,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -155,9 +150,7 @@ class TestRealRateCycle:
 
     def test_falling_fast_yields_15(self) -> None:
         """1Y drop of 1.0pp (2.5 -> 1.5) is below the -0.5pp threshold -> 1.5."""
-        factor_df = _real_yield_factor_df(
-            n=300, prior_value=2.5, current_value=1.5
-        )
+        factor_df = _real_yield_factor_df(n=300, prior_value=2.5, current_value=1.5)
         timestamp = factor_df.index[-1]
         strat = RealRateCycleAccumulation()
 
@@ -167,9 +160,7 @@ class TestRealRateCycle:
 
     def test_rising_fast_yields_03(self) -> None:
         """1Y rise of 1.0pp (1.0 -> 2.0) is above the +0.5pp threshold -> 0.3."""
-        factor_df = _real_yield_factor_df(
-            n=300, prior_value=1.0, current_value=2.0
-        )
+        factor_df = _real_yield_factor_df(n=300, prior_value=1.0, current_value=2.0)
         timestamp = factor_df.index[-1]
         strat = RealRateCycleAccumulation()
 
@@ -179,9 +170,7 @@ class TestRealRateCycle:
 
     def test_neutral_change_yields_10(self) -> None:
         """1Y drop of 0.2pp (2.0 -> 1.8) is inside the neutral band -> 1.0."""
-        factor_df = _real_yield_factor_df(
-            n=300, prior_value=2.0, current_value=1.8
-        )
+        factor_df = _real_yield_factor_df(n=300, prior_value=2.0, current_value=1.8)
         timestamp = factor_df.index[-1]
         strat = RealRateCycleAccumulation()
 
@@ -205,9 +194,7 @@ class TestRealRateCycle:
     def test_insufficient_history_returns_neutral(self) -> None:
         """Less than lookback//2 rows of history -> neutral (can't measure 1Y)."""
         # lookback_days default = 252; lookback//2 = 126. Use only 50 rows.
-        factor_df = _real_yield_factor_df(
-            n=50, prior_value=2.5, current_value=1.0
-        )
+        factor_df = _real_yield_factor_df(n=50, prior_value=2.5, current_value=1.0)
         timestamp = factor_df.index[-1]
         strat = RealRateCycleAccumulation()
 
@@ -251,9 +238,7 @@ def test_generate_signals_output_clipped_to_bounds() -> None:
     # Mix of phases: prior 2.5 -> current 1.5 (falling) at the last bar,
     # earlier bars have enough history to also compute a phase.  Whatever
     # the per-row phase is, all outputs must be within bounds.
-    factor_df = _real_yield_factor_df(
-        n=300, prior_value=2.5, current_value=1.5
-    )
+    factor_df = _real_yield_factor_df(n=300, prior_value=2.5, current_value=1.5)
     # df covers the last week of the factor window so all timestamps land
     # inside factor_df (sufficient history on every row).
     df = pd.DataFrame(
@@ -388,9 +373,7 @@ class TestOPECCycle:
 
     def test_drawing_inventories_yields_10(self) -> None:
         """inventory_z = -2.0 (drawing) AND spot_trend = +1.0 -> 1.0 (trend-follow)."""
-        factor_df = _oil_inventory_factor_df(
-            n=10, inventory_z_last=-2.0, spot_trend_last=1.0
-        )
+        factor_df = _oil_inventory_factor_df(n=10, inventory_z_last=-2.0, spot_trend_last=1.0)
         timestamp = factor_df.index[-1]
         strat = OPECCycleAccumulation()
 
@@ -400,9 +383,7 @@ class TestOPECCycle:
 
     def test_building_inventories_yields_03(self) -> None:
         """inventory_z = +2.0 (building) -> 0.3 (slow accumulation, bearish)."""
-        factor_df = _oil_inventory_factor_df(
-            n=10, inventory_z_last=2.0, spot_trend_last=0.0
-        )
+        factor_df = _oil_inventory_factor_df(n=10, inventory_z_last=2.0, spot_trend_last=0.0)
         timestamp = factor_df.index[-1]
         strat = OPECCycleAccumulation()
 
@@ -412,9 +393,7 @@ class TestOPECCycle:
 
     def test_neutral_inventories_yields_10(self) -> None:
         """inventory_z = 0.0 (neutral band) -> 1.0."""
-        factor_df = _oil_inventory_factor_df(
-            n=10, inventory_z_last=0.0, spot_trend_last=0.0
-        )
+        factor_df = _oil_inventory_factor_df(n=10, inventory_z_last=0.0, spot_trend_last=0.0)
         timestamp = factor_df.index[-1]
         strat = OPECCycleAccumulation()
 
@@ -429,9 +408,7 @@ class TestOPECCycle:
         confirmation.  Without confirmation we fall through to neutral
         (conservative: don't lean in without price action).
         """
-        factor_df = _oil_inventory_factor_df(
-            n=10, inventory_z_last=-2.0, spot_trend_last=0.0
-        )
+        factor_df = _oil_inventory_factor_df(n=10, inventory_z_last=-2.0, spot_trend_last=0.0)
         timestamp = factor_df.index[-1]
         strat = OPECCycleAccumulation()
 
@@ -537,9 +514,7 @@ class TestMortgageCycle:
             MortgageCycleAccumulation,
         )
 
-        factor_df = _mortgage_factor_df(
-            n=300, prior_value=7.0, current_value=6.0
-        )
+        factor_df = _mortgage_factor_df(n=300, prior_value=7.0, current_value=6.0)
         timestamp = factor_df.index[-1]
         strat = MortgageCycleAccumulation()
 
@@ -553,9 +528,7 @@ class TestMortgageCycle:
             MortgageCycleAccumulation,
         )
 
-        factor_df = _mortgage_factor_df(
-            n=300, prior_value=6.0, current_value=7.0
-        )
+        factor_df = _mortgage_factor_df(n=300, prior_value=6.0, current_value=7.0)
         timestamp = factor_df.index[-1]
         strat = MortgageCycleAccumulation()
 
@@ -569,9 +542,7 @@ class TestMortgageCycle:
             MortgageCycleAccumulation,
         )
 
-        factor_df = _mortgage_factor_df(
-            n=300, prior_value=7.0, current_value=6.8
-        )
+        factor_df = _mortgage_factor_df(n=300, prior_value=7.0, current_value=6.8)
         timestamp = factor_df.index[-1]
         strat = MortgageCycleAccumulation()
 
@@ -603,9 +574,7 @@ class TestMortgageCycle:
         )
 
         # lookback_days default = 252; lookback//2 = 126. Use only 50 rows.
-        factor_df = _mortgage_factor_df(
-            n=50, prior_value=7.0, current_value=5.0
-        )
+        factor_df = _mortgage_factor_df(n=50, prior_value=7.0, current_value=5.0)
         timestamp = factor_df.index[-1]
         strat = MortgageCycleAccumulation()
 

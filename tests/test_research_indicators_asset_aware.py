@@ -14,7 +14,6 @@ These tests pin the contract introduced by the multi-asset refactor:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from unittest.mock import patch
 
 import numpy as np
@@ -24,7 +23,6 @@ from loguru import logger
 
 from src.research.backtest.indicators import IndicatorProvider
 from src.research.data import AssetConfig, DataProvider
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -186,9 +184,9 @@ def test_explicit_enable_fgi_overrides_whitelist_with_warning(capture_warnings):
     assert ip.enable_fgi is True  # override honoured
     assert ip.enable_mvrv is False  # mvrv still auto-resolved
 
-    assert any(
-        "enable_fgi=True overrides" in msg for msg in capture_warnings
-    ), f"expected override warning, got: {capture_warnings}"
+    assert any("enable_fgi=True overrides" in msg for msg in capture_warnings), (
+        f"expected override warning, got: {capture_warnings}"
+    )
 
 
 def test_explicit_enable_mvrv_overrides_whitelist_with_warning(capture_warnings):
@@ -197,9 +195,9 @@ def test_explicit_enable_mvrv_overrides_whitelist_with_warning(capture_warnings)
     assert ip.enable_mvrv is True
     assert ip.enable_fgi is False
 
-    assert any(
-        "enable_mvrv=True overrides" in msg for msg in capture_warnings
-    ), f"expected override warning, got: {capture_warnings}"
+    assert any("enable_mvrv=True overrides" in msg for msg in capture_warnings), (
+        f"expected override warning, got: {capture_warnings}"
+    )
 
 
 def test_explicit_disable_on_btc_whitelist_warns(capture_warnings):
@@ -208,6 +206,6 @@ def test_explicit_disable_on_btc_whitelist_warns(capture_warnings):
     assert ip.enable_fgi is False
     assert ip.enable_mvrv is True  # auto-resolved from whitelist
 
-    assert any(
-        "enable_fgi=False overrides" in msg for msg in capture_warnings
-    ), f"expected override warning, got: {capture_warnings}"
+    assert any("enable_fgi=False overrides" in msg for msg in capture_warnings), (
+        f"expected override warning, got: {capture_warnings}"
+    )

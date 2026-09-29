@@ -10,26 +10,34 @@ Signal Types:
 - Market Structure Break + Order Flow Confirmation
 """
 
-import pandas as pd
-import numpy as np
 from dataclasses import dataclass
-from typing import List, Optional, Literal, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
+
+import pandas as pd
 from loguru import logger
 
 from .ict_concepts import (
-    FairValueGap, OrderBlock, LiquidityPool, MarketStructure,
-    FairValueGapDetector, OrderBlockIdentifier, LiquidityDetector, MarketStructureAnalyzer
+    FairValueGap,
+    FairValueGapDetector,
+    LiquidityDetector,
+    LiquidityPool,
+    MarketStructure,
+    MarketStructureAnalyzer,
+    OrderBlock,
+    OrderBlockIdentifier,
 )
 from .order_flow import (
-    VolumeBar, VolumeProfile, DeltaDivergence, Imbalance,
-    CumulativeVolumeDeltaCalculator, VolumeDeltaAnalyzer, VolumeProfileBuilder
+    CumulativeVolumeDeltaCalculator,
+    VolumeDeltaAnalyzer,
+    VolumeProfileBuilder,
 )
 
 
 @dataclass
 class ICTSignal:
     """Trading signal based on ICT concepts + order flow"""
+
     type: Literal["long", "short"]
     confidence: float  # 0-100
     entry_price: float
@@ -56,6 +64,7 @@ class ICTSignal:
 @dataclass
 class SignalConfluence:
     """Track confluence of multiple signals"""
+
     score: float  # 0-100
     elements: Dict[str, bool]  # Which elements are present
     strength: str  # weak/moderate/strong
@@ -74,12 +83,8 @@ class ICTSignalGenerator:
         self.settings = settings or {}
 
         # Initialize ICT analyzers
-        self.fvg_detector = FairValueGapDetector(
-            min_gap_size=self.settings.get('min_fvg_size', 2.0)
-        )
-        self.ob_identifier = OrderBlockIdentifier(
-            min_displacement=self.settings.get('min_displacement', 5.0)
-        )
+        self.fvg_detector = FairValueGapDetector(min_gap_size=self.settings.get("min_fvg_size", 2.0))
+        self.ob_identifier = OrderBlockIdentifier(min_displacement=self.settings.get("min_displacement", 5.0))
         self.liq_detector = LiquidityDetector()
         self.structure_analyzer = MarketStructureAnalyzer()
 
@@ -124,19 +129,17 @@ class ICTSignalGenerator:
         cvd_series = self._synthetic_cvd_from_candles(candles)
 
         return {
-            'fvgs': fvgs,
-            'order_blocks': order_blocks,
-            'liquidity_pools': liquidity_pools,
-            'market_structure': market_structure,
-            'volume_profile': volume_profile,
-            'cvd': cvd_series,
-            'timestamp': datetime.now()
+            "fvgs": fvgs,
+            "order_blocks": order_blocks,
+            "liquidity_pools": liquidity_pools,
+            "market_structure": market_structure,
+            "volume_profile": volume_profile,
+            "cvd": cvd_series,
+            "timestamp": datetime.now(),
         }
 
     def generate_signals(
-        self,
-        candles: pd.DataFrame,
-        market_analysis: Optional[Dict[str, Any]] = None
+        self, candles: pd.DataFrame, market_analysis: Optional[Dict[str, Any]] = None
     ) -> List[ICTSignal]:
         """
         Generate trading signals from market analysis
@@ -155,28 +158,19 @@ class ICTSignalGenerator:
 
         # Signal Type 1: FVG Fill + CVD Confirmation
         fvg_signals = self._generate_fvg_signals(
-            candles,
-            market_analysis['fvgs'],
-            market_analysis['cvd'],
-            market_analysis['market_structure']
+            candles, market_analysis["fvgs"], market_analysis["cvd"], market_analysis["market_structure"]
         )
         signals.extend(fvg_signals)
 
         # Signal Type 2: Order Block Retest + Volume
         ob_signals = self._generate_order_block_signals(
-            candles,
-            market_analysis['order_blocks'],
-            market_analysis['cvd'],
-            market_analysis['market_structure']
+            candles, market_analysis["order_blocks"], market_analysis["cvd"], market_analysis["market_structure"]
         )
         signals.extend(ob_signals)
 
         # Signal Type 3: Liquidity Sweep + Reversal
         liq_signals = self._generate_liquidity_sweep_signals(
-            candles,
-            market_analysis['liquidity_pools'],
-            market_analysis['cvd'],
-            market_analysis['market_structure']
+            candles, market_analysis["liquidity_pools"], market_analysis["cvd"], market_analysis["market_structure"]
         )
         signals.extend(liq_signals)
 
@@ -187,23 +181,19 @@ class ICTSignalGenerator:
         return signals
 
     def _generate_fvg_signals(
-        self,
-        candles: pd.DataFrame,
-        fvgs: List[FairValueGap],
-        cvd: pd.Series,
-        market_structure: MarketStructure
+        self, candles: pd.DataFrame, fvgs: List[FairValueGap], cvd: pd.Series, market_structure: MarketStructure
     ) -> List[ICTSignal]:
         """Generate signals from FVG fills"""
         signals = []
 
-        current_price = candles.iloc[-1]['close']
+        current_price = candles.iloc[-1]["close"]
         current_time = candles.index[-1]
 
         for fvg in fvgs:
             # Only trade FVGs that align with market structure
-            if fvg.type == 'bullish' and market_structure.type != 'bullish':
+            if fvg.type == "bullish" and market_structure.type != "bullish":
                 continue
-            if fvg.type == 'bearish' and market_structure.type != 'bearish':
+            if fvg.type == "bearish" and market_structure.type != "bearish":
                 continue
 
             # Check if FVG just filled (50%+)
@@ -217,22 +207,23 @@ class ICTSignalGenerator:
                 if len(cvd) > 0:
                     recent_cvd = cvd.iloc[-5:].mean() if len(cvd) >= 5 else cvd.iloc[-1]
 
-                    cvd_confirms = (
-                        (fvg.type == 'bullish' and recent_cvd > 0) or
-                        (fvg.type == 'bearish' and recent_cvd < 0)
+                    cvd_confirms = (fvg.type == "bullish" and recent_cvd > 0) or (
+                        fvg.type == "bearish" and recent_cvd < 0
                     )
 
                     if cvd_confirms:
                         # Calculate confidence
-                        confluence = self._calculate_confluence({
-                            'fvg_filled': True,
-                            'cvd_confirms': True,
-                            'structure_aligned': True,
-                            'volume_spike': candles.iloc[-1]['volume'] > candles['volume'].mean()
-                        })
+                        confluence = self._calculate_confluence(
+                            {
+                                "fvg_filled": True,
+                                "cvd_confirms": True,
+                                "structure_aligned": True,
+                                "volume_spike": candles.iloc[-1]["volume"] > candles["volume"].mean(),
+                            }
+                        )
 
                         # Generate signal
-                        if fvg.type == 'bullish':
+                        if fvg.type == "bullish":
                             entry = current_price
                             stop = fvg.lower - 2  # 2 points below FVG
                             tp1 = fvg.upper + (fvg.upper - fvg.lower)  # 1:1 R/R
@@ -241,21 +232,23 @@ class ICTSignalGenerator:
                             risk = entry - stop
                             reward = tp1 - entry
 
-                            signals.append(ICTSignal(
-                                type='long',
-                                confidence=confluence.score,
-                                entry_price=entry,
-                                stop_loss=stop,
-                                take_profit=[tp1, tp2],
-                                timestamp=current_time,
-                                trigger='FVG_FILL',
-                                ict_elements=['Bullish FVG', 'Market Structure Bullish'],
-                                order_flow_confirmation=f'CVD: {recent_cvd:+.0f}',
-                                risk=risk,
-                                reward=reward,
-                                risk_reward_ratio=reward / risk if risk > 0 else 0,
-                                market_structure='bullish'
-                            ))
+                            signals.append(
+                                ICTSignal(
+                                    type="long",
+                                    confidence=confluence.score,
+                                    entry_price=entry,
+                                    stop_loss=stop,
+                                    take_profit=[tp1, tp2],
+                                    timestamp=current_time,
+                                    trigger="FVG_FILL",
+                                    ict_elements=["Bullish FVG", "Market Structure Bullish"],
+                                    order_flow_confirmation=f"CVD: {recent_cvd:+.0f}",
+                                    risk=risk,
+                                    reward=reward,
+                                    risk_reward_ratio=reward / risk if risk > 0 else 0,
+                                    market_structure="bullish",
+                                )
+                            )
 
                         else:  # bearish
                             entry = current_price
@@ -266,35 +259,33 @@ class ICTSignalGenerator:
                             risk = stop - entry
                             reward = entry - tp1
 
-                            signals.append(ICTSignal(
-                                type='short',
-                                confidence=confluence.score,
-                                entry_price=entry,
-                                stop_loss=stop,
-                                take_profit=[tp1, tp2],
-                                timestamp=current_time,
-                                trigger='FVG_FILL',
-                                ict_elements=['Bearish FVG', 'Market Structure Bearish'],
-                                order_flow_confirmation=f'CVD: {recent_cvd:+.0f}',
-                                risk=risk,
-                                reward=reward,
-                                risk_reward_ratio=reward / risk if risk > 0 else 0,
-                                market_structure='bearish'
-                            ))
+                            signals.append(
+                                ICTSignal(
+                                    type="short",
+                                    confidence=confluence.score,
+                                    entry_price=entry,
+                                    stop_loss=stop,
+                                    take_profit=[tp1, tp2],
+                                    timestamp=current_time,
+                                    trigger="FVG_FILL",
+                                    ict_elements=["Bearish FVG", "Market Structure Bearish"],
+                                    order_flow_confirmation=f"CVD: {recent_cvd:+.0f}",
+                                    risk=risk,
+                                    reward=reward,
+                                    risk_reward_ratio=reward / risk if risk > 0 else 0,
+                                    market_structure="bearish",
+                                )
+                            )
 
         return signals
 
     def _generate_order_block_signals(
-        self,
-        candles: pd.DataFrame,
-        order_blocks: List[OrderBlock],
-        cvd: pd.Series,
-        market_structure: MarketStructure
+        self, candles: pd.DataFrame, order_blocks: List[OrderBlock], cvd: pd.Series, market_structure: MarketStructure
     ) -> List[ICTSignal]:
         """Generate signals from Order Block retests"""
         signals = []
 
-        current_price = candles.iloc[-1]['close']
+        current_price = candles.iloc[-1]["close"]
         current_time = candles.index[-1]
 
         for ob in order_blocks:
@@ -302,35 +293,35 @@ class ICTSignalGenerator:
                 continue
 
             # Check if OB aligns with structure
-            if ob.type == 'bullish' and market_structure.type != 'bullish':
+            if ob.type == "bullish" and market_structure.type != "bullish":
                 continue
-            if ob.type == 'bearish' and market_structure.type != 'bearish':
+            if ob.type == "bearish" and market_structure.type != "bearish":
                 continue
 
             # Check if price is at OB
-            at_ob = (
-                (ob.type == 'bullish' and ob.low <= current_price <= ob.high) or
-                (ob.type == 'bearish' and ob.low <= current_price <= ob.high)
+            at_ob = (ob.type == "bullish" and ob.low <= current_price <= ob.high) or (
+                ob.type == "bearish" and ob.low <= current_price <= ob.high
             )
 
             if at_ob:
                 # Check for volume spike (indicates interest)
-                volume_spike = candles.iloc[-1]['volume'] > candles['volume'].mean() * 1.5
+                volume_spike = candles.iloc[-1]["volume"] > candles["volume"].mean() * 1.5
 
                 if volume_spike:
                     recent_cvd = cvd.iloc[-5:].mean() if len(cvd) >= 5 else 0
 
-                    confluence = self._calculate_confluence({
-                        'order_block': True,
-                        'volume_spike': True,
-                        'structure_aligned': True,
-                        'cvd_confirms': (
-                            (ob.type == 'bullish' and recent_cvd > 0) or
-                            (ob.type == 'bearish' and recent_cvd < 0)
-                        )
-                    })
+                    confluence = self._calculate_confluence(
+                        {
+                            "order_block": True,
+                            "volume_spike": True,
+                            "structure_aligned": True,
+                            "cvd_confirms": (
+                                (ob.type == "bullish" and recent_cvd > 0) or (ob.type == "bearish" and recent_cvd < 0)
+                            ),
+                        }
+                    )
 
-                    if ob.type == 'bullish':
+                    if ob.type == "bullish":
                         entry = current_price
                         stop = ob.low - 2
                         tp1 = entry + (entry - stop) * 1.5
@@ -339,21 +330,23 @@ class ICTSignalGenerator:
                         risk = entry - stop
                         reward = tp1 - entry
 
-                        signals.append(ICTSignal(
-                            type='long',
-                            confidence=min(100, confluence.score + ob.strength * 0.2),
-                            entry_price=entry,
-                            stop_loss=stop,
-                            take_profit=[tp1, tp2],
-                            timestamp=current_time,
-                            trigger='ORDER_BLOCK_RETEST',
-                            ict_elements=['Bullish OB', 'Volume Spike'],
-                            order_flow_confirmation=f'CVD: {recent_cvd:+.0f}, Vol Spike',
-                            risk=risk,
-                            reward=reward,
-                            risk_reward_ratio=reward / risk if risk > 0 else 0,
-                            market_structure='bullish'
-                        ))
+                        signals.append(
+                            ICTSignal(
+                                type="long",
+                                confidence=min(100, confluence.score + ob.strength * 0.2),
+                                entry_price=entry,
+                                stop_loss=stop,
+                                take_profit=[tp1, tp2],
+                                timestamp=current_time,
+                                trigger="ORDER_BLOCK_RETEST",
+                                ict_elements=["Bullish OB", "Volume Spike"],
+                                order_flow_confirmation=f"CVD: {recent_cvd:+.0f}, Vol Spike",
+                                risk=risk,
+                                reward=reward,
+                                risk_reward_ratio=reward / risk if risk > 0 else 0,
+                                market_structure="bullish",
+                            )
+                        )
 
         return signals
 
@@ -362,7 +355,7 @@ class ICTSignalGenerator:
         candles: pd.DataFrame,
         liquidity_pools: List[LiquidityPool],
         cvd: pd.Series,
-        market_structure: MarketStructure
+        market_structure: MarketStructure,
     ) -> List[ICTSignal]:
         """Generate signals from liquidity sweeps"""
         signals = []
@@ -383,9 +376,9 @@ class ICTSignalGenerator:
                 # Buy-side sweep → expect down move
                 # Sell-side sweep → expect up move
 
-                if pool.type == 'sell_side' and market_structure.type == 'bullish':
+                if pool.type == "sell_side" and market_structure.type == "bullish":
                     # Sell-side liquidity swept, expect continuation up
-                    current_price = candles.iloc[-1]['close']
+                    current_price = candles.iloc[-1]["close"]
 
                     entry = current_price
                     stop = pool.price - 3  # Below the swept level
@@ -397,27 +390,27 @@ class ICTSignalGenerator:
 
                     recent_cvd = cvd.iloc[-5:].mean() if len(cvd) >= 5 else 0
 
-                    confluence = self._calculate_confluence({
-                        'liquidity_sweep': True,
-                        'structure_aligned': True,
-                        'cvd_confirms': recent_cvd > 0
-                    })
+                    confluence = self._calculate_confluence(
+                        {"liquidity_sweep": True, "structure_aligned": True, "cvd_confirms": recent_cvd > 0}
+                    )
 
-                    signals.append(ICTSignal(
-                        type='long',
-                        confidence=min(100, confluence.score + pool.strength * 0.2),
-                        entry_price=entry,
-                        stop_loss=stop,
-                        take_profit=[tp1, tp2],
-                        timestamp=current_time,
-                        trigger='LIQUIDITY_SWEEP',
-                        ict_elements=['Sell-Side Liquidity Swept', 'Bullish Structure'],
-                        order_flow_confirmation=f'CVD: {recent_cvd:+.0f}',
-                        risk=risk,
-                        reward=reward,
-                        risk_reward_ratio=reward / risk if risk > 0 else 0,
-                        market_structure='bullish'
-                    ))
+                    signals.append(
+                        ICTSignal(
+                            type="long",
+                            confidence=min(100, confluence.score + pool.strength * 0.2),
+                            entry_price=entry,
+                            stop_loss=stop,
+                            take_profit=[tp1, tp2],
+                            timestamp=current_time,
+                            trigger="LIQUIDITY_SWEEP",
+                            ict_elements=["Sell-Side Liquidity Swept", "Bullish Structure"],
+                            order_flow_confirmation=f"CVD: {recent_cvd:+.0f}",
+                            risk=risk,
+                            reward=reward,
+                            risk_reward_ratio=reward / risk if risk > 0 else 0,
+                            market_structure="bullish",
+                        )
+                    )
 
         return signals
 
@@ -433,28 +426,24 @@ class ICTSignalGenerator:
         """
         # Weight different elements
         weights = {
-            'fvg_filled': 25,
-            'order_block': 25,
-            'liquidity_sweep': 20,
-            'cvd_confirms': 20,
-            'structure_aligned': 15,
-            'volume_spike': 10
+            "fvg_filled": 25,
+            "order_block": 25,
+            "liquidity_sweep": 20,
+            "cvd_confirms": 20,
+            "structure_aligned": 15,
+            "volume_spike": 10,
         }
 
         score = sum(weights.get(k, 10) for k, v in elements.items() if v)
 
         if score >= 70:
-            strength = 'strong'
+            strength = "strong"
         elif score >= 50:
-            strength = 'moderate'
+            strength = "moderate"
         else:
-            strength = 'weak'
+            strength = "weak"
 
-        return SignalConfluence(
-            score=min(100, score),
-            elements=elements,
-            strength=strength
-        )
+        return SignalConfluence(score=min(100, score), elements=elements, strength=strength)
 
     def _synthetic_cvd_from_candles(self, candles: pd.DataFrame) -> pd.Series:
         """
@@ -473,15 +462,15 @@ class ICTSignalGenerator:
 
         for _idx, candle in candles.iterrows():
             # Approximate buy/sell volume from candle direction
-            if candle['close'] > candle['open']:
+            if candle["close"] > candle["open"]:
                 # Bullish candle - more buying
                 buy_pct = 0.6
             else:
                 # Bearish candle - more selling
                 buy_pct = 0.4
 
-            buy_vol = candle['volume'] * buy_pct
-            sell_vol = candle['volume'] * (1 - buy_pct)
+            buy_vol = candle["volume"] * buy_pct
+            sell_vol = candle["volume"] * (1 - buy_pct)
 
             delta = buy_vol - sell_vol
             cumulative += delta

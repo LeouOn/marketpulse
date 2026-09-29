@@ -31,7 +31,6 @@ from fastapi.testclient import TestClient
 from src.api.research_router import router as research_router
 from src.research.data import AssetRegistry
 
-
 # ---------------------------------------------------------------------------
 # Shared mock OHLCV + mock provider
 # ---------------------------------------------------------------------------
@@ -192,9 +191,7 @@ def test_compare_multi_asset(client):
     per_asset = data["assets"]
     assert set(per_asset.keys()) == {"BTC", "GOLD", "EQUITIES"}
     for asset_key, payload in per_asset.items():
-        assert "normalized_total_return" in payload, (
-            f"missing normalized_total_return for {asset_key}"
-        )
+        assert "normalized_total_return" in payload, f"missing normalized_total_return for {asset_key}"
         series = payload["normalized_total_return"]
         assert isinstance(series, list)
         assert series, f"empty series for {asset_key}"
@@ -261,9 +258,7 @@ def test_system_prompt_varies_by_asset():
     gold_prompt = system_prompt("GOLD")
     assert isinstance(btc_prompt, str)
     assert isinstance(gold_prompt, str)
-    assert btc_prompt != gold_prompt, (
-        "system_prompt('BTC') and system_prompt('GOLD') must differ"
-    )
+    assert btc_prompt != gold_prompt, "system_prompt('BTC') and system_prompt('GOLD') must differ"
     # The asset's display name should appear in its own prompt.
     assert "Bitcoin" in btc_prompt
     assert "Gold" in gold_prompt
@@ -319,11 +314,7 @@ def test_chat_asset_scoped_uses_asset_prompt(client):
 
     captured_system: dict[str, str] = {}
 
-    final_response = {
-        "choices": [
-            {"message": {"content": "Gold tends to outperform in real-rate cycles."}}
-        ]
-    }
+    final_response = {"choices": [{"message": {"content": "Gold tends to outperform in real-rate cycles."}}]}
 
     class _Router:
         async def __aenter__(self):
@@ -347,6 +338,4 @@ def test_chat_asset_scoped_uses_asset_prompt(client):
         events = [_json.loads(line) for line in r.text.splitlines() if line.strip()]
     assert any(e.get("type") == "final" for e in events)
     # The system prompt should reference the asset's display name (Gold).
-    assert "Gold" in captured_system.get("content", ""), (
-        "chat/{asset} must inject the asset-scoped system prompt"
-    )
+    assert "Gold" in captured_system.get("content", ""), "chat/{asset} must inject the asset-scoped system prompt"

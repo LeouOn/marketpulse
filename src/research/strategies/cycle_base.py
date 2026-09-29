@@ -51,9 +51,7 @@ class CycleAccumulation(Strategy):
     default_params: ClassVar[dict[str, Any]] = {}
 
     @abstractmethod
-    def _cycle_phase(
-        self, timestamp: pd.Timestamp, factor_df: pd.DataFrame
-    ) -> float:
+    def _cycle_phase(self, timestamp: pd.Timestamp, factor_df: pd.DataFrame) -> float:
         """Return the accumulation intensity for ``timestamp`` in ``[0.0, 1.5]``.
 
         1.0 = neutral (standard DCA cadence), > 1.0 = accumulate faster,
@@ -74,9 +72,7 @@ class CycleAccumulation(Strategy):
         """
         ...
 
-    def generate_signals(
-        self, df: pd.DataFrame, *, factor_df: pd.DataFrame | None = None
-    ) -> pd.Series:
+    def generate_signals(self, df: pd.DataFrame, *, factor_df: pd.DataFrame | None = None) -> pd.Series:
         """Return per-bar accumulation intensities in ``[0.0, 1.5]``.
 
         If ``factor_df`` is ``None`` or empty, returns a uniform 1.0
@@ -99,12 +95,7 @@ class CycleAccumulation(Strategy):
             except Exception:
                 # Defensive: a bad row in factor_df must not halt the
                 # whole series -- fall back to neutral for this bar only.
-                intensity = self.default_params.get(
-                    "neutral_intensity", 1.0
-                )
+                intensity = self.default_params.get("neutral_intensity", 1.0)
             intensities.append(float(intensity))
 
-        return (
-            pd.Series(intensities, index=df.index, name="signal")
-            .clip(lower=0.0, upper=1.5)
-        )
+        return pd.Series(intensities, index=df.index, name="signal").clip(lower=0.0, upper=1.5)

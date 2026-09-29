@@ -5,9 +5,8 @@ Tests both unit-level components and end-to-end integration
 """
 
 import sys
-import pytest
+from datetime import timedelta
 from pathlib import Path
-from datetime import datetime, timedelta
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -19,7 +18,8 @@ class TestBlackScholesPricing:
 
     def test_import(self):
         """Test that Black-Scholes module imports correctly"""
-        from src.analysis.options_pricing import BlackScholesCalculator, Greeks, OptionPrice
+        from src.analysis.options_pricing import BlackScholesCalculator
+
         assert BlackScholesCalculator is not None
 
     def test_call_option_pricing(self):
@@ -28,12 +28,12 @@ class TestBlackScholesPricing:
 
         # Standard example: ATM call with 30 days to expiration
         call_price = BlackScholesCalculator.calculate_call_price(
-            S=100,      # Stock price
-            K=100,      # Strike (ATM)
-            T=30/365,   # 30 days
-            r=0.05,     # 5% risk-free rate
-            sigma=0.25, # 25% volatility
-            q=0.0       # No dividend
+            S=100,  # Stock price
+            K=100,  # Strike (ATM)
+            T=30 / 365,  # 30 days
+            r=0.05,  # 5% risk-free rate
+            sigma=0.25,  # 25% volatility
+            q=0.0,  # No dividend
         )
 
         # ATM call should be positive and reasonable
@@ -45,14 +45,7 @@ class TestBlackScholesPricing:
         """Test put option pricing calculation"""
         from src.analysis.options_pricing import BlackScholesCalculator
 
-        put_price = BlackScholesCalculator.calculate_put_price(
-            S=100,
-            K=100,
-            T=30/365,
-            r=0.05,
-            sigma=0.25,
-            q=0.0
-        )
+        put_price = BlackScholesCalculator.calculate_put_price(S=100, K=100, T=30 / 365, r=0.05, sigma=0.25, q=0.0)
 
         assert put_price > 0
         assert put_price < 10
@@ -60,8 +53,9 @@ class TestBlackScholesPricing:
 
     def test_put_call_parity(self):
         """Test put-call parity relationship"""
-        from src.analysis.options_pricing import BlackScholesCalculator
         import numpy as np
+
+        from src.analysis.options_pricing import BlackScholesCalculator
 
         S, K, T, r, sigma, q = 100, 100, 1, 0.05, 0.25, 0.0
 
@@ -80,7 +74,7 @@ class TestBlackScholesPricing:
         from src.analysis.options_pricing import BlackScholesCalculator
 
         greeks = BlackScholesCalculator.calculate_greeks(
-            S=100, K=100, T=30/365, r=0.05, sigma=0.25, q=0.0, option_type='call'
+            S=100, K=100, T=30 / 365, r=0.05, sigma=0.25, q=0.0, option_type="call"
         )
 
         # ATM call delta should be around 0.5
@@ -106,7 +100,7 @@ class TestBlackScholesPricing:
 
         # 10% OTM call
         greeks = BlackScholesCalculator.calculate_greeks(
-            S=100, K=110, T=30/365, r=0.05, sigma=0.25, q=0.0, option_type='call'
+            S=100, K=110, T=30 / 365, r=0.05, sigma=0.25, q=0.0, option_type="call"
         )
 
         assert greeks.delta < 0.5, "OTM call should have delta < 0.5"
@@ -119,7 +113,7 @@ class TestBlackScholesPricing:
 
         # 10% ITM call
         greeks = BlackScholesCalculator.calculate_greeks(
-            S=100, K=90, T=30/365, r=0.05, sigma=0.25, q=0.0, option_type='call'
+            S=100, K=90, T=30 / 365, r=0.05, sigma=0.25, q=0.0, option_type="call"
         )
 
         assert greeks.delta > 0.5, "ITM call should have delta > 0.5"
@@ -130,7 +124,7 @@ class TestBlackScholesPricing:
         from src.analysis.options_pricing import BlackScholesCalculator
 
         greeks = BlackScholesCalculator.calculate_greeks(
-            S=100, K=100, T=30/365, r=0.05, sigma=0.25, q=0.0, option_type='put'
+            S=100, K=100, T=30 / 365, r=0.05, sigma=0.25, q=0.0, option_type="put"
         )
 
         assert greeks.delta < 0, "Put delta should be negative"
@@ -142,9 +136,7 @@ class TestBlackScholesPricing:
         from src.analysis.options_pricing import BlackScholesCalculator
 
         # ITM call at expiration
-        call_price = BlackScholesCalculator.calculate_call_price(
-            S=110, K=100, T=0, r=0.05, sigma=0.25, q=0.0
-        )
+        call_price = BlackScholesCalculator.calculate_call_price(S=110, K=100, T=0, r=0.05, sigma=0.25, q=0.0)
 
         # Should equal intrinsic value
         assert abs(call_price - 10) < 0.01, "Expired ITM call should equal intrinsic value"
@@ -152,15 +144,16 @@ class TestBlackScholesPricing:
 
     def test_days_to_expiration(self):
         """Test days to expiration calculation"""
-        from src.analysis.options_pricing import BlackScholesCalculator
         from datetime import date
 
+        from src.analysis.options_pricing import BlackScholesCalculator
+
         # Test 30 days from now
-        future_date = (date.today() + timedelta(days=30)).strftime('%Y-%m-%d')
+        future_date = (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
         T = BlackScholesCalculator.days_to_expiration(future_date)
 
-        assert 29/365 < T < 31/365, f"Should be ~30 days, got {T*365:.1f}"
-        print(f"    ✓ Days to expiration: {T*365:.1f} days")
+        assert 29 / 365 < T < 31 / 365, f"Should be ~30 days, got {T * 365:.1f}"
+        print(f"    ✓ Days to expiration: {T * 365:.1f} days")
 
 
 class TestOptionsAnalyzer:
@@ -168,7 +161,8 @@ class TestOptionsAnalyzer:
 
     def test_import(self):
         """Test imports"""
-        from src.analysis.options_analyzer import OptionsAnalyzer, SingleLegAnalysis
+        from src.analysis.options_analyzer import OptionsAnalyzer
+
         assert OptionsAnalyzer is not None
 
     def test_risk_metrics_long_call(self):
@@ -180,11 +174,7 @@ class TestOptionsAnalyzer:
 
         # Calculate risk metrics
         breakeven, max_profit, max_loss, rr = analyzer._calculate_risk_metrics(
-            option_type='call',
-            position_type='long',
-            strike=100,
-            premium=3.50,
-            contracts=1
+            option_type="call", position_type="long", strike=100, premium=3.50, contracts=1
         )
 
         assert breakeven == 103.50, "Long call breakeven = strike + premium"
@@ -199,11 +189,7 @@ class TestOptionsAnalyzer:
         analyzer = OptionsAnalyzer(None)
 
         breakeven, max_profit, max_loss, rr = analyzer._calculate_risk_metrics(
-            option_type='put',
-            position_type='short',
-            strike=100,
-            premium=2.50,
-            contracts=1
+            option_type="put", position_type="short", strike=100, premium=2.50, contracts=1
         )
 
         assert breakeven == 97.50, "Short put breakeven = strike - premium"
@@ -218,7 +204,7 @@ class TestOptionsAnalyzer:
         analyzer = OptionsAnalyzer(None)
 
         # Long call with delta 0.40 (40% chance ITM)
-        prob = analyzer._estimate_probability_profit('call', 'long', 0.40)
+        prob = analyzer._estimate_probability_profit("call", "long", 0.40)
         assert 30 < prob < 50, "Probability should be in reasonable range"
         print(f"    ✓ Probability estimate: {prob:.1f}%")
 
@@ -228,7 +214,8 @@ class TestStrategyBuilder:
 
     def test_import(self):
         """Test imports"""
-        from src.analysis.strategy_builder import StrategyBuilder, CoveredCallAnalysis, SpreadAnalysis
+        from src.analysis.strategy_builder import StrategyBuilder
+
         assert StrategyBuilder is not None
 
 
@@ -238,6 +225,7 @@ class TestMacroContext:
     def test_import(self):
         """Test imports"""
         from src.analysis.macro_context import MacroRegime
+
         assert MacroRegime is not None
 
     def test_volatility_regime_classification(self):
@@ -246,23 +234,23 @@ class TestMacroContext:
 
         # Test low volatility
         regime = MacroRegime(None).classify_volatility_regime(vix_level=12)
-        assert regime['regime'] == 'low_volatility'
-        assert 'low' in regime['description'].lower() or 'complacent' in regime['description'].lower()
+        assert regime["regime"] == "low_volatility"
+        assert "low" in regime["description"].lower() or "complacent" in regime["description"].lower()
         print(f"    ✓ VIX 12 → {regime['regime']}")
 
         # Test normal
         regime = MacroRegime(None).classify_volatility_regime(vix_level=18)
-        assert regime['regime'] == 'normal'
+        assert regime["regime"] == "normal"
         print(f"    ✓ VIX 18 → {regime['regime']}")
 
         # Test elevated
         regime = MacroRegime(None).classify_volatility_regime(vix_level=25)
-        assert regime['regime'] == 'elevated'
+        assert regime["regime"] == "elevated"
         print(f"    ✓ VIX 25 → {regime['regime']}")
 
         # Test high
         regime = MacroRegime(None).classify_volatility_regime(vix_level=35)
-        assert regime['regime'] == 'high_volatility'
+        assert regime["regime"] == "high_volatility"
         print(f"    ✓ VIX 35 → {regime['regime']}")
 
 
@@ -271,7 +259,8 @@ class TestOptionsScreener:
 
     def test_import(self):
         """Test imports"""
-        from src.analysis.options_screener import OptionsScreener, OptionOpportunity
+        from src.analysis.options_screener import OptionsScreener
+
         assert OptionsScreener is not None
 
 
@@ -284,18 +273,18 @@ class TestYahooClientExtensions:
 
         client = YahooFinanceClient()
 
-        assert hasattr(client, 'get_options_expirations')
-        assert hasattr(client, 'get_options_chain')
-        assert hasattr(client, 'get_risk_free_rate')
-        assert hasattr(client, 'get_dividend_yield')
+        assert hasattr(client, "get_options_expirations")
+        assert hasattr(client, "get_options_chain")
+        assert hasattr(client, "get_risk_free_rate")
+        assert hasattr(client, "get_dividend_yield")
         print("    ✓ All options methods exist on YahooFinanceClient")
 
 
 def run_all_tests():
     """Run all unit tests"""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("COMPREHENSIVE OPTIONS PRICING TEST SUITE")
-    print("="*70)
+    print("=" * 70)
 
     test_classes = [
         TestBlackScholesPricing,
@@ -303,7 +292,7 @@ def run_all_tests():
         TestStrategyBuilder,
         TestMacroContext,
         TestOptionsScreener,
-        TestYahooClientExtensions
+        TestYahooClientExtensions,
     ]
 
     total_tests = 0
@@ -315,7 +304,7 @@ def run_all_tests():
         print("-" * 70)
 
         # Get all test methods
-        test_methods = [m for m in dir(test_class) if m.startswith('test_')]
+        test_methods = [m for m in dir(test_class) if m.startswith("test_")]
 
         for method_name in test_methods:
             total_tests += 1
@@ -325,8 +314,8 @@ def run_all_tests():
                 method = getattr(instance, method_name)
 
                 # Print test name
-                test_name = method_name.replace('test_', '').replace('_', ' ').title()
-                print(f"  🧪 {test_name}...", end=' ')
+                test_name = method_name.replace("test_", "").replace("_", " ").title()
+                print(f"  🧪 {test_name}...", end=" ")
 
                 # Run test
                 method()
@@ -342,9 +331,9 @@ def run_all_tests():
                 print(f"❌ ERROR: {e}")
 
     # Print summary
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TEST SUMMARY")
-    print("="*70)
+    print("=" * 70)
     print(f"Total tests: {total_tests}")
     print(f"Passed: {passed_tests} ✅")
     print(f"Failed: {len(failed_tests)} ❌")

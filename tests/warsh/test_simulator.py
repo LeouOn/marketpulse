@@ -1,12 +1,19 @@
 """Tests for the curve simulation engine."""
-import pytest
-from src.warsh.simulator import CurveSimulator, SimulationResult
 
+import pytest
+
+from src.warsh.simulator import CurveSimulator
 
 # Baseline yields for testing (approximate July 2026 levels)
 BASELINE_CURVE = {
-    "3mo": 3.84, "1y": 4.02, "2y": 4.16, "5y": 4.31,
-    "7y": 4.44, "10y": 4.58, "20y": 5.09, "30y": 5.08,
+    "3mo": 3.84,
+    "1y": 4.02,
+    "2y": 4.16,
+    "5y": 4.31,
+    "7y": 4.44,
+    "10y": 4.58,
+    "20y": 5.09,
+    "30y": 5.08,
 }
 
 

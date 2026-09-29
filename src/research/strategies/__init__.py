@@ -130,13 +130,9 @@ class DCAFixedAmount(Strategy):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("every_n_bars", 1) <= 0:
-            raise InvalidParamsError(
-                f"every_n_bars must be > 0, got {params['every_n_bars']}"
-            )
+            raise InvalidParamsError(f"every_n_bars must be > 0, got {params['every_n_bars']}")
         if params.get("amount_usd", 1) <= 0:
-            raise InvalidParamsError(
-                f"amount_usd must be > 0, got {params['amount_usd']}"
-            )
+            raise InvalidParamsError(f"amount_usd must be > 0, got {params['amount_usd']}")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         every = max(1, int(self.params["every_n_bars"]))
@@ -167,13 +163,9 @@ class DCAValueAveraging(Strategy):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("every_n_bars", 1) <= 0:
-            raise InvalidParamsError(
-                f"every_n_bars must be > 0, got {params['every_n_bars']}"
-            )
+            raise InvalidParamsError(f"every_n_bars must be > 0, got {params['every_n_bars']}")
         if params.get("target_final_usd", 1) <= 0:
-            raise InvalidParamsError(
-                f"target_final_usd must be > 0, got {params['target_final_usd']}"
-            )
+            raise InvalidParamsError(f"target_final_usd must be > 0, got {params['target_final_usd']}")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         every = max(1, int(self.params["every_n_bars"]))
@@ -203,16 +195,12 @@ class MomentumTrend(Strategy):
     """Long when close > SMA(N), flat otherwise. Classic trend filter."""
 
     name: ClassVar[str] = "MomentumTrend"
-    description: ClassVar[str] = (
-        "Long 100% when close > SMA(N), flat (0%) otherwise. Trend-following baseline."
-    )
+    description: ClassVar[str] = "Long 100% when close > SMA(N), flat (0%) otherwise. Trend-following baseline."
     default_params: ClassVar[dict[str, Any]] = {"sma_period": 200}
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("sma_period", 200) < 2:
-            raise InvalidParamsError(
-                f"sma_period must be >= 2, got {params['sma_period']}"
-            )
+            raise InvalidParamsError(f"sma_period must be >= 2, got {params['sma_period']}")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         n = int(self.params["sma_period"])
@@ -243,13 +231,9 @@ class MeanReversionBollinger(Strategy):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("period", 20) < 2:
-            raise InvalidParamsError(
-                f"period must be >= 2, got {params['period']}"
-            )
+            raise InvalidParamsError(f"period must be >= 2, got {params['period']}")
         if params.get("num_std", 2.0) <= 0:
-            raise InvalidParamsError(
-                f"num_std must be > 0, got {params['num_std']}"
-            )
+            raise InvalidParamsError(f"num_std must be > 0, got {params['num_std']}")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         period = int(self.params["period"])
@@ -280,8 +264,7 @@ class MeanReversionRSI(Strategy):
 
     name: ClassVar[str] = "MeanReversionRSI"
     description: ClassVar[str] = (
-        "Long when RSI(period) < entry_threshold, exit when RSI > exit_threshold. "
-        "Captures oversold bounces."
+        "Long when RSI(period) < entry_threshold, exit when RSI > exit_threshold. Captures oversold bounces."
     )
     default_params: ClassVar[dict[str, Any]] = {
         "period": 14,
@@ -291,23 +274,15 @@ class MeanReversionRSI(Strategy):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("period", 14) < 2:
-            raise InvalidParamsError(
-                f"period must be >= 2, got {params['period']}"
-            )
+            raise InvalidParamsError(f"period must be >= 2, got {params['period']}")
         entry = params.get("entry_threshold", 30.0)
         exit_ = params.get("exit_threshold", 50.0)
         if not (0 <= entry <= 100):
-            raise InvalidParamsError(
-                f"entry_threshold must be in [0, 100], got {entry}"
-            )
+            raise InvalidParamsError(f"entry_threshold must be in [0, 100], got {entry}")
         if not (0 <= exit_ <= 100):
-            raise InvalidParamsError(
-                f"exit_threshold must be in [0, 100], got {exit_}"
-            )
+            raise InvalidParamsError(f"exit_threshold must be in [0, 100], got {exit_}")
         if entry >= exit_:
-            raise InvalidParamsError(
-                f"entry_threshold ({entry}) must be < exit_threshold ({exit_})"
-            )
+            raise InvalidParamsError(f"entry_threshold ({entry}) must be < exit_threshold ({exit_})")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         period = int(self.params["period"])

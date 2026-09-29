@@ -4,17 +4,16 @@ Backtesting API Endpoints
 Run backtests, get performance metrics, and optimize strategies.
 """
 
+from typing import Any, Dict, List
+
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import JSONResponse, HTMLResponse
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
+from pydantic import BaseModel
 
-from src.backtesting.backtest_engine import BacktestEngine, BacktestResults
 from src.analysis.position_scaler import PositionScaler, calculate_performance_stats
+from src.backtesting.backtest_engine import BacktestEngine
 from src.llm.regime_classifier import MarketRegimeClassifier, classify_current_regime
-
 
 # Initialize router
 backtest_router = APIRouter(prefix="/api/backtest", tags=["Backtesting"])
@@ -27,6 +26,7 @@ regime_classifier = MarketRegimeClassifier()
 
 class BacktestRequest(BaseModel):
     """Backtest request"""
+
     symbol: str = "NQ"
     start_date: str = "2024-01-01"
     end_date: str = "2024-11-15"
@@ -37,6 +37,7 @@ class BacktestRequest(BaseModel):
 
 class PositionSizeRequest(BaseModel):
     """Position size recommendation request"""
+
     recent_trades: List[Dict[str, Any]]
     signal_strength: float = 70.0
     account_balance: float = 10000
@@ -69,65 +70,62 @@ async def run_backtest(request: BacktestRequest):
             end_date=request.end_date,
             initial_capital=request.initial_capital,
             contracts=request.contracts,
-            interval=request.interval
+            interval=request.interval,
         )
 
         # Convert to dict
         results_dict = {
-            'basic_metrics': {
-                'total_trades': results.total_trades,
-                'winning_trades': results.winning_trades,
-                'losing_trades': results.losing_trades,
-                'win_rate': round(results.win_rate, 2)
+            "basic_metrics": {
+                "total_trades": results.total_trades,
+                "winning_trades": results.winning_trades,
+                "losing_trades": results.losing_trades,
+                "win_rate": round(results.win_rate, 2),
             },
-            'pnl_metrics': {
-                'total_pnl': round(results.total_pnl, 2),
-                'total_pnl_percent': round(results.total_pnl_percent, 2),
-                'average_winner': round(results.average_winner, 2),
-                'average_loser': round(results.average_loser, 2),
-                'largest_winner': round(results.largest_winner, 2),
-                'largest_loser': round(results.largest_loser, 2),
-                'profit_factor': round(results.profit_factor, 2)
+            "pnl_metrics": {
+                "total_pnl": round(results.total_pnl, 2),
+                "total_pnl_percent": round(results.total_pnl_percent, 2),
+                "average_winner": round(results.average_winner, 2),
+                "average_loser": round(results.average_loser, 2),
+                "largest_winner": round(results.largest_winner, 2),
+                "largest_loser": round(results.largest_loser, 2),
+                "profit_factor": round(results.profit_factor, 2),
             },
-            'risk_metrics': {
-                'max_drawdown': round(results.max_drawdown, 4),
-                'max_drawdown_percent': round(results.max_drawdown_percent, 2),
-                'sharpe_ratio': round(results.sharpe_ratio, 2),
-                'sortino_ratio': round(results.sortino_ratio, 2)
+            "risk_metrics": {
+                "max_drawdown": round(results.max_drawdown, 4),
+                "max_drawdown_percent": round(results.max_drawdown_percent, 2),
+                "sharpe_ratio": round(results.sharpe_ratio, 2),
+                "sortino_ratio": round(results.sortino_ratio, 2),
             },
-            'trade_metrics': {
-                'average_trade_duration_minutes': round(results.average_trade_duration, 1),
-                'average_trade_pnl': round(results.average_trade_pnl, 2),
-                'expectancy': round(results.expectancy, 2)
+            "trade_metrics": {
+                "average_trade_duration_minutes": round(results.average_trade_duration, 1),
+                "average_trade_pnl": round(results.average_trade_pnl, 2),
+                "expectancy": round(results.expectancy, 2),
             },
-            'strategy_metrics': {
-                'fvg_success_rate': round(results.fvg_success_rate, 2),
-                'divergence_success_rate': round(results.divergence_success_rate, 2),
-                'best_hour_of_day': results.best_hour_of_day,
-                'worst_hour_of_day': results.worst_hour_of_day,
-                'best_day_of_week': results.best_day_of_week
+            "strategy_metrics": {
+                "fvg_success_rate": round(results.fvg_success_rate, 2),
+                "divergence_success_rate": round(results.divergence_success_rate, 2),
+                "best_hour_of_day": results.best_hour_of_day,
+                "worst_hour_of_day": results.worst_hour_of_day,
+                "best_day_of_week": results.best_day_of_week,
             },
-            'performance_by_setup': results.performance_by_setup,
-            'equity_curve': results.equity_curve.to_dict('records') if not results.equity_curve.empty else [],
-            'sample_trades': [
+            "performance_by_setup": results.performance_by_setup,
+            "equity_curve": results.equity_curve.to_dict("records") if not results.equity_curve.empty else [],
+            "sample_trades": [
                 {
-                    'entry_time': t.entry_time.isoformat(),
-                    'exit_time': t.exit_time.isoformat(),
-                    'direction': t.direction,
-                    'entry_price': round(t.entry_price, 2),
-                    'exit_price': round(t.exit_price, 2),
-                    'pnl': round(t.pnl, 2),
-                    'setup_type': t.setup_type,
-                    'win': t.win
+                    "entry_time": t.entry_time.isoformat(),
+                    "exit_time": t.exit_time.isoformat(),
+                    "direction": t.direction,
+                    "entry_price": round(t.entry_price, 2),
+                    "exit_price": round(t.exit_price, 2),
+                    "pnl": round(t.pnl, 2),
+                    "setup_type": t.setup_type,
+                    "win": t.win,
                 }
                 for t in results.trades[:10]  # First 10 trades
-            ]
+            ],
         }
 
-        return JSONResponse(content={
-            "success": True,
-            "data": results_dict
-        })
+        return JSONResponse(content={"success": True, "data": results_dict})
 
     except Exception as e:
         logger.error(f"Error running backtest: {e}")
@@ -136,18 +134,10 @@ async def run_backtest(request: BacktestRequest):
 
 @backtest_router.get("/run/{symbol}")
 async def run_backtest_simple(
-    symbol: str,
-    start_date: str = Query("2024-01-01"),
-    end_date: str = Query("2024-11-15"),
-    contracts: int = Query(1)
+    symbol: str, start_date: str = Query("2024-01-01"), end_date: str = Query("2024-11-15"), contracts: int = Query(1)
 ):
     """Run backtest (simple GET endpoint)"""
-    request = BacktestRequest(
-        symbol=symbol,
-        start_date=start_date,
-        end_date=end_date,
-        contracts=contracts
-    )
+    request = BacktestRequest(symbol=symbol, start_date=start_date, end_date=end_date, contracts=contracts)
 
     return await run_backtest(request)
 
@@ -165,23 +155,24 @@ async def get_position_size(request: PositionSizeRequest):
     """
     try:
         # Convert dict trades to objects (simplified)
-        from src.backtesting.backtest_engine import Trade
         from datetime import datetime
+
+        from src.backtesting.backtest_engine import Trade
 
         trades = []
         for t_dict in request.recent_trades:
             trade = Trade(
-                entry_time=datetime.fromisoformat(t_dict['entry_time']),
-                exit_time=datetime.fromisoformat(t_dict['exit_time']),
-                entry_price=t_dict['entry_price'],
-                exit_price=t_dict['exit_price'],
-                direction=t_dict['direction'],
-                contracts=t_dict.get('contracts', 1),
-                pnl=t_dict['pnl'],
-                pnl_percent=t_dict.get('pnl_percent', 0),
-                duration_minutes=t_dict.get('duration_minutes', 0),
-                setup_type=t_dict.get('setup_type', 'UNKNOWN'),
-                win=t_dict['win']
+                entry_time=datetime.fromisoformat(t_dict["entry_time"]),
+                exit_time=datetime.fromisoformat(t_dict["exit_time"]),
+                entry_price=t_dict["entry_price"],
+                exit_price=t_dict["exit_price"],
+                direction=t_dict["direction"],
+                contracts=t_dict.get("contracts", 1),
+                pnl=t_dict["pnl"],
+                pnl_percent=t_dict.get("pnl_percent", 0),
+                duration_minutes=t_dict.get("duration_minutes", 0),
+                setup_type=t_dict.get("setup_type", "UNKNOWN"),
+                win=t_dict["win"],
             )
             trades.append(trade)
 
@@ -190,15 +181,10 @@ async def get_position_size(request: PositionSizeRequest):
 
         # Get recommendation
         recommendation = position_scaler.get_size_with_confidence(
-            stats=stats,
-            signal_strength=request.signal_strength,
-            account_balance=request.account_balance
+            stats=stats, signal_strength=request.signal_strength, account_balance=request.account_balance
         )
 
-        return JSONResponse(content={
-            "success": True,
-            "data": recommendation
-        })
+        return JSONResponse(content={"success": True, "data": recommendation})
 
     except Exception as e:
         logger.error(f"Error calculating position size: {e}")
@@ -224,19 +210,21 @@ async def get_market_regime(symbol: str = Query("NQ")):
 
         regime = await classify_current_regime(symbol)
 
-        return JSONResponse(content={
-            "success": True,
-            "data": {
-                'regime': regime.regime,
-                'confidence': round(regime.confidence, 1),
-                'recommended_bias': regime.recommended_bias,
-                'optimal_strategy': regime.optimal_strategy,
-                'key_support': round(regime.key_support, 2) if regime.key_support else None,
-                'key_resistance': round(regime.key_resistance, 2) if regime.key_resistance else None,
-                'reasoning': regime.reasoning,
-                'timestamp': regime.timestamp.isoformat()
+        return JSONResponse(
+            content={
+                "success": True,
+                "data": {
+                    "regime": regime.regime,
+                    "confidence": round(regime.confidence, 1),
+                    "recommended_bias": regime.recommended_bias,
+                    "optimal_strategy": regime.optimal_strategy,
+                    "key_support": round(regime.key_support, 2) if regime.key_support else None,
+                    "key_resistance": round(regime.key_resistance, 2) if regime.key_resistance else None,
+                    "reasoning": regime.reasoning,
+                    "timestamp": regime.timestamp.isoformat(),
+                },
             }
-        })
+        )
 
     except Exception as e:
         logger.error(f"Error classifying regime: {e}")

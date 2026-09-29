@@ -1,6 +1,5 @@
 """Screener data endpoints"""
 
-
 from fastapi import APIRouter
 from loguru import logger
 
@@ -56,11 +55,13 @@ async def get_screener_history(screener_type: str):
         if cache:
             latest = await cache.get(f"screener:{screener_type}")
 
-        return success_response({
-            "screener_type": screener_type,
-            "message": "Historical data coming soon",
-            "latest": latest,
-        })
+        return success_response(
+            {
+                "screener_type": screener_type,
+                "message": "Historical data coming soon",
+                "latest": latest,
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error fetching screener history ({screener_type}): {e}")

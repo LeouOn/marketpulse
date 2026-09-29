@@ -36,7 +36,9 @@ def test_macro_context_route_survives_numpy_values(monkeypatch):
 
     context = {
         "vix": {"current_level": np.float64(16.2), "percentile": np.float64(27.3)},
-        "sector_performance": {"sectors": {"XLK": {"outperforming": np.bool_(True), "relative_strength": np.float64(4.49)}}},
+        "sector_performance": {
+            "sectors": {"XLK": {"outperforming": np.bool_(True), "relative_strength": np.float64(4.49)}}
+        },
     }
     monkeypatch.setattr(MacroRegime, "get_comprehensive_context", lambda self: context)
 

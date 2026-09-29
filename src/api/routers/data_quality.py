@@ -23,14 +23,16 @@ async def get_data_quality_summary():
         if cache:
             cache_status = "redis_connected"
 
-        return success_response({
-            "timestamp": datetime.now().isoformat(),
-            "cache_status": cache_status,
-            # The API lifespan never constructs MarketScheduler, so this is false
-            # until some caller starts one and we grow a process-wide handle.
-            "scheduler_running": False,
-            "scheduler_reason": "The API process does not start MarketScheduler.",
-        })
+        return success_response(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "cache_status": cache_status,
+                # The API lifespan never constructs MarketScheduler, so this is false
+                # until some caller starts one and we grow a process-wide handle.
+                "scheduler_running": False,
+                "scheduler_reason": "The API process does not start MarketScheduler.",
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error fetching data quality summary: {e}")
@@ -49,15 +51,17 @@ async def get_symbol_data_quality(symbol: str):
         data = client.get_single_symbol_data(yahoo_symbol)
         has_data = data is not None
 
-        return success_response({
-            "symbol": symbol,
-            "yahoo_symbol": yahoo_symbol,
-            "has_data": has_data,
-            "last_fetch": datetime.now().isoformat(),
-            "bar_timestamp": data.get("timestamp") if has_data else None,
-            "source": "yahoo" if has_data else "unavailable",
-            "data": data,
-        })
+        return success_response(
+            {
+                "symbol": symbol,
+                "yahoo_symbol": yahoo_symbol,
+                "has_data": has_data,
+                "last_fetch": datetime.now().isoformat(),
+                "bar_timestamp": data.get("timestamp") if has_data else None,
+                "source": "yahoo" if has_data else "unavailable",
+                "data": data,
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error checking data quality for {symbol}: {e}")

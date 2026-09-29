@@ -24,7 +24,6 @@ import pytest
 from src.research.data import AssetConfig, AssetRegistry, DataProvider
 from src.research.data.btc import BtcProvider
 
-
 # ---------------------------------------------------------------------------
 # Expected registry contents (single source of truth for the assertions below)
 # ---------------------------------------------------------------------------
@@ -69,15 +68,11 @@ def test_every_entry_has_required_fields_populated(asset_key: str) -> None:
     )
 
     # calendar: one of the documented calendars
-    assert cfg.calendar in {"247", "NYSE", "MONTHLY"}, (
-        f"{asset_key}.calendar={cfg.calendar!r} not in allowed set"
-    )
+    assert cfg.calendar in {"247", "NYSE", "MONTHLY"}, f"{asset_key}.calendar={cfg.calendar!r} not in allowed set"
 
     # trading_days_per_year: positive number
     assert isinstance(cfg.trading_days_per_year, (int, float))
-    assert cfg.trading_days_per_year > 0, (
-        f"{asset_key}.trading_days_per_year={cfg.trading_days_per_year} <= 0"
-    )
+    assert cfg.trading_days_per_year > 0, f"{asset_key}.trading_days_per_year={cfg.trading_days_per_year} <= 0"
 
     # data_provider: a class (type), not None and not an instance
     assert cfg.data_provider is not None, f"{asset_key}.data_provider is None"
@@ -86,8 +81,7 @@ def test_every_entry_has_required_fields_populated(asset_key: str) -> None:
     )
     # And it must be a DataProvider subclass
     assert issubclass(cfg.data_provider, DataProvider), (
-        f"{asset_key}.data_provider={cfg.data_provider.__name__} "
-        "is not a DataProvider subclass"
+        f"{asset_key}.data_provider={cfg.data_provider.__name__} is not a DataProvider subclass"
     )
 
     # indicator_whitelist: tuple of strings (may be empty in general, but for
@@ -95,8 +89,7 @@ def test_every_entry_has_required_fields_populated(asset_key: str) -> None:
     assert isinstance(cfg.indicator_whitelist, tuple)
     assert all(isinstance(x, str) for x in cfg.indicator_whitelist)
     assert "rsi" in cfg.indicator_whitelist and "mayer" in cfg.indicator_whitelist, (
-        f"{asset_key}.indicator_whitelist={cfg.indicator_whitelist} "
-        "must contain at least ('rsi', 'mayer')"
+        f"{asset_key}.indicator_whitelist={cfg.indicator_whitelist} must contain at least ('rsi', 'mayer')"
     )
 
     # default_regime_multipliers: dict (possibly empty -- tuning happens later)

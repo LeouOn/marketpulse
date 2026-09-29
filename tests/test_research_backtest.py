@@ -16,8 +16,6 @@ import pandas as pd
 import pytest
 
 from src.research.backtest import (
-    BacktestResult,
-    Deposit,
     cagr,
     calmar_ratio,
     hit_rate,
@@ -41,7 +39,6 @@ from src.research.strategies import (
     MomentumTrend,
     NoTrade,
 )
-
 
 # ---------------------------------------------------------------------------
 # Synthetic series
@@ -240,8 +237,12 @@ def test_dca_fixed_amount_buys_periodically():
     # With FixedDollar($100), scaling caps each buy at $100 regardless of equity
     scaling = FixedDollar(params={"amount_usd": 100.0})
     result = run_backtest(
-        df, strategy, scaling=scaling,
-        starting_equity=10_000.0, fee_bps=0, slippage_bps=0,
+        df,
+        strategy,
+        scaling=scaling,
+        starting_equity=10_000.0,
+        fee_bps=0,
+        slippage_bps=0,
     )
     # 70/7 = 10 buy days × $100 = $1,000 total deployed
     assert result.metrics["num_buys"] == 10
@@ -476,7 +477,11 @@ def test_zero_price_bar_preserves_btc_equity():
     # BuyAndHold buys on bar 0 at $50k, holding 0.2 BTC.
     # Bar 1 has close=0 (degenerate), equity should use last valid price ($50k).
     result = run_backtest(
-        df, BuyAndHold(), starting_equity=10_000.0, fee_bps=0, slippage_bps=0,
+        df,
+        BuyAndHold(),
+        starting_equity=10_000.0,
+        fee_bps=0,
+        slippage_bps=0,
     )
     # Equity on bar 1 (zero-price) should reflect BTC at last valid price, not 0.
     assert result.equity_curve.iloc[1] > 0
@@ -493,7 +498,11 @@ def test_recurring_inflows_every_n_bars():
     """$500 deposited every 30 bars on a flat price series."""
     df = _flat(n=120, price=100.0)
     result = run_backtest(
-        df, NoTrade(), starting_equity=0.0, fee_bps=0, slippage_bps=0,
+        df,
+        NoTrade(),
+        starting_equity=0.0,
+        fee_bps=0,
+        slippage_bps=0,
         inflows=[{"every_n_bars": 30, "amount_usd": 500.0, "source": "monthly_salary"}],
     )
     # Deposits at bars 0, 30, 60, 90 = 4 deposits × $500 = $2000
@@ -508,7 +517,11 @@ def test_inflows_dont_apply_fees():
     """Deposits should add exactly amount_usd to cash — no fees."""
     df = _flat(n=60, price=100.0)
     result = run_backtest(
-        df, NoTrade(), starting_equity=0.0, fee_bps=50.0, slippage_bps=10.0,
+        df,
+        NoTrade(),
+        starting_equity=0.0,
+        fee_bps=50.0,
+        slippage_bps=10.0,
         inflows=[{"every_n_bars": 30, "amount_usd": 500.0}],
     )
     # 2 deposits × $500 = $1000. Fees/slippage should NOT be applied.
@@ -520,7 +533,11 @@ def test_inflows_with_zero_starting_equity():
     """Deposits should fund the entire portfolio when starting_equity=0."""
     df = _flat(n=31, price=100.0)
     result = run_backtest(
-        df, BuyAndHold(), starting_equity=0.0, fee_bps=0, slippage_bps=0,
+        df,
+        BuyAndHold(),
+        starting_equity=0.0,
+        fee_bps=0,
+        slippage_bps=0,
         inflows=[{"every_n_bars": 30, "amount_usd": 1_000.0}],
     )
     # Bar 0: starting_equity=0, no deposit yet at bar 0? Actually bar 0 triggers
@@ -539,7 +556,11 @@ def test_total_deposited_in_metrics():
     """metrics['total_deposited'] should equal the sum of all deposit amounts."""
     df = _flat(n=91, price=100.0)
     result = run_backtest(
-        df, NoTrade(), starting_equity=0.0, fee_bps=0, slippage_bps=0,
+        df,
+        NoTrade(),
+        starting_equity=0.0,
+        fee_bps=0,
+        slippage_bps=0,
         inflows=[
             {"every_n_bars": 30, "amount_usd": 500.0, "source": "salary"},
             {"day_of_month": 15, "amount_usd": 200.0, "source": "bonus"},
@@ -562,7 +583,11 @@ def test_cagr_positive_when_starting_equity_zero_with_inflows():
     """
     df = _growing(n=365, start=100.0, end=200.0)
     result = run_backtest(
-        df, BuyAndHold(), starting_equity=0.0, fee_bps=0, slippage_bps=0,
+        df,
+        BuyAndHold(),
+        starting_equity=0.0,
+        fee_bps=0,
+        slippage_bps=0,
         inflows=[{"every_n_bars": 30, "amount_usd": 500.0}],
     )
     # Sanity: we deposited something and ended with equity.
@@ -586,10 +611,12 @@ def test_cagr_positive_when_starting_equity_zero_with_inflows():
 def test_state_dict_has_mvrv_key(monkeypatch):
     """Backtest engine should set state['mvrv_z'] when on-chain data is loaded."""
     # Mock fetch_mvrv to return known data matching our test dates
-    _mock_mvrv = pd.DataFrame({
-        "ts": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-02")],
-        "mvrv_z": [1.5, 2.0],
-    })
+    _mock_mvrv = pd.DataFrame(
+        {
+            "ts": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-02")],
+            "mvrv_z": [1.5, 2.0],
+        }
+    )
     monkeypatch.setattr(
         "src.research.data.on_chain.fetch_mvrv",
         lambda force=False: _mock_mvrv,
@@ -603,8 +630,12 @@ def test_state_dict_has_mvrv_key(monkeypatch):
     # Use OnChainGated so the state["mvrv_z"] value is consumed
     scaling = OnChainGated(params={"base_buy_multiplier": 100.0})
     result = run_backtest(
-        df, BuyAndHold(), scaling=scaling, starting_equity=10_000.0,
-        fee_bps=0, slippage_bps=0,
+        df,
+        BuyAndHold(),
+        scaling=scaling,
+        starting_equity=10_000.0,
+        fee_bps=0,
+        slippage_bps=0,
     )
     # If mvrv_z=1.5 was loaded, OnChainGated uses multiplier 0.75
     # (1.5 < 3.0 band → 0.75 multiplier → 100 * 0.75 = 75)
@@ -650,7 +681,9 @@ def test_inflow_missing_amount_rejected():
     df = _flat(n=30, price=100.0)
     with pytest.raises(ValueError, match=r"missing required key 'amount_usd'"):
         run_backtest(
-            df, NoTrade(), starting_equity=0.0,
+            df,
+            NoTrade(),
+            starting_equity=0.0,
             inflows=[{"every_n_bars": 30}],  # no amount_usd
         )
 
@@ -660,7 +693,9 @@ def test_inflow_negative_amount_rejected():
     df = _flat(n=30, price=100.0)
     with pytest.raises(ValueError, match=r"amount_usd.{0,5}must be positive"):
         run_backtest(
-            df, NoTrade(), starting_equity=0.0,
+            df,
+            NoTrade(),
+            starting_equity=0.0,
             inflows=[{"every_n_bars": 30, "amount_usd": -500.0}],
         )
 
@@ -670,7 +705,9 @@ def test_inflow_no_trigger_key_rejected():
     df = _flat(n=30, price=100.0)
     with pytest.raises(ValueError, match="must define a trigger"):
         run_backtest(
-            df, NoTrade(), starting_equity=0.0,
+            df,
+            NoTrade(),
+            starting_equity=0.0,
             inflows=[{"amount_usd": 500.0}],  # no every_n_bars or day_of_month
         )
 
@@ -680,7 +717,9 @@ def test_inflow_day_31_warns(caplog):
     df = _flat(n=30, price=100.0)
     with caplog.at_level("WARNING", logger="src.research.backtest"):
         run_backtest(
-            df, NoTrade(), starting_equity=0.0,
+            df,
+            NoTrade(),
+            starting_equity=0.0,
             inflows=[{"day_of_month": 31, "amount_usd": 500.0}],
         )
     # The warning should mention the day and the skip behavior.
@@ -712,15 +751,15 @@ def test_run_backtest_with_loan_records_interest_payments():
         params={"term_years": 5.0, "payment_freq_days": 30},
     )
     result = run_backtest(
-        df, BuyAndHold(),
+        df,
+        BuyAndHold(),
         starting_equity=10_000.0,
-        fee_bps=0, slippage_bps=0,
+        fee_bps=0,
+        slippage_bps=0,
         loan=loan,
     )
     # At least one scheduled payment must have fired over a year.
-    assert len(result.loan_payments) > 0, (
-        f"expected scheduled LoanPayment records, got {result.loan_payments!r}"
-    )
+    assert len(result.loan_payments) > 0, f"expected scheduled LoanPayment records, got {result.loan_payments!r}"
     # All recorded payments should be interest-only scheduled payments.
     reasons = {p.reason for p in result.loan_payments}
     assert reasons == {"scheduled"}, reasons
@@ -779,21 +818,19 @@ def test_run_backtest_margin_loan_triggers_call():
         params={"liquidation_threshold": 0.95},
     )
     result = run_backtest(
-        df, BuyAndHold(),
+        df,
+        BuyAndHold(),
         starting_equity=10_000.0,
-        fee_bps=0, slippage_bps=0,
+        fee_bps=0,
+        slippage_bps=0,
         loan=loan,
     )
-    assert result.metrics["margin_call_count"] > 0, (
-        "expected at least one margin call given equity/debt << threshold"
-    )
+    assert result.metrics["margin_call_count"] > 0, "expected at least one margin call given equity/debt << threshold"
     # A margin_call LoanPayment must exist with the expected reason.
     calls = [p for p in result.loan_payments if p.reason == "margin_call"]
     assert calls, "no margin_call LoanPayment recorded"
     # liquidation_price is computed as threshold * principal.
-    assert result.metrics["liquidation_price"] == pytest.approx(
-        0.95 * 40_000.0, rel=1e-9
-    )
+    assert result.metrics["liquidation_price"] == pytest.approx(0.95 * 40_000.0, rel=1e-9)
 
 
 def test_margin_call_latches_and_clears_with_hysteresis():
@@ -819,11 +856,7 @@ def test_margin_call_latches_and_clears_with_hysteresis():
     On recovery equity climbs back well past 0.60 → latch clears.
     """
     n_drop, n_hold, n_recover = 30, 20, 30
-    prices = (
-        list(np.linspace(100.0, 30.0, n_drop))
-        + [30.0] * n_hold
-        + list(np.linspace(30.0, 130.0, n_recover))
-    )
+    prices = list(np.linspace(100.0, 30.0, n_drop)) + [30.0] * n_hold + list(np.linspace(30.0, 130.0, n_recover))
     n = len(prices)
     df = pd.DataFrame(
         {
@@ -845,9 +878,11 @@ def test_margin_call_latches_and_clears_with_hysteresis():
         },
     )
     result = run_backtest(
-        df, BuyAndHold(),
+        df,
+        BuyAndHold(),
         starting_equity=100_000.0,
-        fee_bps=0, slippage_bps=0,
+        fee_bps=0,
+        slippage_bps=0,
         loan=loan,
     )
     m = result.metrics
@@ -856,26 +891,16 @@ def test_margin_call_latches_and_clears_with_hysteresis():
 
     # Core regression: exactly ONE margin call, not 50+.
     assert m["margin_call_count"] == 1, (
-        f"expected exactly 1 margin call (latch should prevent re-firing "
-        f"every bar), got {m['margin_call_count']}"
+        f"expected exactly 1 margin call (latch should prevent re-firing every bar), got {m['margin_call_count']}"
     )
-    assert len(calls) == 1, (
-        f"one margin_call LoanPayment expected, got {len(calls)}"
-    )
+    assert len(calls) == 1, f"one margin_call LoanPayment expected, got {len(calls)}"
     # Latch must clear on recovery.
     assert clears, "expected at least one margin_call_cleared event"
-    assert len(clears) == 1, (
-        f"expected exactly 1 margin_call_cleared event (one latch cycle), "
-        f"got {len(clears)}"
-    )
+    assert len(clears) == 1, f"expected exactly 1 margin_call_cleared event (one latch cycle), got {len(clears)}"
     # Latch is clear at end of run.
-    assert loan.margin_call_active is False, (
-        "latch should be clear at end of the run (price recovered)"
-    )
+    assert loan.margin_call_active is False, "latch should be clear at end of the run (price recovered)"
     # The latch prevents the death spiral; it must NOT trigger default.
-    assert m["loan_defaulted"] is False, (
-        "latch should prevent default (no death spiral)"
-    )
+    assert m["loan_defaulted"] is False, "latch should prevent default (no death spiral)"
 
 
 def test_margin_call_latch_blocks_refire_while_below_recovery():
@@ -909,24 +934,21 @@ def test_margin_call_latch_blocks_refire_while_below_recovery():
         params={"liquidation_threshold": 0.50, "margin_call_recovery_buffer": 0.10},
     )
     result = run_backtest(
-        df, BuyAndHold(),
+        df,
+        BuyAndHold(),
         starting_equity=100_000.0,
-        fee_bps=0, slippage_bps=0,
+        fee_bps=0,
+        slippage_bps=0,
         loan=loan,
     )
     # Exactly one margin call despite many bars below threshold.
     assert result.metrics["margin_call_count"] == 1, (
-        f"latch should block re-fire; expected 1 margin call, "
-        f"got {result.metrics['margin_call_count']}"
+        f"latch should block re-fire; expected 1 margin call, got {result.metrics['margin_call_count']}"
     )
     # Latch never clears (price never recovers) so no clear event.
     clears = [p for p in result.loan_payments if p.reason == "margin_call_cleared"]
-    assert clears == [], (
-        "latch should NOT clear while price stays below recovery line"
-    )
-    assert loan.margin_call_active is True, (
-        "latch should still be set at end (price never recovered)"
-    )
+    assert clears == [], "latch should NOT clear while price stays below recovery line"
+    assert loan.margin_call_active is True, "latch should still be set at end (price never recovered)"
 
 
 def test_run_backtest_no_loan_preserves_existing_behavior():
@@ -943,9 +965,7 @@ def test_run_backtest_no_loan_preserves_existing_behavior():
     result_legacy = run_backtest(df, BuyAndHold(), starting_equity=10_000.0)
 
     for label, result in (("explicit", result_explicit), ("legacy", result_legacy)):
-        assert result.loan_payments == [], (
-            f"{label}: loan_payments should be empty when loan=None"
-        )
+        assert result.loan_payments == [], f"{label}: loan_payments should be empty when loan=None"
         assert result.metrics["debt_balance"] == 0.0
         assert result.metrics["total_interest_paid"] == 0.0
         assert result.metrics["loan_to_equity_ratio"] == 0.0
@@ -983,9 +1003,11 @@ def test_maturity_balloon_fires_correctly():
         params={"term_years": 0.25, "payment_freq_days": 30},
     )
     result = run_backtest(
-        df, NoTrade(),
+        df,
+        NoTrade(),
         starting_equity=15_000.0,
-        fee_bps=0, slippage_bps=0,
+        fee_bps=0,
+        slippage_bps=0,
         loan=loan,
     )
     # Balloon payment must have fired at maturity.
@@ -1017,9 +1039,11 @@ def test_no_recourse_loan_default_in_engine():
         params={"term_years": 5.0, "payment_freq_days": 30},
     )
     result = run_backtest(
-        df, NoTrade(),
+        df,
+        NoTrade(),
         starting_equity=10_000.0,
-        fee_bps=0, slippage_bps=0,
+        fee_bps=0,
+        slippage_bps=0,
         loan=loan,
     )
     # Borrower is massively underwater → must default.
@@ -1043,11 +1067,15 @@ def test_variable_rate_loan_interest_increases_after_hike():
     hike_date = start + pd.Timedelta(days=31)
 
     loan_flat = VariableRateLoan(
-        principal=10_000.0, apr=0.01, start_date=start,
+        principal=10_000.0,
+        apr=0.01,
+        start_date=start,
         params={"initial_rate": 0.01, "payment_freq_days": 30},
     )
     loan_hike = VariableRateLoan(
-        principal=10_000.0, apr=0.01, start_date=start,
+        principal=10_000.0,
+        apr=0.01,
+        start_date=start,
         params={
             "initial_rate": 0.01,
             "rate_changes": {hike_date: 0.05},
@@ -1055,18 +1083,23 @@ def test_variable_rate_loan_interest_increases_after_hike():
         },
     )
     result_flat = run_backtest(
-        df, NoTrade(), starting_equity=20_000.0,
-        fee_bps=0, slippage_bps=0, loan=loan_flat,
+        df,
+        NoTrade(),
+        starting_equity=20_000.0,
+        fee_bps=0,
+        slippage_bps=0,
+        loan=loan_flat,
     )
     result_hike = run_backtest(
-        df, NoTrade(), starting_equity=20_000.0,
-        fee_bps=0, slippage_bps=0, loan=loan_hike,
+        df,
+        NoTrade(),
+        starting_equity=20_000.0,
+        fee_bps=0,
+        slippage_bps=0,
+        loan=loan_hike,
     )
     # After the hike, the hiked loan pays more interest.
-    assert (
-        result_hike.metrics["total_interest_paid"]
-        > result_flat.metrics["total_interest_paid"]
-    ), (
+    assert result_hike.metrics["total_interest_paid"] > result_flat.metrics["total_interest_paid"], (
         f"hiked interest {result_hike.metrics['total_interest_paid']} "
         f"should exceed flat {result_flat.metrics['total_interest_paid']}"
     )

@@ -156,9 +156,7 @@ class RegimeJudgeOutput(BaseModel):
 
     @field_validator("regime_probs")
     @classmethod
-    def _probabilities_sum_to_one(
-        cls, v: dict[Regime, float]
-    ) -> dict[Regime, float]:
+    def _probabilities_sum_to_one(cls, v: dict[Regime, float]) -> dict[Regime, float]:
         """Reject sums outside [1.0 - tol, 1.0 + tol] OR any p ∉ [0, 1]."""
         if not v:
             raise ValueError("regime_probs must not be empty")
@@ -166,15 +164,11 @@ class RegimeJudgeOutput(BaseModel):
         for regime, p in zip(v.keys(), probs, strict=True):
             if not (0.0 <= p <= 1.0):
                 raise ValueError(
-                    f"regime_probs[{regime.value if isinstance(regime, Regime) else regime}]"
-                    f" = {p} out of [0, 1] range"
+                    f"regime_probs[{regime.value if isinstance(regime, Regime) else regime}] = {p} out of [0, 1] range"
                 )
         total = sum(probs)
         if not (1.0 - _PROB_TOLERANCE <= total <= 1.0 + _PROB_TOLERANCE):
-            raise ValueError(
-                f"regime_probs must sum to ~1.0 "
-                f"(tolerance {_PROB_TOLERANCE}); got {total}"
-            )
+            raise ValueError(f"regime_probs must sum to ~1.0 (tolerance {_PROB_TOLERANCE}); got {total}")
         return v
 
 
@@ -314,9 +308,7 @@ Now try again. Respond with the JSON object ONLY.
         # 1. Cache lookup (returns None on miss / stale / corrupt).
         cached = self._read_cache(ts.date(), asset_config.ticker)
         if cached is not None:
-            logger.info(
-                f"narrator: cache hit for {asset_config.ticker} @ {ts.date()}"
-            )
+            logger.info(f"narrator: cache hit for {asset_config.ticker} @ {ts.date()}")
             return cached
 
         # 2. Build prompt.
@@ -366,9 +358,7 @@ Now try again. Respond with the JSON object ONLY.
             return self._parse_and_validate(raw)
         except (ValidationError, ValueError, json.JSONDecodeError, TypeError) as exc:
             logger.error(f"narrator: retry LLM call also failed: {exc}")
-            raise LLMJudgeError(
-                "LLM failed to produce a valid RegimeJudgeOutput after retry"
-            ) from exc
+            raise LLMJudgeError("LLM failed to produce a valid RegimeJudgeOutput after retry") from exc
 
     async def _generate(self, prompt: str) -> str | None:
         """Route the prompt through ModelRouter; return raw text content.
@@ -408,9 +398,7 @@ Now try again. Respond with the JSON object ONLY.
         cleaned = LLMJudgeNarrator._strip_markdown_fences(raw)
         parsed = json.loads(cleaned)
         if not isinstance(parsed, dict):
-            raise ValueError(
-                f"LLM response must be a JSON object; got {type(parsed).__name__}"
-            )
+            raise ValueError(f"LLM response must be a JSON object; got {type(parsed).__name__}")
         return RegimeJudgeOutput.model_validate(parsed)
 
     @staticmethod
@@ -424,9 +412,7 @@ Now try again. Respond with the JSON object ONLY.
         text = text.strip()
         # Match ```json\n...\n``` OR ```\n...\n``` (with DOTALL so newlines
         # inside are captured).
-        match = re.match(
-            r"^```(?:json|JSON)?\s*\n?(.*?)\n?```\s*$", text, re.DOTALL
-        )
+        match = re.match(r"^```(?:json|JSON)?\s*\n?(.*?)\n?```\s*$", text, re.DOTALL)
         if match:
             return match.group(1).strip()
         return text
@@ -492,9 +478,7 @@ Now try again. Respond with the JSON object ONLY.
     # Cache (single parquet file, atomic write)
     # ------------------------------------------------------------------
 
-    def _read_cache(
-        self, cache_date: date, ticker: str
-    ) -> RegimeJudgeOutput | None:
+    def _read_cache(self, cache_date: date, ticker: str) -> RegimeJudgeOutput | None:
         """Return a cached entry if present and within TTL, else ``None``.
 
         Stale (>24h old), corrupt, or missing caches all return ``None``;
@@ -505,16 +489,12 @@ Now try again. Respond with the JSON object ONLY.
         try:
             df = pd.read_parquet(self._cache_path)
         except Exception as exc:
-            logger.warning(
-                f"narrator: corrupt cache {self._cache_path}: {exc}; ignoring"
-            )
+            logger.warning(f"narrator: corrupt cache {self._cache_path}: {exc}; ignoring")
             return None
         if df.empty or "cache_date" not in df.columns:
             return None
 
-        mask = (df["cache_date"] == pd.Timestamp(cache_date)) & (
-            df["ticker"] == ticker
-        )
+        mask = (df["cache_date"] == pd.Timestamp(cache_date)) & (df["ticker"] == ticker)
         hits = df.loc[mask]
         if hits.empty:
             return None
@@ -528,10 +508,7 @@ Now try again. Respond with the JSON object ONLY.
 
         age = datetime.now(UTC).replace(tzinfo=None) - cached_at.to_pydatetime()
         if age > _CACHE_TTL:
-            logger.debug(
-                f"narrator: cache stale for {ticker} @ {cache_date} "
-                f"(age={age}, ttl={_CACHE_TTL})"
-            )
+            logger.debug(f"narrator: cache stale for {ticker} @ {cache_date} (age={age}, ttl={_CACHE_TTL})")
             return None
 
         try:
@@ -542,9 +519,7 @@ Now try again. Respond with the JSON object ONLY.
                 narrative=str(row["narrative"]),
             )
         except Exception as exc:
-            logger.warning(
-                f"narrator: cache row parse failed for {ticker} @ {cache_date}: {exc}"
-            )
+            logger.warning(f"narrator: cache row parse failed for {ticker} @ {cache_date}: {exc}")
             return None
 
     def _write_cache(
@@ -579,17 +554,11 @@ Now try again. Respond with the JSON object ONLY.
             try:
                 existing = pd.read_parquet(self._cache_path)
             except Exception as exc:
-                logger.warning(
-                    f"narrator: cache read-before-write failed ({exc}); "
-                    "starting fresh"
-                )
+                logger.warning(f"narrator: cache read-before-write failed ({exc}); starting fresh")
                 existing = pd.DataFrame()
 
         if not existing.empty and "cache_date" in existing.columns:
-            keep = ~(
-                (existing["cache_date"] == pd.Timestamp(cache_date))
-                & (existing["ticker"] == ticker)
-            )
+            keep = ~((existing["cache_date"] == pd.Timestamp(cache_date)) & (existing["ticker"] == ticker))
             existing = existing.loc[keep]
 
         combined = pd.concat([existing, new_row], ignore_index=True)

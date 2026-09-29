@@ -4,13 +4,12 @@ Test Backtesting Engine
 Tests for backtest engine, position scaler, and regime classifier.
 """
 
-import pytest
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 
-from src.backtesting.backtest_engine import BacktestEngine, Trade, Account
+import pytest
+
 from src.analysis.position_scaler import PositionScaler, calculate_performance_stats
+from src.backtesting.backtest_engine import Account, BacktestEngine, Trade
 
 
 class TestBacktestEngine:
@@ -42,7 +41,7 @@ class TestBacktestEngine:
             pnl_percent=2.0,
             duration_minutes=30,
             setup_type="TEST",
-            win=True
+            win=True,
         )
 
         account.update(trade)
@@ -60,7 +59,7 @@ class TestBacktestEngine:
             pnl_percent=-2.0,
             duration_minutes=30,
             setup_type="TEST",
-            win=False
+            win=False,
         )
 
         account.update(trade_loss)
@@ -79,7 +78,7 @@ class TestBacktestEngine:
             pnl_percent=2.5,
             duration_minutes=30,
             setup_type="FVG_BULLISH",
-            win=True
+            win=True,
         )
 
         assert trade.direction == "LONG"
@@ -93,10 +92,7 @@ class TestPositionScaler:
 
     def test_scaler_initialization(self):
         """Test scaler can be initialized"""
-        scaler = PositionScaler(
-            base_contracts=1,
-            max_contracts=8
-        )
+        scaler = PositionScaler(base_contracts=1, max_contracts=8)
 
         assert scaler.base_contracts == 1
         assert scaler.max_contracts == 8
@@ -109,7 +105,7 @@ class TestPositionScaler:
         trades = [
             Trade(
                 entry_time=datetime.now() - timedelta(hours=i),
-                exit_time=datetime.now() - timedelta(hours=i-1),
+                exit_time=datetime.now() - timedelta(hours=i - 1),
                 entry_price=100.0,
                 exit_price=101.0,
                 direction="LONG",
@@ -118,7 +114,7 @@ class TestPositionScaler:
                 pnl_percent=1.0,
                 duration_minutes=30,
                 setup_type="TEST",
-                win=True
+                win=True,
             )
             for i in range(5, 0, -1)
         ]
@@ -134,7 +130,7 @@ class TestPositionScaler:
         trades = [
             Trade(
                 entry_time=datetime.now() - timedelta(hours=i),
-                exit_time=datetime.now() - timedelta(hours=i-1),
+                exit_time=datetime.now() - timedelta(hours=i - 1),
                 entry_price=100.0,
                 exit_price=99.0,
                 direction="LONG",
@@ -143,7 +139,7 @@ class TestPositionScaler:
                 pnl_percent=-1.0,
                 duration_minutes=30,
                 setup_type="TEST",
-                win=False
+                win=False,
             )
             for i in range(3, 0, -1)
         ]
@@ -169,7 +165,7 @@ class TestPositionScaler:
                 pnl_percent=1.0,
                 duration_minutes=30,
                 setup_type="TEST",
-                win=True
+                win=True,
             )
             for _ in range(3)
         ]
@@ -190,7 +186,7 @@ class TestPositionScaler:
                 pnl_percent=1.0,
                 duration_minutes=30,
                 setup_type="TEST",
-                win=True
+                win=True,
             )
             for _ in range(3)
         ]
@@ -215,7 +211,7 @@ class TestPositionScaler:
                 pnl_percent=-1.0,
                 duration_minutes=30,
                 setup_type="TEST",
-                win=False
+                win=False,
             )
             for _ in range(2)
         ]
@@ -237,7 +233,7 @@ class TestPositionScaler:
             consecutive_wins=0,
             consecutive_losses=0,
             total_trades=20,
-            recent_trades=[]
+            recent_trades=[],
         )
 
         kelly = scaler.calculate_kelly_size(stats)
@@ -263,7 +259,7 @@ class TestPositionScaler:
                 pnl_percent=2.0,
                 duration_minutes=30,
                 setup_type="TEST",
-                win=True
+                win=True,
             )
             for _ in range(6)
         ] + [
@@ -278,7 +274,7 @@ class TestPositionScaler:
                 pnl_percent=-1.0,
                 duration_minutes=30,
                 setup_type="TEST",
-                win=False
+                win=False,
             )
             for _ in range(4)
         ]
@@ -291,5 +287,5 @@ class TestPositionScaler:
         assert stats.average_loser == -100.0
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '-s'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "-s"])

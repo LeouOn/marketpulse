@@ -87,6 +87,7 @@ class _YahooLike(Protocol):
 
     def fetch(self, ticker: str, start: date, end: date) -> pd.DataFrame: ...
 
+
 # ---------------------------------------------------------------------------
 # Spec lockdown -- the 12 canonical factor column names + providers
 # ---------------------------------------------------------------------------
@@ -195,8 +196,7 @@ class MacroFactorProvider:
         cached = self._read_cache(cache_path)
         if cached is not None and self._cache_covers(cached, start, end):
             logger.info(
-                f"factors: cache hit ({len(cached)} rows "
-                f"{cached.index.min().date()} -> {cached.index.max().date()})"
+                f"factors: cache hit ({len(cached)} rows {cached.index.min().date()} -> {cached.index.max().date()})"
             )
             return self._slice(cached, start, end)
 
@@ -296,9 +296,7 @@ class MacroFactorProvider:
     # Orchestration: fetch + assemble
     # ------------------------------------------------------------------
 
-    def _fetch_raw_factors(
-        self, start: date, end: date
-    ) -> dict[str, pd.Series]:
+    def _fetch_raw_factors(self, start: date, end: date) -> dict[str, pd.Series]:
         """Fetch each upstream series and return ``{factor_name: Series}``.
 
         Each returned Series is indexed by ``ts`` (Timestamp) and named
@@ -336,10 +334,7 @@ class MacroFactorProvider:
                 ts_raw = self._compute_oil_term_structure(front, back)
                 raw["oil_term_structure"] = ts_raw
             elif front.empty and back.empty:
-                logger.warning(
-                    "oil_term_structure: both Yahoo legs empty; "
-                    "factor will be NaN"
-                )
+                logger.warning("oil_term_structure: both Yahoo legs empty; factor will be NaN")
             else:
                 logger.warning(
                     "oil_term_structure: one Yahoo leg empty "
@@ -351,9 +346,7 @@ class MacroFactorProvider:
 
         return raw
 
-    def _safe_fred_fetch(
-        self, series_id: str, start: date, end: date
-    ) -> pd.Series | None:
+    def _safe_fred_fetch(self, series_id: str, start: date, end: date) -> pd.Series | None:
         """Fetch a FRED series, returning ``close`` indexed by ``ts``.
 
         Returns ``None`` on any error or empty result (caller leaves
@@ -392,7 +385,7 @@ class MacroFactorProvider:
             if col in raw:
                 s = raw[col].copy()
                 # Normalize series index to naive to match daily_index
-                if hasattr(s.index, 'tz') and s.index.tz is not None:
+                if hasattr(s.index, "tz") and s.index.tz is not None:
                     s.index = s.index.tz_convert("UTC").tz_localize(None)
                 factor_df[col] = s.reindex(daily_index, method="ffill")
             else:
@@ -409,16 +402,11 @@ class MacroFactorProvider:
         try:
             df = pd.read_parquet(path)
         except Exception as exc:
-            logger.warning(
-                f"factors: corrupt cache file {path}: {exc}; "
-                "deleting and refetching"
-            )
+            logger.warning(f"factors: corrupt cache file {path}: {exc}; deleting and refetching")
             try:
                 path.unlink()
             except OSError as unlink_exc:
-                logger.warning(
-                    f"factors: could not delete corrupt cache {path}: {unlink_exc}"
-                )
+                logger.warning(f"factors: could not delete corrupt cache {path}: {unlink_exc}")
             return None
         # Restore the named DatetimeIndex if parquet round-tripped it
         # to a regular column.
@@ -440,9 +428,7 @@ class MacroFactorProvider:
     def _cache_covers(cached: pd.DataFrame, start: date, end: date) -> bool:
         if cached.empty:
             return False
-        return bool(
-            cached.index.min().date() <= start and cached.index.max().date() >= end
-        )
+        return bool(cached.index.min().date() <= start and cached.index.max().date() >= end)
 
     @staticmethod
     def _slice(df: pd.DataFrame, start: date, end: date) -> pd.DataFrame:

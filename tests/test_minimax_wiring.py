@@ -181,6 +181,7 @@ def test_list_available_models_includes_minimax_first():
 
 def test_model_router_registers_minimax_provider():
     """After __aenter__, the providers dict must include 'minimax' with priority 0."""
+
     async def _check():
         s = get_settings()
         # Force a valid-looking key so the provider isn't filtered as unhealthy

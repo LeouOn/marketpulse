@@ -12,11 +12,12 @@ on top of the structural QE-without-QE effects. Two categories:
 
 Effect convention: positive curve_effects = yield INCREASE (in bps).
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
 import random
+from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)

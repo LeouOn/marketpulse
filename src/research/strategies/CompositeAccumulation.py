@@ -46,31 +46,19 @@ class CompositeAccumulation(Strategy):
         for key in ("fgi_weight", "rsi_weight", "mayer_weight", "sma_trend_weight"):
             v = params.get(key, 0.0)
             if not (0 <= v <= 1):
-                raise InvalidParamsError(
-                    f"{key} must be in [0, 1], got {v}"
-                )
+                raise InvalidParamsError(f"{key} must be in [0, 1], got {v}")
         if params.get("sma_period", 200) < 2:
-            raise InvalidParamsError(
-                f"sma_period must be >= 2, got {params.get('sma_period')}"
-            )
+            raise InvalidParamsError(f"sma_period must be >= 2, got {params.get('sma_period')}")
         if params.get("rsi_period", 14) < 2:
-            raise InvalidParamsError(
-                f"rsi_period must be >= 2, got {params.get('rsi_period')}"
-            )
+            raise InvalidParamsError(f"rsi_period must be >= 2, got {params.get('rsi_period')}")
         aggr = params.get("aggressive_frac", 0.9)
         cons = params.get("conservative_frac", 0.3)
         if not (0 <= cons <= 1):
-            raise InvalidParamsError(
-                f"conservative_frac must be in [0, 1], got {cons}"
-            )
+            raise InvalidParamsError(f"conservative_frac must be in [0, 1], got {cons}")
         if not (0 <= aggr <= 1):
-            raise InvalidParamsError(
-                f"aggressive_frac must be in [0, 1], got {aggr}"
-            )
+            raise InvalidParamsError(f"aggressive_frac must be in [0, 1], got {aggr}")
         if aggr <= cons:
-            raise InvalidParamsError(
-                f"aggressive_frac ({aggr}) must be > conservative_frac ({cons})"
-            )
+            raise InvalidParamsError(f"aggressive_frac ({aggr}) must be > conservative_frac ({cons})")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         p = self.params
@@ -129,10 +117,7 @@ class CompositeAccumulation(Strategy):
         if w_sum == 0:
             w_sum = 1.0
         composite = (
-            fgi_w * fgi_score
-            + rsi_w * rsi_score
-            + mayer_w * mayer_score
-            + sma_trend_w * sma_trend_score
+            fgi_w * fgi_score + rsi_w * rsi_score + mayer_w * mayer_score + sma_trend_w * sma_trend_score
         ) / w_sum
 
         # --- Map to target fraction ---

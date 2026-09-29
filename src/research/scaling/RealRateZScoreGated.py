@@ -43,7 +43,7 @@ class RealRateZScoreGated(ScalingModel):
         "multiplier_cap": 2.0,
         # Bands evaluated in order; first match wins.
         "bands": (
-            ("gt", 1.5, 1.5),   # high real yields → gold bullish
+            ("gt", 1.5, 1.5),  # high real yields → gold bullish
             ("lt", -1.0, 0.5),  # low real yields → less upside
         ),
     }
@@ -52,13 +52,9 @@ class RealRateZScoreGated(ScalingModel):
         floor = float(params.get("multiplier_floor", 0.1))
         cap = float(params.get("multiplier_cap", 2.0))
         if floor < 0:
-            raise InvalidParamsError(
-                f"multiplier_floor must be >= 0, got {floor}"
-            )
+            raise InvalidParamsError(f"multiplier_floor must be >= 0, got {floor}")
         if cap <= floor:
-            raise InvalidParamsError(
-                f"multiplier_cap ({cap}) must be > multiplier_floor ({floor})"
-            )
+            raise InvalidParamsError(f"multiplier_cap ({cap}) must be > multiplier_floor ({floor})")
         if not params.get("bands"):
             raise InvalidParamsError("bands must be a non-empty tuple")
         if not params.get("driver_field"):
@@ -83,11 +79,7 @@ class RealRateZScoreGated(ScalingModel):
             driver_value = state.get(driver_field)
             if driver_value is not None and not pd.isna(driver_value):
                 for comparator, threshold, band_mult in bands:
-                    hit = (
-                        driver_value < threshold
-                        if comparator == "lt"
-                        else driver_value > threshold
-                    )
+                    hit = driver_value < threshold if comparator == "lt" else driver_value > threshold
                     if hit:
                         mult = float(band_mult)
                         break

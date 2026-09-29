@@ -13,7 +13,7 @@ class TechnicalAgent(MarketAgent):
     """Agent that performs technical analysis on OHLCV data."""
 
     AGENT_NAME = "technical_agent"
-    CAPABILITY = "reasoning"    # Technical analysis benefits from reasoning depth
+    CAPABILITY = "reasoning"  # Technical analysis benefits from reasoning depth
     MAX_TOKENS = 1000
     TEMPERATURE = 0.3
     MAX_TURNS = 4

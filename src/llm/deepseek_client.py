@@ -12,19 +12,19 @@ from loguru import logger
 
 from ..core.config import get_settings
 
-
 # ---------------------------------------------------------------------------
 # Tool / function-calling type aliases
 # ---------------------------------------------------------------------------
 
 ToolDefinition = dict[str, Any]  # OpenAI-compatible function definition dict
-ToolCall = dict[str, Any]        # A single tool call request from the model
-ToolResult = dict[str, Any]      # Result returned to the model after execution
+ToolCall = dict[str, Any]  # A single tool call request from the model
+ToolResult = dict[str, Any]  # Result returned to the model after execution
 
 
 # ---------------------------------------------------------------------------
 # DeepSeekClient
 # ---------------------------------------------------------------------------
+
 
 class DeepSeekClient:
     """OpenAI-compatible client for the DeepSeek API.
@@ -98,15 +98,11 @@ class DeepSeekClient:
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             }
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=15)
-            ) as s:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as s:
                 async with s.post(url, json=payload, headers=headers) as r:
                     self._health = r.status == 200
                     if not self._health:
-                        logger.debug(
-                            f"DeepSeek health check: HTTP {r.status}"
-                        )
+                        logger.debug(f"DeepSeek health check: HTTP {r.status}")
                     return self._health
         except Exception as e:
             logger.debug(f"DeepSeek health check failed: {e}")
@@ -161,9 +157,7 @@ class DeepSeekClient:
                     return result
                 else:
                     error_text = await response.text()
-                    logger.warning(
-                        f"DeepSeek API error {response.status}: {error_text[:500]}"
-                    )
+                    logger.warning(f"DeepSeek API error {response.status}: {error_text[:500]}")
                     return None
         except Exception as e:
             logger.error(f"DeepSeek completion error: {e}")
@@ -250,7 +244,7 @@ class DeepSeekClient:
                     tool_args = {}
 
                 logger.info(
-                    f"DeepSeek tool call turn={turn+1} "
+                    f"DeepSeek tool call turn={turn + 1} "
                     f"tool={tool_name} args={json.dumps(tool_args, default=str)[:200]}"
                 )
 
@@ -259,15 +253,15 @@ class DeepSeekClient:
                 except Exception as exc:
                     result = {"error": str(exc)}
 
-                working_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.get("id", f"call_{turn}"),
-                    "content": json.dumps(result, default=str),
-                })
+                working_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.get("id", f"call_{turn}"),
+                        "content": json.dumps(result, default=str),
+                    }
+                )
 
-        logger.warning(
-            f"DeepSeek tool loop hit max_turns={max_turns} -- returning last response"
-        )
+        logger.warning(f"DeepSeek tool loop hit max_turns={max_turns} -- returning last response")
         return response
 
     # -- streaming (stub) -------------------------------------------------
@@ -324,11 +318,7 @@ class DeepSeekClient:
                                 return
                             try:
                                 data = json.loads(data_str)
-                                delta = (
-                                    data.get("choices", [{}])[0]
-                                    .get("delta", {})
-                                    .get("content", "")
-                                )
+                                delta = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
                                 if delta:
                                     if on_chunk:
                                         on_chunk(delta)

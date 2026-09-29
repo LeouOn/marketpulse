@@ -170,6 +170,7 @@ def _seed_btc_caches() -> None:
     _seed_cache_file("btc/daily.csv")
     _seed_cache_file("btc/hourly.csv")
 
+
 # Source-of-record labels stored in CSV ``source`` column.
 SRC_LOCAL = "local"
 SRC_YAHOO = "yahoo"
@@ -463,9 +464,7 @@ def fetch_hourly_kraken(
         f"[T3] Fetching hourly XBT-USD from Kraken (requesting >= {datetime.fromtimestamp(start_ts, tz=UTC).date()})"
     )
     try:
-        payload = _http_get_json(
-            KRAKEN_OHLC_URL, params={"pair": pair, "interval": 60, "since": start_ts}
-        )
+        payload = _http_get_json(KRAKEN_OHLC_URL, params={"pair": pair, "interval": 60, "since": start_ts})
     except Exception as e:
         logger.warning(f"[T3] Kraken fetch failed: {e}")
         return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "source"])
@@ -496,10 +495,7 @@ def fetch_hourly_kraken(
         )
 
     df = pd.DataFrame(rows).drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
-    logger.info(
-        f"[T3] Kraken returned {len(df)} hourly bars "
-        f"({df['ts'].min().date()} -> {df['ts'].max().date()})"
-    )
+    logger.info(f"[T3] Kraken returned {len(df)} hourly bars ({df['ts'].min().date()} -> {df['ts'].max().date()})")
     return df
 
 
@@ -538,23 +534,17 @@ def _run_tranche(
         new = fetcher()
     except Exception as e:
         logger.error(f"[{name}] Failed: {e}")
-        return TrancheResult(
-            name=name, source=source, rows_fetched=0, rows_added=0, start=None, end=None, error=str(e)
-        )
+        return TrancheResult(name=name, source=source, rows_fetched=0, rows_added=0, start=None, end=None, error=str(e))
 
     if new.empty:
-        return TrancheResult(
-            name=name, source=source, rows_fetched=0, rows_added=0, start=None, end=None
-        )
+        return TrancheResult(name=name, source=source, rows_fetched=0, rows_added=0, start=None, end=None)
 
     # Incremental: only keep new rows whose ts is strictly newer than existing
     if not existing.empty and not new.empty:
         last_existing_ts = existing["ts"].max()
         new_only = new[new["ts"] > last_existing_ts]
         if len(new_only) < len(new):
-            logger.info(
-                f"[{name}] Filtered to {len(new_only)} new bars (older ones already cached)"
-            )
+            logger.info(f"[{name}] Filtered to {len(new_only)} new bars (older ones already cached)")
             new = new_only
 
     merged = _merge(new, existing)
@@ -598,9 +588,9 @@ def update_cache(
     summary: dict = {"tranches": [], "started_at": pd.Timestamp.now("UTC").isoformat()}
 
     daily_existing = _read_cache(DAILY_CSV) if "t1_daily_yahoo" in tranches else pd.DataFrame()
-    hourly_existing = _read_cache(HOURLY_CSV) if any(
-        t.startswith("t2") or t.startswith("t3") for t in tranches
-    ) else pd.DataFrame()
+    hourly_existing = (
+        _read_cache(HOURLY_CSV) if any(t.startswith("t2") or t.startswith("t3") for t in tranches) else pd.DataFrame()
+    )
 
     if "t1_daily_yahoo" in tranches:
         result = _run_tranche(
@@ -639,9 +629,7 @@ def update_cache(
     summary["ended_at"] = pd.Timestamp.now("UTC").isoformat()
     summary["daily_total"] = int(len(_read_cache(DAILY_CSV)))
     summary["hourly_total"] = int(len(_read_cache(HOURLY_CSV)))
-    logger.info(
-        f"=== Update complete: {summary['daily_total']} daily bars, {summary['hourly_total']} hourly bars ==="
-    )
+    logger.info(f"=== Update complete: {summary['daily_total']} daily bars, {summary['hourly_total']} hourly bars ===")
     return summary
 
 
@@ -662,9 +650,7 @@ def _result_to_dict(r: TrancheResult) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def load_daily(
-    start: str | None = None, end: str | None = None, force_refresh: bool = False
-) -> pd.DataFrame:
+def load_daily(start: str | None = None, end: str | None = None, force_refresh: bool = False) -> pd.DataFrame:
     """Return the daily BTC-USD DataFrame, fetching from Yahoo if cache is stale.
 
     Raises:
@@ -678,9 +664,7 @@ def load_daily(
             # Fetch failed — check if we have a usable cache to fall back on
             existing = _read_cache(DAILY_CSV)
             if existing.empty:
-                raise DataPipelineError(
-                    f"Daily BTC-USD fetch failed and no cache exists: {exc}"
-                ) from exc
+                raise DataPipelineError(f"Daily BTC-USD fetch failed and no cache exists: {exc}") from exc
             logger.warning(f"Daily fetch failed; falling back to stale cache ({len(existing)} rows): {exc}")
             merged = existing
         else:
@@ -689,13 +673,9 @@ def load_daily(
             _write_cache(merged, DAILY_CSV)
     else:
         merged = _read_cache(DAILY_CSV)
-        if merged.empty or (
-            pd.Timestamp.now("UTC").tz_convert(None) - merged["ts"].max()
-        ) > pd.Timedelta(days=1):
+        if merged.empty or (pd.Timestamp.now("UTC").tz_convert(None) - merged["ts"].max()) > pd.Timedelta(days=1):
             try:
-                fetch_start = (
-                    str(merged["ts"].max().date()) if not merged.empty else YAHOO_BTC_EARLIEST
-                )
+                fetch_start = str(merged["ts"].max().date()) if not merged.empty else YAHOO_BTC_EARLIEST
                 new = fetch_daily_yahoo(start=fetch_start)
                 merged = _merge(new, merged)
                 _write_cache(merged, DAILY_CSV)
@@ -709,9 +689,7 @@ def load_daily(
     return merged.reset_index(drop=True)
 
 
-def load_hourly(
-    start: str | None = None, end: str | None = None, force_refresh: bool = False
-) -> pd.DataFrame:
+def load_hourly(start: str | None = None, end: str | None = None, force_refresh: bool = False) -> pd.DataFrame:
     """Return the hourly BTC-USD DataFrame, fetching as needed.
 
     Raises:
@@ -726,15 +704,11 @@ def load_hourly(
             # Fetch failed — check if we have a usable cache to fall back on
             existing = _read_cache(HOURLY_CSV)
             if existing.empty:
-                raise DataPipelineError(
-                    f"Hourly BTC-USD fetch failed and no cache exists: {exc}"
-                ) from exc
+                raise DataPipelineError(f"Hourly BTC-USD fetch failed and no cache exists: {exc}") from exc
             logger.warning(f"Hourly fetch failed; falling back to stale cache ({len(existing)} rows): {exc}")
     else:
         merged = _read_cache(HOURLY_CSV)
-        if merged.empty or (
-            pd.Timestamp.now("UTC").tz_convert(None) - merged["ts"].max()
-        ) > pd.Timedelta(hours=2):
+        if merged.empty or (pd.Timestamp.now("UTC").tz_convert(None) - merged["ts"].max()) > pd.Timedelta(hours=2):
             try:
                 # Re-run T3 only (the live tranche) for incremental updates
                 summary = update_cache(tranches=["t3_hourly_binance"])
@@ -789,9 +763,7 @@ def data_summary(df: pd.DataFrame, trading_days_per_year: float = 365.25) -> dic
         "last_close": float(close.iloc[-1]),
         "total_return_pct": float((close.iloc[-1] / close.iloc[0] - 1.0) * 100.0),
         "cagr_pct": float(_cagr(close.iloc[0], close.iloc[-1], years) * 100.0),
-        "realized_vol_annual_pct": float(rets.std() * (trading_days_per_year**0.5) * 100.0)
-        if len(rets) > 1
-        else 0.0,
+        "realized_vol_annual_pct": float(rets.std() * (trading_days_per_year**0.5) * 100.0) if len(rets) > 1 else 0.0,
         "max_drawdown_pct": float(_max_drawdown(close) * 100.0),
         "best_day_pct": float(rets.max() * 100.0) if len(rets) else 0.0,
         "worst_day_pct": float(rets.min() * 100.0) if len(rets) else 0.0,
@@ -924,10 +896,7 @@ def _build_asset_registry() -> dict[str, AssetConfig]:
             default_regime_multipliers={},
             publication_lag_days=60,  # Metis: Case-Shiller ~2-month publication lag
             tradeable=True,
-            research_notes=(
-                "Monthly cadence. NSA series (not seasonally adjusted) -- "
-                "seasonal patterns present."
-            ),
+            research_notes=("Monthly cadence. NSA series (not seasonally adjusted) -- seasonal patterns present."),
         ),
     }
 

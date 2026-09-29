@@ -4,9 +4,10 @@ Self-contained — does NOT use src.research.data.fred.FredProvider (which is
 locked to a 12-series whitelist that omits DGS2/DGS3MO/etc.). Pattern mirrors
 scripts/yield_curve_monitor.py: direct requests.get + parquet cache.
 """
+
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -132,12 +133,17 @@ class FredCurveFetcher:
                 v = float(raw)
             except (TypeError, ValueError):
                 continue  # skip missing observations (FRED uses "." for gaps)
-            rows.append({
-                "ts": pd.Timestamp(obs["date"]),
-                "open": v, "high": v, "low": v, "close": v,
-                "volume": float("nan"),
-                "source": f"fred:{series_id}",
-            })
+            rows.append(
+                {
+                    "ts": pd.Timestamp(obs["date"]),
+                    "open": v,
+                    "high": v,
+                    "low": v,
+                    "close": v,
+                    "volume": float("nan"),
+                    "source": f"fred:{series_id}",
+                }
+            )
         if not rows:
             return pd.DataFrame(columns=_CACHE_COLS)
         df = pd.DataFrame(rows).drop_duplicates(subset=["ts"]).sort_values("ts")
@@ -169,10 +175,7 @@ class FredCurveFetcher:
     def _cache_covers(cached: pd.DataFrame, start: date, end: date) -> bool:
         if cached.empty:
             return False
-        return bool(
-            pd.Timestamp(cached["ts"].min()).date() <= start
-            and pd.Timestamp(cached["ts"].max()).date() >= end
-        )
+        return bool(pd.Timestamp(cached["ts"].min()).date() <= start and pd.Timestamp(cached["ts"].max()).date() >= end)
 
     @staticmethod
     def _slice(df: pd.DataFrame, start: date, end: date) -> pd.DataFrame:

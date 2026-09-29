@@ -14,13 +14,11 @@ import pandas as pd
 import pytest
 
 from src.research.montecarlo import (
-    SimulationResult,
     simulate_block_bootstrap,
     simulate_gbm,
     simulate_regime_switching,
     simulate_strategy,
 )
-
 
 # ---------------------------------------------------------------------------
 # GBM
@@ -190,9 +188,7 @@ def test_simulate_strategy_unknown_method_raises():
 @pytest.mark.parametrize("tdpy", [12, 252, 365.25])
 def test_gbm_accepts_trading_days_per_year(tdpy):
     """simulate_gbm must accept trading_days_per_year; dt derived as 1/tdpy."""
-    r = simulate_gbm(
-        mu=0.5, sigma=0.4, s0=100.0, n_steps=50, n_paths=20, seed=0, trading_days_per_year=tdpy
-    )
+    r = simulate_gbm(mu=0.5, sigma=0.4, s0=100.0, n_steps=50, n_paths=20, seed=0, trading_days_per_year=tdpy)
     assert r.paths.shape == (20, 51)
     # dt stored in params should equal 1/tdpy
     assert r.params["dt"] == pytest.approx(1.0 / tdpy, rel=1e-12)
@@ -200,21 +196,15 @@ def test_gbm_accepts_trading_days_per_year(tdpy):
 
 def test_gbm_trading_days_per_year_changes_paths():
     """Different trading_days_per_year -> different dt -> different terminal values."""
-    r_btc = simulate_gbm(
-        mu=0.3, sigma=0.4, s0=100.0, n_steps=100, n_paths=200, seed=42, trading_days_per_year=365.25
-    )
-    r_housing = simulate_gbm(
-        mu=0.3, sigma=0.4, s0=100.0, n_steps=100, n_paths=200, seed=42, trading_days_per_year=12
-    )
+    r_btc = simulate_gbm(mu=0.3, sigma=0.4, s0=100.0, n_steps=100, n_paths=200, seed=42, trading_days_per_year=365.25)
+    r_housing = simulate_gbm(mu=0.3, sigma=0.4, s0=100.0, n_steps=100, n_paths=200, seed=42, trading_days_per_year=12)
     # Same seed -> same random draws, but different dt scales drift/diffusion.
     assert not np.allclose(r_btc.terminal_values, r_housing.terminal_values)
 
 
 def test_gbm_explicit_dt_overrides_trading_days_per_year():
     """If dt is explicitly passed, it wins; trading_days_per_year is ignored."""
-    r_explicit = simulate_gbm(
-        mu=0.3, sigma=0.4, s0=100.0, n_steps=50, n_paths=20, seed=1, dt=0.01
-    )
+    r_explicit = simulate_gbm(mu=0.3, sigma=0.4, s0=100.0, n_steps=50, n_paths=20, seed=1, dt=0.01)
     r_with_tdpy = simulate_gbm(
         mu=0.3,
         sigma=0.4,

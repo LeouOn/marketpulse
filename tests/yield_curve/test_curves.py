@@ -1,5 +1,4 @@
 """Unit tests for pure curve math (no I/O)."""
-from datetime import date
 
 import pytest
 

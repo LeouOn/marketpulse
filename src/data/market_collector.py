@@ -179,9 +179,7 @@ class MarketPulseCollector:
             try:
                 raw_vol = internals.get("volume_flow")
                 vol_flow = (
-                    raw_vol.get("total_volume_60min", 0.0)
-                    if isinstance(raw_vol, dict)
-                    else float(raw_vol or 0.0)
+                    raw_vol.get("total_volume_60min", 0.0) if isinstance(raw_vol, dict) else float(raw_vol or 0.0)
                 )
                 internals_record = {
                     "timestamp": datetime.now(),

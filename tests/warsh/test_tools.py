@@ -1,6 +1,8 @@
 """Tests for QE-without-QE tool definitions."""
+
 import pytest
-from src.warsh.tools import FedTool, ToolName, get_all_tools, apply_tool_effect
+
+from src.warsh.tools import ToolName, apply_tool_effect, get_all_tools
 
 
 def test_all_six_tools_exist():
@@ -43,7 +45,7 @@ def test_qt_increases_yields():
     effects = apply_tool_effect(qt, qt.current_value)
     assert "10y" in effects
     assert effects["10y"] > 0  # positive = yield increase
-    assert effects["2y"] > 0   # all yields rise with QT
+    assert effects["2y"] > 0  # all yields rise with QT
 
 
 def test_tool_effect_scales_linearly():

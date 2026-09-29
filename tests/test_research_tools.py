@@ -199,9 +199,7 @@ def test_tool_run_backtest_missing_data(tmp_reports, monkeypatch):
 
     monkeypatch.setattr(data_mod, "DATA_DIR", tmp_reports)
     monkeypatch.setattr(data_mod, "DAILY_CSV", tmp_reports / "daily.csv")
-    (tmp_reports / "daily.csv").write_text(
-        "ts,open,high,low,close,volume,source\n2020-01-01,1,1,1,1,1,test\n"
-    )
+    (tmp_reports / "daily.csv").write_text("ts,open,high,low,close,volume,source\n2020-01-01,1,1,1,1,1,test\n")
     # Prevent auto-refresh: simulate "no network"
     monkeypatch.setattr(data_mod, "fetch_daily_yahoo", lambda *a, **kw: pd.DataFrame())
     monkeypatch.setattr(data_mod, "fetch_hourly_cryptocompare", lambda *a, **kw: pd.DataFrame())

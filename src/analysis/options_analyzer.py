@@ -5,8 +5,8 @@ breakeven calculations, profit/loss scenarios, and probability analysis.
 """
 
 from dataclasses import dataclass
-from typing import Literal, Optional, Dict, Any
-from datetime import datetime
+from typing import Any, Dict, Literal, Optional
+
 from loguru import logger
 
 from .options_pricing import BlackScholesCalculator, Greeks
@@ -15,6 +15,7 @@ from .options_pricing import BlackScholesCalculator, Greeks
 @dataclass
 class SingleLegAnalysis:
     """Analysis results for a single options leg"""
+
     symbol: str
     option_type: Literal["call", "put"]
     strike: float
@@ -42,7 +43,7 @@ class SingleLegAnalysis:
     # Risk Metrics
     breakeven: float
     max_profit: Optional[float]  # None if unlimited
-    max_loss: Optional[float]    # None if unlimited
+    max_loss: Optional[float]  # None if unlimited
     risk_reward_ratio: Optional[float]
 
     # Probabilities (using delta as proxy)
@@ -72,7 +73,7 @@ class OptionsAnalyzer:
         option_type: Literal["call", "put"],
         position_type: Literal["long", "short"] = "long",
         contracts: int = 1,
-        market_price: Optional[float] = None
+        market_price: Optional[float] = None,
     ) -> Optional[SingleLegAnalysis]:
         """Analyze a single options leg
 
@@ -92,18 +93,18 @@ class OptionsAnalyzer:
             # Get options chain
             chain_data = self.yahoo_client.get_options_chain(symbol, expiration)
 
-            if 'error' in chain_data or not chain_data['underlying_price']:
+            if "error" in chain_data or not chain_data["underlying_price"]:
                 logger.error(f"Failed to fetch options chain for {symbol}")
                 return None
 
-            underlying_price = chain_data['underlying_price']
+            underlying_price = chain_data["underlying_price"]
 
             # Find the specific option in the chain
-            options_list = chain_data['calls'] if option_type == 'call' else chain_data['puts']
+            options_list = chain_data["calls"] if option_type == "call" else chain_data["puts"]
 
             option_data = None
             for opt in options_list:
-                if abs(opt['strike'] - strike) < 0.01:  # Match strike with small tolerance
+                if abs(opt["strike"] - strike) < 0.01:  # Match strike with small tolerance
                     option_data = opt
                     break
 
@@ -112,10 +113,10 @@ class OptionsAnalyzer:
                 return None
 
             # Extract market data
-            bid = float(option_data.get('bid', 0))
-            ask = float(option_data.get('ask', 0))
-            last_price = float(option_data.get('lastPrice', 0))
-            implied_vol = float(option_data.get('impliedVolatility', 0))
+            bid = float(option_data.get("bid", 0))
+            ask = float(option_data.get("ask", 0))
+            last_price = float(option_data.get("lastPrice", 0))
+            implied_vol = float(option_data.get("impliedVolatility", 0))
 
             # Calculate mid price
             mid_price = (bid + ask) / 2.0 if bid > 0 and ask > 0 else last_price
@@ -140,7 +141,7 @@ class OptionsAnalyzer:
                 r=risk_free_rate,
                 sigma=implied_vol,
                 q=dividend_yield,
-                option_type=option_type
+                option_type=option_type,
             )
 
             theoretical_price = result.price
@@ -164,14 +165,12 @@ class OptionsAnalyzer:
                 position_type=position_type,
                 strike=strike,
                 premium=market_price,
-                contracts=contracts
+                contracts=contracts,
             )
 
             # Calculate probability of profit (using delta as approximation)
             probability_profit = self._estimate_probability_profit(
-                option_type=option_type,
-                position_type=position_type,
-                delta=greeks.delta
+                option_type=option_type, position_type=position_type, delta=greeks.delta
             )
 
             return SingleLegAnalysis(
@@ -196,7 +195,7 @@ class OptionsAnalyzer:
                 risk_reward_ratio=risk_reward,
                 probability_profit=probability_profit,
                 days_to_expiration=days_to_exp,
-                theta_decay_per_day=theta_decay
+                theta_decay_per_day=theta_decay,
             )
 
         except Exception as e:
@@ -209,7 +208,7 @@ class OptionsAnalyzer:
         position_type: Literal["long", "short"],
         strike: float,
         premium: float,
-        contracts: int
+        contracts: int,
     ) -> tuple[float, Optional[float], Optional[float], Optional[float]]:
         """Calculate breakeven, max profit, max loss, and risk/reward ratio
 
@@ -248,10 +247,7 @@ class OptionsAnalyzer:
         return breakeven, max_profit, max_loss, risk_reward
 
     def _estimate_probability_profit(
-        self,
-        option_type: Literal["call", "put"],
-        position_type: Literal["long", "short"],
-        delta: float
+        self, option_type: Literal["call", "put"], position_type: Literal["long", "short"], delta: float
     ) -> float:
         """Estimate probability of profit using delta as proxy
 
@@ -279,11 +275,7 @@ class OptionsAnalyzer:
 
         return min(max(prob, 0.0), 100.0)
 
-    def calculate_pnl_at_price(
-        self,
-        analysis: SingleLegAnalysis,
-        stock_price: float
-    ) -> float:
+    def calculate_pnl_at_price(self, analysis: SingleLegAnalysis, stock_price: float) -> float:
         """Calculate P&L at a specific stock price at expiration
 
         Args:
@@ -312,11 +304,7 @@ class OptionsAnalyzer:
 
         return pnl
 
-    def generate_pnl_chart_data(
-        self,
-        analysis: SingleLegAnalysis,
-        price_range_pct: float = 0.3
-    ) -> Dict[str, Any]:
+    def generate_pnl_chart_data(self, analysis: SingleLegAnalysis, price_range_pct: float = 0.3) -> Dict[str, Any]:
         """Generate P&L data points for charting
 
         Args:
@@ -342,9 +330,9 @@ class OptionsAnalyzer:
             pnl_points.append(round(pnl, 2))
 
         return {
-            'price_points': price_points,
-            'pnl_points': pnl_points,
-            'current_price': underlying,
-            'breakeven': analysis.breakeven,
-            'strike': analysis.strike
+            "price_points": price_points,
+            "pnl_points": pnl_points,
+            "current_price": underlying,
+            "breakeven": analysis.breakeven,
+            "strike": analysis.strike,
         }

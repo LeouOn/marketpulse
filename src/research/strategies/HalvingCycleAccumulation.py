@@ -48,23 +48,15 @@ class HalvingCycleAccumulation(Strategy):
     def validate_params(self, params: dict[str, Any]) -> None:
         dates = params.get("halving_dates", [])
         if not dates or len(dates) == 0:
-            raise InvalidParamsError(
-                "halving_dates must contain at least one date, got []"
-            )
+            raise InvalidParamsError("halving_dates must contain at least one date, got []")
         agg = params.get("aggressive_frac", 0.9)
         con = params.get("conservative_frac", 0.3)
         if not (0 <= agg <= 1):
-            raise InvalidParamsError(
-                f"aggressive_frac must be in [0, 1], got {agg}"
-            )
+            raise InvalidParamsError(f"aggressive_frac must be in [0, 1], got {agg}")
         if not (0 <= con <= 1):
-            raise InvalidParamsError(
-                f"conservative_frac must be in [0, 1], got {con}"
-            )
+            raise InvalidParamsError(f"conservative_frac must be in [0, 1], got {con}")
         if agg <= con:
-            raise InvalidParamsError(
-                f"aggressive_frac ({agg}) must be > conservative_frac ({con})"
-            )
+            raise InvalidParamsError(f"aggressive_frac ({agg}) must be > conservative_frac ({con})")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         """Return a pd.Series indexed like ``df`` with values in [0, 1].
@@ -104,9 +96,7 @@ class HalvingCycleAccumulation(Strategy):
             elif months_since <= 30:
                 # Linear interpolation from aggressive → conservative
                 frac = (months_since - 18) / 12.0
-                signal[i] = aggressive_frac + frac * (
-                    conservative_frac - aggressive_frac
-                )
+                signal[i] = aggressive_frac + frac * (conservative_frac - aggressive_frac)
             else:
                 signal[i] = conservative_frac
 

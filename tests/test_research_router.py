@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, timedelta
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -111,9 +110,7 @@ def test_data_summary(client):
 
 
 def test_data_summary_with_range(client):
-    r = client.get(
-        "/api/research/data/summary?start=2024-02-01&end=2024-03-01&timeframe=daily"
-    )
+    r = client.get("/api/research/data/summary?start=2024-02-01&end=2024-03-01&timeframe=daily")
     assert r.status_code == 200
     assert r.json()["data"]["rows"] < 120
 
@@ -298,9 +295,7 @@ def test_chat_streams_ndjson_with_tool_call(client):
         ]
     }
     # Second call: LLM returns the final answer
-    final_response = {
-        "choices": [{"message": {"content": "There are 7 strategies. BuyAndHold, NoTrade, ..."}}]
-    }
+    final_response = {"choices": [{"message": {"content": "There are 7 strategies. BuyAndHold, NoTrade, ..."}}]}
 
     call_count = {"n": 0}
 
@@ -442,9 +437,7 @@ def test_regimes_endpoint_returns_tape_with_fake_provider(client, monkeypatch):
         assert rec["dominant_regime"] in _REGIME_NAMES
         assert sum(rec[name] for name in _REGIME_NAMES) == pytest.approx(1.0)
     # The fetch must be padded so the 5y trailing z-score window has history.
-    assert fake.calls == [
-        (date(2024, 1, 1) - timedelta(days=_REGIME_PAD_DAYS), date(2024, 1, 31))
-    ]
+    assert fake.calls == [(date(2024, 1, 1) - timedelta(days=_REGIME_PAD_DAYS), date(2024, 1, 31))]
 
 
 def test_regimes_endpoint_default_window(client, monkeypatch):

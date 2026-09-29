@@ -8,15 +8,17 @@ Scale position size based on:
 - Market conditions
 """
 
-import numpy as np
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, List
+
+import numpy as np
 from loguru import logger
 
 
 @dataclass
 class ScalingStats:
     """Recent performance statistics"""
+
     win_rate: float
     average_winner: float
     average_loser: float
@@ -44,7 +46,7 @@ class PositionScaler:
         max_contracts: int = 8,
         scale_up_threshold: int = 3,
         scale_down_threshold: int = 2,
-        kelly_fraction: float = 0.25  # Use 25% of Kelly recommendation (safer)
+        kelly_fraction: float = 0.25,  # Use 25% of Kelly recommendation (safer)
     ):
         """
         Initialize position scaler
@@ -71,7 +73,7 @@ class PositionScaler:
 
         consecutive = 0
         for trade in reversed(recent_trades):
-            if hasattr(trade, 'win') and trade.win:
+            if hasattr(trade, "win") and trade.win:
                 consecutive += 1
             else:
                 break
@@ -85,7 +87,7 @@ class PositionScaler:
 
         consecutive = 0
         for trade in reversed(recent_trades):
-            if hasattr(trade, 'win') and not trade.win:
+            if hasattr(trade, "win") and not trade.win:
                 consecutive += 1
             else:
                 break
@@ -166,12 +168,7 @@ class PositionScaler:
 
         return fractional_kelly
 
-    def get_recommended_size(
-        self,
-        stats: ScalingStats,
-        account_balance: float = 10000,
-        use_kelly: bool = True
-    ) -> int:
+    def get_recommended_size(self, stats: ScalingStats, account_balance: float = 10000, use_kelly: bool = True) -> int:
         """
         Get recommended position size combining streak and Kelly
 
@@ -210,17 +207,16 @@ class PositionScaler:
         # Ensure within bounds
         recommended = max(self.base_contracts, min(recommended, self.max_contracts))
 
-        logger.info(f"Recommended size: {recommended} contracts "
-                   f"(streak: {streak_contracts}, kelly: {max_contracts_from_kelly}, "
-                   f"kelly_fraction: {kelly_fraction:.3f})")
+        logger.info(
+            f"Recommended size: {recommended} contracts "
+            f"(streak: {streak_contracts}, kelly: {max_contracts_from_kelly}, "
+            f"kelly_fraction: {kelly_fraction:.3f})"
+        )
 
         return recommended
 
     def get_size_with_confidence(
-        self,
-        stats: ScalingStats,
-        signal_strength: float = 50.0,
-        account_balance: float = 10000
+        self, stats: ScalingStats, signal_strength: float = 50.0, account_balance: float = 10000
     ) -> Dict[str, Any]:
         """
         Get position size with confidence metrics
@@ -255,16 +251,16 @@ class PositionScaler:
         confidence = self._calculate_confidence(stats, signal_strength)
 
         return {
-            'contracts': adjusted_size,
-            'base_size': base_size,
-            'strength_multiplier': strength_multiplier,
-            'signal_strength': signal_strength,
-            'confidence': confidence,
-            'consecutive_wins': stats.consecutive_wins,
-            'consecutive_losses': stats.consecutive_losses,
-            'win_rate': stats.win_rate,
-            'kelly_fraction': self.calculate_kelly_size(stats),
-            'reason': self._get_sizing_reason(stats, signal_strength, adjusted_size)
+            "contracts": adjusted_size,
+            "base_size": base_size,
+            "strength_multiplier": strength_multiplier,
+            "signal_strength": signal_strength,
+            "confidence": confidence,
+            "consecutive_wins": stats.consecutive_wins,
+            "consecutive_losses": stats.consecutive_losses,
+            "win_rate": stats.win_rate,
+            "kelly_fraction": self.calculate_kelly_size(stats),
+            "reason": self._get_sizing_reason(stats, signal_strength, adjusted_size),
         }
 
     def _calculate_confidence(self, stats: ScalingStats, signal_strength: float) -> float:
@@ -351,7 +347,7 @@ def calculate_performance_stats(trades: List[Any]) -> ScalingStats:
             consecutive_wins=0,
             consecutive_losses=0,
             total_trades=0,
-            recent_trades=[]
+            recent_trades=[],
         )
 
     # Calculate win rate
@@ -375,5 +371,5 @@ def calculate_performance_stats(trades: List[Any]) -> ScalingStats:
         consecutive_wins=consecutive_wins,
         consecutive_losses=consecutive_losses,
         total_trades=len(trades),
-        recent_trades=trades[-20:]  # Last 20 trades
+        recent_trades=trades[-20:],  # Last 20 trades
     )

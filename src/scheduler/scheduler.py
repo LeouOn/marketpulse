@@ -50,6 +50,7 @@ class MarketScheduler:
         try:
             from src.core.config import get_settings
             from src.core.database import DatabaseManager
+
             settings = get_settings()
             db = DatabaseManager(settings.database_url)
             return db.get_session()
@@ -61,29 +62,30 @@ class MarketScheduler:
         self._scheduler.add_job(
             self._fetch_realtime_quotes,
             IntervalTrigger(seconds=30),
-            id='fetch_realtime_quotes',
-            name='Fetch Real-time Quotes',
+            id="fetch_realtime_quotes",
+            name="Fetch Real-time Quotes",
             max_instances=1,
         )
 
         self._scheduler.add_job(
             self._fetch_screener_data,
             IntervalTrigger(minutes=30),
-            id='fetch_screener_data',
-            name='Fetch Screener Data',
+            id="fetch_screener_data",
+            name="Fetch Screener Data",
             max_instances=1,
         )
 
         self._scheduler.add_job(
             self._fetch_breadth_data,
             IntervalTrigger(minutes=5),
-            id='fetch_breadth_data',
-            name='Fetch Breadth Data',
+            id="fetch_breadth_data",
+            name="Fetch Breadth Data",
             max_instances=1,
         )
 
         # Yield curve daily pipeline — 16:30 ET, after FRED publishes.
         from src.scheduler.yield_curve_job import run_yield_curve_pipeline
+
         self._scheduler.add_job(
             run_yield_curve_pipeline,
             CronTrigger(hour=16, minute=30, timezone="US/Eastern"),
@@ -100,7 +102,7 @@ class MarketScheduler:
         try:
             data = self._yahoo_client.get_market_internals()
             if data and self._cache:
-                await self._cache.set('market:realtime', data, 30)
+                await self._cache.set("market:realtime", data, 30)
                 logger.debug(f"Cached realtime data for {len(data)} symbols")
         except Exception as e:
             logger.error(f"Error fetching realtime quotes: {e}")
@@ -114,11 +116,11 @@ class MarketScheduler:
 
         session = self._get_db_session()
 
-        for screener_type in ['gainers', 'losers', 'most_active']:
+        for screener_type in ["gainers", "losers", "most_active"]:
             try:
                 data = self._yahoo_client.get_screener_data(screener_type)
                 if data and self._cache:
-                    await self._cache.set(f'screener:{screener_type}', data, 1800)
+                    await self._cache.set(f"screener:{screener_type}", data, 1800)
                     logger.debug(f"Cached {screener_type}: {len(data)} results")
 
                 if session and data:
@@ -127,12 +129,12 @@ class MarketScheduler:
                         snapshot = ScreenerSnapshot(
                             snapshot_date=today,
                             screener_type=screener_type,
-                            symbol=item.get('symbol', ''),
-                            rank=item.get('rank', 0),
-                            price=item.get('price'),
-                            change_pct=item.get('change_pct'),
-                            volume=item.get('volume'),
-                            market_cap=item.get('market_cap'),
+                            symbol=item.get("symbol", ""),
+                            rank=item.get("rank", 0),
+                            price=item.get("price"),
+                            change_pct=item.get("change_pct"),
+                            volume=item.get("volume"),
+                            market_cap=item.get("market_cap"),
                             extra_data=item,
                         )
                         session.merge(snapshot)
@@ -155,10 +157,11 @@ class MarketScheduler:
 
         try:
             from src.data.market_breadth import MarketBreadthCollector
+
             collector = MarketBreadthCollector()
             data = collector.get_market_internals()
             if data and self._cache:
-                await self._cache.set('market:breadth', data, 60)
+                await self._cache.set("market:breadth", data, 60)
                 logger.debug("Cached breadth data")
 
             session = self._get_db_session()
@@ -166,20 +169,20 @@ class MarketScheduler:
                 today = date.today()
                 snapshot = BreadthSnapshot(
                     date=today,
-                    nyse_advancing=data.get('nyse_advancing'),
-                    nyse_declining=data.get('nyse_declining'),
-                    nyse_unchanged=data.get('nyse_unchanged'),
-                    nyse_ad_ratio=data.get('nyse_ad_ratio'),
-                    nasdaq_advancing=data.get('nasdaq_advancing'),
-                    nasdaq_declining=data.get('nasdaq_declining'),
-                    nasdaq_unchanged=data.get('nasdaq_unchanged'),
-                    nasdaq_ad_ratio=data.get('nasdaq_ad_ratio'),
-                    new_highs_52w=data.get('new_highs'),
-                    new_lows_52w=data.get('new_lows'),
-                    tick_avg_30m=data.get('tick_30min_avg'),
-                    vold_nyse=data.get('nyse_vold'),
-                    mcclellan_osc=data.get('mcclellan_oscillator'),
-                    mcclellan_sum=data.get('mcclellan_summation'),
+                    nyse_advancing=data.get("nyse_advancing"),
+                    nyse_declining=data.get("nyse_declining"),
+                    nyse_unchanged=data.get("nyse_unchanged"),
+                    nyse_ad_ratio=data.get("nyse_ad_ratio"),
+                    nasdaq_advancing=data.get("nasdaq_advancing"),
+                    nasdaq_declining=data.get("nasdaq_declining"),
+                    nasdaq_unchanged=data.get("nasdaq_unchanged"),
+                    nasdaq_ad_ratio=data.get("nasdaq_ad_ratio"),
+                    new_highs_52w=data.get("new_highs"),
+                    new_lows_52w=data.get("new_lows"),
+                    tick_avg_30m=data.get("tick_30min_avg"),
+                    vold_nyse=data.get("nyse_vold"),
+                    mcclellan_osc=data.get("mcclellan_oscillator"),
+                    mcclellan_sum=data.get("mcclellan_summation"),
                 )
                 session.merge(snapshot)
                 session.commit()
@@ -199,16 +202,22 @@ class MarketScheduler:
             return
 
         try:
-            symbols = ['SPY', 'QQQ', 'IWM', 'DIA', 'AAPL', 'TSLA', 'NVDA', 'BTC-USD', 'ETH-USD']
+            symbols = ["SPY", "QQQ", "IWM", "DIA", "AAPL", "TSLA", "NVDA", "BTC-USD", "ETH-USD"]
             today = date.today()
 
             for symbol in symbols:
                 try:
-                    rows = session.query(PriceData).filter(
-                        PriceData.symbol == symbol,
-                        PriceData.timeframe == '1d',
-                        PriceData.timestamp >= today - timedelta(days=365),
-                    ).order_by(PriceData.timestamp.desc()).limit(252).all()
+                    rows = (
+                        session.query(PriceData)
+                        .filter(
+                            PriceData.symbol == symbol,
+                            PriceData.timeframe == "1d",
+                            PriceData.timestamp >= today - timedelta(days=365),
+                        )
+                        .order_by(PriceData.timestamp.desc())
+                        .limit(252)
+                        .all()
+                    )
 
                     if len(rows) < 20:
                         continue
@@ -235,7 +244,7 @@ class MarketScheduler:
                     if len(closes) >= 15:
                         tr_list = []
                         for i in range(1, min(15, len(closes))):
-                            tr = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
+                            tr = max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
                             tr_list.append(tr)
                         atr_14 = float(np.mean(tr_list)) if tr_list else None
                     else:

@@ -219,60 +219,40 @@ def _validate_inflows(inflows: list[dict] | None) -> None:
         return
     for idx, inflow in enumerate(inflows):
         if not isinstance(inflow, dict):
-            raise ValueError(
-                f"inflows[{idx}] must be a dict, got {type(inflow).__name__}"
-            )
+            raise ValueError(f"inflows[{idx}] must be a dict, got {type(inflow).__name__}")
         if "amount_usd" not in inflow:
-            raise ValueError(
-                f"inflows[{idx}] is missing required key 'amount_usd'"
-            )
+            raise ValueError(f"inflows[{idx}] is missing required key 'amount_usd'")
         amount = inflow["amount_usd"]
         if not isinstance(amount, (int, float)) or isinstance(amount, bool):
-            raise ValueError(
-                f"inflows[{idx}]['amount_usd'] must be a number, "
-                f"got {type(amount).__name__}"
-            )
+            raise ValueError(f"inflows[{idx}]['amount_usd'] must be a number, got {type(amount).__name__}")
         if amount <= 0:
-            raise ValueError(
-                f"inflows[{idx}]['amount_usd'] must be positive, got {amount}"
-            )
+            raise ValueError(f"inflows[{idx}]['amount_usd'] must be positive, got {amount}")
         has_every = "every_n_bars" in inflow
         has_dom = "day_of_month" in inflow
         if not has_every and not has_dom:
             raise ValueError(
-                f"inflows[{idx}] must define a trigger: "
-                f"'every_n_bars' (positive int) or 'day_of_month' (int 1-31)"
+                f"inflows[{idx}] must define a trigger: 'every_n_bars' (positive int) or 'day_of_month' (int 1-31)"
             )
         if has_every:
             enb = inflow["every_n_bars"]
             if not isinstance(enb, int) or isinstance(enb, bool):
-                raise ValueError(
-                    f"inflows[{idx}]['every_n_bars'] must be an int, "
-                    f"got {type(enb).__name__}"
-                )
+                raise ValueError(f"inflows[{idx}]['every_n_bars'] must be an int, got {type(enb).__name__}")
             if enb <= 0:
-                raise ValueError(
-                    f"inflows[{idx}]['every_n_bars'] must be a positive int, "
-                    f"got {enb}"
-                )
+                raise ValueError(f"inflows[{idx}]['every_n_bars'] must be a positive int, got {enb}")
         if has_dom:
             dom = inflow["day_of_month"]
             if not isinstance(dom, int) or isinstance(dom, bool):
-                raise ValueError(
-                    f"inflows[{idx}]['day_of_month'] must be an int, "
-                    f"got {type(dom).__name__}"
-                )
+                raise ValueError(f"inflows[{idx}]['day_of_month'] must be an int, got {type(dom).__name__}")
             if dom < 1 or dom > 31:
-                raise ValueError(
-                    f"inflows[{idx}]['day_of_month'] must be 1-31, got {dom}"
-                )
+                raise ValueError(f"inflows[{idx}]['day_of_month'] must be 1-31, got {dom}")
             if dom > 28:
                 _log.warning(
                     "inflows[%d]['day_of_month']=%d does not exist in every "
                     "month (Feb has 28/29 days; Apr/Jun/Sep/Nov have 30). "
                     "The engine will silently skip months where this day is "
                     "absent.",
-                    idx, dom,
+                    idx,
+                    dom,
                 )
 
 
@@ -367,6 +347,7 @@ def run_backtest(
 
     # ── Pre-compute indicators needed by scaling models ──────────────────
     from .indicators import IndicatorProvider
+
     _indicators = IndicatorProvider().compute(df)
     _rsi_14 = _indicators["rsi_14"]
     _mayer_multiple = _indicators["mayer_multiple"]
@@ -380,9 +361,7 @@ def run_backtest(
     # strategy can read any indicator via df columns.
     df_enriched = df.copy()
     if _fgi_lookup:
-        df_enriched["fgi_value"] = df_enriched["ts"].apply(
-            lambda ts: _fgi_lookup.get(str(pd.Timestamp(ts).date()))
-        )
+        df_enriched["fgi_value"] = df_enriched["ts"].apply(lambda ts: _fgi_lookup.get(str(pd.Timestamp(ts).date())))
 
     # Generate target position fractions from the strategy
     target_frac = strategy.generate_signals(df_enriched).reindex(df.index)
@@ -421,11 +400,7 @@ def run_backtest(
 
         # Feed pre-computed indicators to scaling models that need them
         state["rsi_14"] = float(_rsi_14[i]) if not np.isnan(_rsi_14[i]) else 50.0
-        state["mayer_multiple"] = (
-            float(_mayer_multiple[i])
-            if not np.isnan(_mayer_multiple[i])
-            else 1.0
-        )
+        state["mayer_multiple"] = float(_mayer_multiple[i]) if not np.isnan(_mayer_multiple[i]) else 1.0
         state["ts"] = ts
         state["fgi_value"] = _fgi_lookup.get(str(ts.date()))
         state["mvrv_z"] = _mvrv_lookup.get(str(ts.date()))
@@ -435,9 +410,9 @@ def run_backtest(
             for inflow in inflows:
                 triggered = False
                 if "every_n_bars" in inflow and inflow["every_n_bars"] > 0:
-                    triggered = (i % inflow["every_n_bars"] == 0)
+                    triggered = i % inflow["every_n_bars"] == 0
                 elif "day_of_month" in inflow:
-                    triggered = (ts.day == inflow["day_of_month"])
+                    triggered = ts.day == inflow["day_of_month"]
                 if triggered:
                     amt = float(inflow["amount_usd"])
                     src = inflow.get("source", "")
@@ -582,11 +557,7 @@ def run_backtest(
             if isinstance(loan, MarginLoan):
                 current_debt = loan.remaining_debt(ts)
                 # 1a. Fire a margin call only when the latch is clear.
-                if (
-                    not loan.margin_call_active
-                    and loan.should_margin_call(equity, current_debt)
-                    and units_held > 0
-                ):
+                if not loan.margin_call_active and loan.should_margin_call(equity, current_debt) and units_held > 0:
                     sell_usd_loan = units_held * price
                     cash += sell_usd_loan
                     units_held = 0.0
@@ -607,10 +578,7 @@ def run_backtest(
                 #     a zero-dollar "margin_call_cleared" event for
                 #     auditability so callers can see when the loan
                 #     became eligible to fire another margin call.
-                if (
-                    loan.margin_call_active
-                    and loan.should_clear_margin_call(equity, current_debt)
-                ):
+                if loan.margin_call_active and loan.should_clear_margin_call(equity, current_debt):
                     loan.margin_call_active = False
                     loan_payments.append(
                         LoanPayment(
@@ -685,9 +653,11 @@ def run_backtest(
                     # H3: Balloon cannot be covered → default
                     loan_defaulted = True
                     _log.warning(
-                        "%s defaulted at maturity on %s: balloon $%.2f "
-                        "exceeded available cash $%.2f; %s",
-                        loan.name, ts, balloon, cash,
+                        "%s defaulted at maturity on %s: balloon $%.2f exceeded available cash $%.2f; %s",
+                        loan.name,
+                        ts,
+                        balloon,
+                        cash,
                         "debt written off (non-recourse)"
                         if isinstance(loan, NoRecourseLoan)
                         else "debt remains outstanding (recourse)",
@@ -800,15 +770,9 @@ def run_backtest(
         end_equity = float(equity_curve.iloc[-1]) if len(equity_curve) else float(starting_equity)
         metrics["debt_balance"] = end_debt
         metrics["total_interest_paid"] = float(total_interest_paid)
-        metrics["loan_to_equity_ratio"] = (
-            float(end_debt / end_equity) if end_equity > 0 else 0.0
-        )
+        metrics["loan_to_equity_ratio"] = float(end_debt / end_equity) if end_equity > 0 else 0.0
         metrics["margin_call_count"] = int(margin_call_count)
-        metrics["liquidation_price"] = (
-            float(loan.liquidation_price())
-            if isinstance(loan, MarginLoan)
-            else 0.0
-        )
+        metrics["liquidation_price"] = float(loan.liquidation_price()) if isinstance(loan, MarginLoan) else 0.0
         metrics["loan_defaulted"] = bool(loan_defaulted)
     else:
         metrics["debt_balance"] = 0.0

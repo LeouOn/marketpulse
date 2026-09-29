@@ -118,16 +118,11 @@ class FredProvider(DataProvider):
         # from the tracked data/macro parquets on first use; an explicit
         # cache_dir is caller-managed and never seeded.
         self._seeded_cache_root: bool = cache_dir is None
-        self.cache_dir: Path = (
-            _cache_dir("macro") if cache_dir is None else Path(cache_dir)
-        )
+        self.cache_dir: Path = _cache_dir("macro") if cache_dir is None else Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.max_staleness_days: int = int(max_staleness_days)
         if series_id not in self.SUPPORTED_SERIES:
-            raise ValueError(
-                f"Unsupported FRED series: {series_id}. "
-                f"Supported: {sorted(self.SUPPORTED_SERIES)}"
-            )
+            raise ValueError(f"Unsupported FRED series: {series_id}. Supported: {sorted(self.SUPPORTED_SERIES)}")
         self.series_id: str = series_id
         # Lazy-init: the real Fred client is only built when first needed,
         # so tests can inject a mock via `provider._client = ...`.
@@ -189,10 +184,7 @@ class FredProvider(DataProvider):
         if isinstance(end, str):
             end = date.fromisoformat(end)
         if series_id not in self.SUPPORTED_SERIES:
-            raise ValueError(
-                f"Unsupported FRED series: {series_id}. "
-                f"Supported: {sorted(self.SUPPORTED_SERIES)}"
-            )
+            raise ValueError(f"Unsupported FRED series: {series_id}. Supported: {sorted(self.SUPPORTED_SERIES)}")
 
         cache_path = self._cache_path(series_id)
 
@@ -242,9 +234,7 @@ class FredProvider(DataProvider):
                 max=self.RETRY_MAX_WAIT,
                 jitter=self.RETRY_JITTER,
             ),
-            retry=retry_if_exception_type(
-                (requests.ConnectionError, requests.HTTPError)
-            ),
+            retry=retry_if_exception_type((requests.ConnectionError, requests.HTTPError)),
             reraise=True,
         )
         def _do() -> pd.Series:
@@ -307,9 +297,7 @@ class FredProvider(DataProvider):
         try:
             df = pd.read_parquet(path)
         except Exception as exc:
-            logger.warning(
-                f"FRED: corrupt cache file {path}: {exc}; deleting and refetching"
-            )
+            logger.warning(f"FRED: corrupt cache file {path}: {exc}; deleting and refetching")
             try:
                 path.unlink()
             except OSError as unlink_exc:
@@ -332,9 +320,7 @@ class FredProvider(DataProvider):
         """True if ``cached`` spans at least ``[start, end]``."""
         if cached.empty:
             return False
-        return bool(
-            cached["ts"].min().date() <= start and cached["ts"].max().date() >= end
-        )
+        return bool(cached["ts"].min().date() <= start and cached["ts"].max().date() >= end)
 
     def _slice(self, df: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
         """Return the ``[start, end]`` inclusive slice of ``df``."""
@@ -353,9 +339,14 @@ class FredProvider(DataProvider):
     # Monthly series publish with ~2-month lag (e.g. Case-Shiller March data
     # lands late May). Their latest observation is routinely 60-110 days old
     # even when perfectly fresh. Give them a larger staleness allowance.
-    _MONTHLY_SERIES: frozenset[str] = frozenset({
-        "CSUSHPINSA", "UNRATE", "CPIAUCSL", "IPMAN",
-    })
+    _MONTHLY_SERIES: frozenset[str] = frozenset(
+        {
+            "CSUSHPINSA",
+            "UNRATE",
+            "CPIAUCSL",
+            "IPMAN",
+        }
+    )
 
     def _staleness_limit(self, series_id: str) -> int:
         """Cadence-aware staleness threshold in days."""
@@ -363,9 +354,7 @@ class FredProvider(DataProvider):
             return max(self.max_staleness_days, 120)
         return self.max_staleness_days
 
-    def _check_staleness(
-        self, df: pd.DataFrame, series_id: str, query_end: date
-    ) -> None:
+    def _check_staleness(self, df: pd.DataFrame, series_id: str, query_end: date) -> None:
         """Raise :class:`DataPipelineError` if source data is too stale.
 
         Only enforced for *current* queries -- i.e. ``query_end`` is within
@@ -384,6 +373,5 @@ class FredProvider(DataProvider):
         age_days = (today - last_date).days
         if age_days > limit:
             raise DataPipelineError(
-                f"FRED series {series_id} is stale: last update {last_date}, "
-                f"max staleness {limit}d"
+                f"FRED series {series_id} is stale: last update {last_date}, max staleness {limit}d"
             )

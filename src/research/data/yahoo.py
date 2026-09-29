@@ -111,9 +111,7 @@ class YahooProvider(DataProvider):
         # from the tracked data/yahoo_cache parquets on first use; an
         # explicit cache_dir is caller-managed and never seeded.
         self._seeded_cache_root: bool = cache_dir is None
-        self.cache_dir = (
-            _cache_dir("yahoo_cache") if cache_dir is None else Path(cache_dir)
-        )
+        self.cache_dir = _cache_dir("yahoo_cache") if cache_dir is None else Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_ttl_days = cache_ttl_days
         self.ticker = ticker

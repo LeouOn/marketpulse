@@ -104,9 +104,7 @@ class Loan(ABC):
 
     def __post_init__(self) -> None:
         if not self.name:
-            raise ValueError(
-                f"{type(self).__name__} must set class-level 'name'"
-            )
+            raise ValueError(f"{type(self).__name__} must set class-level 'name'")
         merged = dict(self.default_params)
         merged.update(self.params)
         self.params = merged
@@ -167,10 +165,7 @@ class Loan(ABC):
         """Whether the loan has reached its term end."""
 
     def __repr__(self) -> str:
-        return (
-            f"{type(self).__name__}(principal={self.principal}, "
-            f"apr={self.apr}, params={self.params})"
-        )
+        return f"{type(self).__name__}(principal={self.principal}, apr={self.apr}, params={self.params})"
 
 
 # ---------------------------------------------------------------------------
@@ -199,17 +194,11 @@ class FixedRateLoan(Loan):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if float(self.principal) <= 0:
-            raise InvalidParamsError(
-                f"principal must be > 0, got {self.principal}"
-            )
+            raise InvalidParamsError(f"principal must be > 0, got {self.principal}")
         if float(self.apr) < 0:
-            raise InvalidParamsError(
-                f"apr must be >= 0, got {self.apr}"
-            )
+            raise InvalidParamsError(f"apr must be >= 0, got {self.apr}")
         if float(params.get("term_years", 5.0)) <= 0:
-            raise InvalidParamsError(
-                f"term_years must be > 0, got {params['term_years']}"
-            )
+            raise InvalidParamsError(f"term_years must be > 0, got {params['term_years']}")
 
     def _daily_rate(self) -> float:
         return float(self.apr) / _DAYS_PER_YEAR
@@ -218,9 +207,7 @@ class FixedRateLoan(Loan):
         days = self._days_between(self.start_date, current_date)
         if days <= 0:
             return 0.0
-        return self._compound(
-            float(self.principal), self._daily_rate(), days
-        ) - float(self.principal)
+        return self._compound(float(self.principal), self._daily_rate(), days) - float(self.principal)
 
     def scheduled_payment(self, current_date: pd.Timestamp) -> float:
         freq = int(self.params["payment_freq_days"])
@@ -232,9 +219,7 @@ class FixedRateLoan(Loan):
         if self.is_matured(current_date):
             return 0.0
         # Interest-only payment for the period just elapsed.
-        return self._compound(
-            float(self.principal), self._daily_rate(), freq
-        ) - float(self.principal)
+        return self._compound(float(self.principal), self._daily_rate(), freq) - float(self.principal)
 
     def remaining_principal(self, current_date: pd.Timestamp) -> float:
         # Interest-only: principal never amortizes; balloon at maturity.
@@ -284,19 +269,13 @@ class VariableRateLoan(Loan):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if float(self.principal) <= 0:
-            raise InvalidParamsError(
-                f"principal must be > 0, got {self.principal}"
-            )
+            raise InvalidParamsError(f"principal must be > 0, got {self.principal}")
         initial = float(params.get("initial_rate", 0.08))
         if initial < 0:
-            raise InvalidParamsError(
-                f"initial_rate must be >= 0, got {initial}"
-            )
+            raise InvalidParamsError(f"initial_rate must be >= 0, got {initial}")
         for d, r in (params.get("rate_changes") or {}).items():
             if float(r) < 0:
-                raise InvalidParamsError(
-                    f"rate_changes[{d!r}] must be >= 0, got {r}"
-                )
+                raise InvalidParamsError(f"rate_changes[{d!r}] must be >= 0, got {r}")
 
     def _sorted_changes(self) -> list[tuple[pd.Timestamp, float]]:
         raw = self.params.get("rate_changes") or {}
@@ -345,10 +324,7 @@ class VariableRateLoan(Loan):
         if days_since <= 0 or freq <= 0 or days_since % freq != 0:
             return 0.0
         period_start = pd.Timestamp(current_date) - pd.Timedelta(days=freq)
-        return (
-            self.accrued_interest(current_date)
-            - self.accrued_interest(period_start)
-        )
+        return self.accrued_interest(current_date) - self.accrued_interest(period_start)
 
     def remaining_principal(self, current_date: pd.Timestamp) -> float:
         # Revolver: principal never amortizes on its own.
@@ -413,19 +389,13 @@ class MarginLoan(Loan):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if float(self.principal) <= 0:
-            raise InvalidParamsError(
-                f"principal must be > 0, got {self.principal}"
-            )
+            raise InvalidParamsError(f"principal must be > 0, got {self.principal}")
         threshold = float(params.get("liquidation_threshold", 0.30))
         if not (0 < threshold < 1):
-            raise InvalidParamsError(
-                f"liquidation_threshold must be in (0, 1), got {threshold}"
-            )
+            raise InvalidParamsError(f"liquidation_threshold must be in (0, 1), got {threshold}")
         buffer = float(params.get("margin_call_recovery_buffer", 0.10))
         if buffer < 0:
-            raise InvalidParamsError(
-                f"margin_call_recovery_buffer must be >= 0, got {buffer}"
-            )
+            raise InvalidParamsError(f"margin_call_recovery_buffer must be >= 0, got {buffer}")
 
     def _daily_rate(self) -> float:
         return float(self.apr) / _DAYS_PER_YEAR
@@ -434,9 +404,7 @@ class MarginLoan(Loan):
         days = self._days_between(self.start_date, current_date)
         if days <= 0:
             return 0.0
-        return self._compound(
-            float(self.principal), self._daily_rate(), days
-        ) - float(self.principal)
+        return self._compound(float(self.principal), self._daily_rate(), days) - float(self.principal)
 
     def scheduled_payment(self, current_date: pd.Timestamp) -> float:
         # Margin loans have no scheduled payments; interest compounds.
@@ -489,9 +457,7 @@ class MarginLoan(Loan):
         converts this USD level to a BTC price using the current
         position size.
         """
-        return (
-            float(self.params["liquidation_threshold"]) * float(self.principal)
-        )
+        return float(self.params["liquidation_threshold"]) * float(self.principal)
 
 
 # ---------------------------------------------------------------------------
@@ -524,13 +490,9 @@ class NoRecourseLoan(Loan):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if float(self.principal) <= 0:
-            raise InvalidParamsError(
-                f"principal must be > 0, got {self.principal}"
-            )
+            raise InvalidParamsError(f"principal must be > 0, got {self.principal}")
         if float(self.apr) < 0:
-            raise InvalidParamsError(
-                f"apr must be >= 0, got {self.apr}"
-            )
+            raise InvalidParamsError(f"apr must be >= 0, got {self.apr}")
 
     def _daily_rate(self) -> float:
         return float(self.apr) / _DAYS_PER_YEAR
@@ -539,9 +501,7 @@ class NoRecourseLoan(Loan):
         days = self._days_between(self.start_date, current_date)
         if days <= 0:
             return 0.0
-        return self._compound(
-            float(self.principal), self._daily_rate(), days
-        ) - float(self.principal)
+        return self._compound(float(self.principal), self._daily_rate(), days) - float(self.principal)
 
     def scheduled_payment(self, current_date: pd.Timestamp) -> float:
         freq = int(self.params["payment_freq_days"])
@@ -550,9 +510,7 @@ class NoRecourseLoan(Loan):
             return 0.0
         if self.is_matured(current_date):
             return 0.0
-        return self._compound(
-            float(self.principal), self._daily_rate(), freq
-        ) - float(self.principal)
+        return self._compound(float(self.principal), self._daily_rate(), freq) - float(self.principal)
 
     def remaining_principal(self, current_date: pd.Timestamp) -> float:
         return float(self.principal)

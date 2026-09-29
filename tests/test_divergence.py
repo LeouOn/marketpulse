@@ -4,10 +4,9 @@ Test Divergence Detection System
 Tests the divergence detector with synthetic data patterns.
 """
 
-import pytest
-import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+import pandas as pd
+import pytest
 
 from src.analysis.divergence_detector import DivergenceDetector, scan_for_divergences
 
@@ -15,7 +14,7 @@ from src.analysis.divergence_detector import DivergenceDetector, scan_for_diverg
 def create_bullish_divergence_data():
     """Create synthetic data with bullish divergence pattern"""
     # Price making lower lows, but RSI making higher lows
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='D')
+    dates = pd.date_range(start="2024-01-01", periods=100, freq="D")
 
     # Price trend: lower lows
     price_base = 100
@@ -32,13 +31,16 @@ def create_bullish_divergence_data():
         else:
             prices.append(price_base + np.random.randn() * 0.5)
 
-    df = pd.DataFrame({
-        'open': prices,
-        'high': [p + abs(np.random.randn() * 0.3) for p in prices],
-        'low': [p - abs(np.random.randn() * 0.3) for p in prices],
-        'close': prices,
-        'volume': np.random.randint(1000000, 5000000, 100)
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "open": prices,
+            "high": [p + abs(np.random.randn() * 0.3) for p in prices],
+            "low": [p - abs(np.random.randn() * 0.3) for p in prices],
+            "close": prices,
+            "volume": np.random.randint(1000000, 5000000, 100),
+        },
+        index=dates,
+    )
 
     return df
 
@@ -46,7 +48,7 @@ def create_bullish_divergence_data():
 def create_bearish_divergence_data():
     """Create synthetic data with bearish divergence pattern"""
     # Price making higher highs, but RSI making lower highs
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='D')
+    dates = pd.date_range(start="2024-01-01", periods=100, freq="D")
 
     # Price trend: higher highs
     price_base = 100
@@ -63,13 +65,16 @@ def create_bearish_divergence_data():
         else:
             prices.append(price_base + np.random.randn() * 0.5)
 
-    df = pd.DataFrame({
-        'open': prices,
-        'high': [p + abs(np.random.randn() * 0.3) for p in prices],
-        'low': [p - abs(np.random.randn() * 0.3) for p in prices],
-        'close': prices,
-        'volume': np.random.randint(1000000, 5000000, 100)
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "open": prices,
+            "high": [p + abs(np.random.randn() * 0.3) for p in prices],
+            "low": [p - abs(np.random.randn() * 0.3) for p in prices],
+            "close": prices,
+            "volume": np.random.randint(1000000, 5000000, 100),
+        },
+        index=dates,
+    )
 
     return df
 
@@ -119,10 +124,10 @@ class TestDivergenceDetector:
         # Check structure
         if len(divergences) > 0:
             div = divergences[0]
-            assert hasattr(div, 'type')
-            assert hasattr(div, 'indicator')
-            assert hasattr(div, 'strength')
-            assert hasattr(div, 'description')
+            assert hasattr(div, "type")
+            assert hasattr(div, "indicator")
+            assert hasattr(div, "strength")
+            assert hasattr(div, "description")
             assert div.strength >= 30.0
 
     def test_bearish_divergence_detection(self):
@@ -148,21 +153,21 @@ class TestDivergenceDetector:
         result = scan_for_divergences(df, min_strength=30.0)
 
         # Check result structure
-        assert 'total_divergences' in result
-        assert 'by_type' in result
-        assert 'divergences' in result
-        assert 'signal' in result
+        assert "total_divergences" in result
+        assert "by_type" in result
+        assert "divergences" in result
+        assert "signal" in result
 
         # Check by_type breakdown
-        assert 'regular_bullish' in result['by_type']
-        assert 'regular_bearish' in result['by_type']
-        assert 'hidden_bullish' in result['by_type']
-        assert 'hidden_bearish' in result['by_type']
+        assert "regular_bullish" in result["by_type"]
+        assert "regular_bearish" in result["by_type"]
+        assert "hidden_bullish" in result["by_type"]
+        assert "hidden_bearish" in result["by_type"]
 
         # Signal should be one of the expected values
-        assert result['signal'] in ['STRONG_BULLISH', 'BULLISH', 'NEUTRAL', 'BEARISH', 'STRONG_BEARISH']
+        assert result["signal"] in ["STRONG_BULLISH", "BULLISH", "NEUTRAL", "BEARISH", "STRONG_BEARISH"]
 
-        print(f"\nScan results:")
+        print("\nScan results:")
         print(f"  Total divergences: {result['total_divergences']}")
         print(f"  Signal: {result['signal']}")
         print(f"  By type: {result['by_type']}")
@@ -173,9 +178,11 @@ class TestDivergenceDetector:
 
         # Test bullish divergence strength
         strength = detector._calculate_divergence_strength(
-            price1=100, price2=95,  # Price lower low
-            ind1=30, ind2=35,       # Indicator higher low
-            bullish=True
+            price1=100,
+            price2=95,  # Price lower low
+            ind1=30,
+            ind2=35,  # Indicator higher low
+            bullish=True,
         )
 
         assert 0 <= strength <= 100
@@ -183,9 +190,11 @@ class TestDivergenceDetector:
 
         # Test bearish divergence strength
         strength = detector._calculate_divergence_strength(
-            price1=100, price2=105,  # Price higher high
-            ind1=70, ind2=65,        # Indicator lower high
-            bullish=False
+            price1=100,
+            price2=105,  # Price higher high
+            ind1=70,
+            ind2=65,  # Indicator lower high
+            bullish=False,
         )
 
         assert 0 <= strength <= 100
@@ -194,7 +203,7 @@ class TestDivergenceDetector:
     def test_real_world_pattern(self):
         """Test with more realistic market data"""
         # Create data simulating actual market behavior
-        dates = pd.date_range(start='2024-01-01', periods=200, freq='D')
+        dates = pd.date_range(start="2024-01-01", periods=200, freq="D")
 
         # Simulate downtrend with bullish divergence at bottom
         np.random.seed(42)
@@ -206,22 +215,25 @@ class TestDivergenceDetector:
         prices[80:85] = 87  # First bottom
         prices[140:145] = 85  # Second bottom (lower)
 
-        df = pd.DataFrame({
-            'open': prices,
-            'high': prices + abs(np.random.randn(200) * 0.5),
-            'low': prices - abs(np.random.randn(200) * 0.5),
-            'close': prices,
-            'volume': np.random.randint(500000, 2000000, 200)
-        }, index=dates)
+        df = pd.DataFrame(
+            {
+                "open": prices,
+                "high": prices + abs(np.random.randn(200) * 0.5),
+                "low": prices - abs(np.random.randn(200) * 0.5),
+                "close": prices,
+                "volume": np.random.randint(500000, 2000000, 200),
+            },
+            index=dates,
+        )
 
         detector = DivergenceDetector(min_strength=40.0)
         divergences = detector.detect_all_divergences(df)
 
-        print(f"\nReal-world pattern test:")
+        print("\nReal-world pattern test:")
         print(f"  Detected {len(divergences)} divergences")
 
         for i, div in enumerate(divergences[:5]):  # Show top 5
-            print(f"  {i+1}. {div.type} {div.indicator}")
+            print(f"  {i + 1}. {div.type} {div.indicator}")
             print(f"     Strength: {div.strength:.0f}")
             print(f"     {div.description}")
 
@@ -244,6 +256,6 @@ def test_divergence_types():
     assert len(indicators_found) > 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Run tests with verbose output
-    pytest.main([__file__, '-v', '-s'])
+    pytest.main([__file__, "-v", "-s"])

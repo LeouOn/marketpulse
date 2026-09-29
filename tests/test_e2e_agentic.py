@@ -69,8 +69,7 @@ async def data_result(settings, registry):
 
         async with DataAgent(registry=registry, settings=settings) as agent:
             _data_result = await agent.execute(
-                f"Fetch market data for {SYMBOL}: market internals, breadth, "
-                f"52-week stats, and 1 month of daily OHLCV."
+                f"Fetch market data for {SYMBOL}: market internals, breadth, 52-week stats, and 1 month of daily OHLCV."
             )
     return _data_result
 
@@ -232,8 +231,7 @@ async def test_technical_agent_analyses_the_data(data_result, settings, registry
     assert result.error is None, f"TechnicalAgent errored: {result.error}"
     assert result.content.strip(), "TechnicalAgent returned no content"
     assert result.tool_calls_made, (
-        "TechnicalAgent made no tool calls -- the analysis is model opinion, "
-        "not analysis of the supplied data"
+        "TechnicalAgent made no tool calls -- the analysis is model opinion, not analysis of the supplied data"
     )
 
 
@@ -258,9 +256,7 @@ async def test_orchestrator_produces_a_synthesis(settings):
 
     # MiniMax-M3 returns its reasoning inline in content; the synthesis is what
     # the frontend shows, so none of it should be visible.
-    assert "<think>" not in result.synthesis, (
-        "synthesis leaked the model's inline reasoning to the user"
-    )
+    assert "<think>" not in result.synthesis, "synthesis leaked the model's inline reasoning to the user"
 
 
 # ---------------------------------------------------------------------------
@@ -272,9 +268,7 @@ async def test_orchestrator_produces_a_synthesis(settings):
 @pytest.mark.live
 async def test_structured_output_hypothesis_tools(registry):
     """Structured tools must return the fields the UI depends on."""
-    detail = await registry.dispatch(
-        "get_hypothesis_detail", {"hypothesis_name": "overnight_margin_cascade"}
-    )
+    detail = await registry.dispatch("get_hypothesis_detail", {"hypothesis_name": "overnight_margin_cascade"})
 
     assert "error" not in detail, f"get_hypothesis_detail failed: {detail}"
     assert detail.get("name"), "hypothesis detail has no name"

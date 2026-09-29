@@ -18,7 +18,6 @@ from src.research.strategies import (
     list_strategies,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -116,8 +115,6 @@ def test_paired_with_inflows_works_with_zero_starting_equity():
     )
     # Total deposited should equal 3 deposits * $500
     expected_deposits = 3 * 500.0
-    assert result.metrics["total_deposited"] == pytest.approx(
-        expected_deposits, abs=1.0
-    )
+    assert result.metrics["total_deposited"] == pytest.approx(expected_deposits, abs=1.0)
     # Ending equity should be > 0 (we bought BTC with the deposits)
     assert result.ending_equity > 0

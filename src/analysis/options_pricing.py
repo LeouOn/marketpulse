@@ -4,27 +4,30 @@ This module provides accurate Black-Scholes pricing for European-style options
 and calculates all the Greeks (Delta, Gamma, Theta, Vega, Rho).
 """
 
-import numpy as np
-from scipy.stats import norm
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Literal
-from datetime import datetime, date
+
+import numpy as np
 from loguru import logger
+from scipy.stats import norm
 
 
 @dataclass
 class Greeks:
     """Container for options Greeks"""
+
     delta: float  # Rate of change of option price w.r.t. underlying price
     gamma: float  # Rate of change of delta w.r.t. underlying price
     theta: float  # Rate of change of option price w.r.t. time (per day)
-    vega: float   # Rate of change of option price w.r.t. volatility (per 1% change)
-    rho: float    # Rate of change of option price w.r.t. risk-free rate (per 1% change)
+    vega: float  # Rate of change of option price w.r.t. volatility (per 1% change)
+    rho: float  # Rate of change of option price w.r.t. risk-free rate (per 1% change)
 
 
 @dataclass
 class OptionPrice:
     """Container for option price and Greeks"""
+
     price: float
     greeks: Greeks
 
@@ -33,14 +36,7 @@ class BlackScholesCalculator:
     """Black-Scholes calculator for European options pricing and Greeks"""
 
     @staticmethod
-    def _calculate_d1_d2(
-        S: float,
-        K: float,
-        T: float,
-        r: float,
-        sigma: float,
-        q: float = 0.0
-    ) -> tuple[float, float]:
+    def _calculate_d1_d2(S: float, K: float, T: float, r: float, sigma: float, q: float = 0.0) -> tuple[float, float]:
         """Calculate d1 and d2 for Black-Scholes formula
 
         Args:
@@ -64,14 +60,7 @@ class BlackScholesCalculator:
         return d1, d2
 
     @staticmethod
-    def calculate_call_price(
-        S: float,
-        K: float,
-        T: float,
-        r: float,
-        sigma: float,
-        q: float = 0.0
-    ) -> float:
+    def calculate_call_price(S: float, K: float, T: float, r: float, sigma: float, q: float = 0.0) -> float:
         """Calculate Black-Scholes call option price
 
         Args:
@@ -91,21 +80,12 @@ class BlackScholesCalculator:
 
         d1, d2 = BlackScholesCalculator._calculate_d1_d2(S, K, T, r, sigma, q)
 
-        call_price = (
-            S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
-        )
+        call_price = S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
 
         return float(call_price)
 
     @staticmethod
-    def calculate_put_price(
-        S: float,
-        K: float,
-        T: float,
-        r: float,
-        sigma: float,
-        q: float = 0.0
-    ) -> float:
+    def calculate_put_price(S: float, K: float, T: float, r: float, sigma: float, q: float = 0.0) -> float:
         """Calculate Black-Scholes put option price
 
         Args:
@@ -125,9 +105,7 @@ class BlackScholesCalculator:
 
         d1, d2 = BlackScholesCalculator._calculate_d1_d2(S, K, T, r, sigma, q)
 
-        put_price = (
-            K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
-        )
+        put_price = K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
 
         return float(put_price)
 
@@ -139,7 +117,7 @@ class BlackScholesCalculator:
         r: float,
         sigma: float,
         q: float = 0.0,
-        option_type: Literal["call", "put"] = "call"
+        option_type: Literal["call", "put"] = "call",
     ) -> Greeks:
         """Calculate all Greeks for an option
 
@@ -194,13 +172,7 @@ class BlackScholesCalculator:
         gamma = (pdf_d1 * exp_neg_qT) / (S * sigma * sqrt_T)
         vega = S * sqrt_T * pdf_d1 * exp_neg_qT / 100.0  # Per 1% change in IV
 
-        return Greeks(
-            delta=float(delta),
-            gamma=float(gamma),
-            theta=float(theta),
-            vega=float(vega),
-            rho=float(rho)
-        )
+        return Greeks(delta=float(delta), gamma=float(gamma), theta=float(theta), vega=float(vega), rho=float(rho))
 
     @staticmethod
     def calculate_option_with_greeks(
@@ -210,7 +182,7 @@ class BlackScholesCalculator:
         r: float,
         sigma: float,
         q: float = 0.0,
-        option_type: Literal["call", "put"] = "call"
+        option_type: Literal["call", "put"] = "call",
     ) -> OptionPrice:
         """Calculate option price and all Greeks in one call
 
@@ -245,7 +217,7 @@ class BlackScholesCalculator:
         q: float = 0.0,
         option_type: Literal["call", "put"] = "call",
         max_iterations: int = 100,
-        tolerance: float = 1e-5
+        tolerance: float = 1e-5,
     ) -> float:
         """Calculate implied volatility using Newton-Raphson method
 
@@ -308,7 +280,7 @@ class BlackScholesCalculator:
         """
         try:
             if isinstance(expiration_date, str):
-                exp_date = datetime.strptime(expiration_date, '%Y-%m-%d').date()
+                exp_date = datetime.strptime(expiration_date, "%Y-%m-%d").date()
             else:
                 exp_date = expiration_date
 

@@ -5,14 +5,14 @@ of Warsh's policy tools would change the curve shape. The model is HEURISTIC:
 it captures directional effects and relative magnitudes but is not an econometric
 model. Designed for visualization and hypothesis testing.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
-from src.warsh.tools import FedTool, ToolName, apply_tool_effect, get_all_tools
-from src.yield_curve.curves import compute_spreads, classify_shape, CurveShape
-
+from src.warsh.tools import ToolName, apply_tool_effect, get_all_tools
+from src.yield_curve.curves import classify_shape, compute_spreads
 
 # All tenors the simulator tracks
 ALL_TENORS = ["3mo", "1y", "2y", "5y", "7y", "10y", "20y", "30y"]
@@ -21,13 +21,14 @@ ALL_TENORS = ["3mo", "1y", "2y", "5y", "7y", "10y", "20y", "30y"]
 @dataclass
 class SimulationResult:
     """Output of a curve simulation run."""
-    adjusted_curve: dict[str, float]       # tenor -> new yield %
-    new_2s10s: float                        # new 2s10s spread in bps
-    new_3m10y: float                        # new 3m10y spread in bps
-    new_shape: str                          # new curve shape classification
-    baseline_2s10s: float                   # original 2s10s for comparison
-    delta_2s10s: float                      # change in 2s10s (positive = steepening)
-    delta_3m10y: float                      # change in 3m10y
+
+    adjusted_curve: dict[str, float]  # tenor -> new yield %
+    new_2s10s: float  # new 2s10s spread in bps
+    new_3m10y: float  # new 3m10y spread in bps
+    new_shape: str  # new curve shape classification
+    baseline_2s10s: float  # original 2s10s for comparison
+    delta_2s10s: float  # change in 2s10s (positive = steepening)
+    delta_3m10y: float  # change in 3m10y
     tool_effects: dict[str, dict[str, float]]  # tool_name -> {tenor: bps_effect}
     scenario_label: str = "custom"
 
@@ -134,28 +135,28 @@ class CurveSimulator:
     SCENARIO_PRESETS: dict[str, dict] = {
         "hawkish": {
             # Scenario A: genuine hawk — minimal shadow easing
-            "rmp": 20,           # minimal RMP
-            "qt_pace": 80,       # aggressive QT
-            "srf": 500,          # unchanged
-            "mbs_sales": 20,     # active MBS selling
+            "rmp": 20,  # minimal RMP
+            "qt_pace": 80,  # aggressive QT
+            "srf": 500,  # unchanged
+            "mbs_sales": 20,  # active MBS selling
             "forward_guidance": 0,  # Warsh removes guidance (his stated goal)
             "bank_regulation": 0.2,  # mostly strict
         },
         "pantomime": {
             # Scenario B: shadow easing from day one
-            "rmp": 80,           # heavy RMP
-            "qt_pace": 20,       # minimal QT
-            "srf": 1000,         # expanded SRF
-            "mbs_sales": 0,      # no active selling
+            "rmp": 80,  # heavy RMP
+            "qt_pace": 20,  # minimal QT
+            "srf": 1000,  # expanded SRF
+            "mbs_sales": 0,  # no active selling
             "forward_guidance": 1,  # keep hawkish guidance as cover while shadow easing
             "bank_regulation": 0.5,  # moderate relaxation
         },
         "dovish": {
             # Scenario C: full dovish pivot (the eventual transition target)
-            "rmp": 80,           # heavy RMP
-            "qt_pace": 0,        # stop QT entirely
-            "srf": 1000,         # expanded SRF
-            "mbs_sales": 0,      # no selling
+            "rmp": 80,  # heavy RMP
+            "qt_pace": 0,  # stop QT entirely
+            "srf": 1000,  # expanded SRF
+            "mbs_sales": 0,  # no selling
             "forward_guidance": 1,  # keep guidance — dovish Fed guides toward low rates
             "bank_regulation": 0.8,  # significantly relaxed
         },

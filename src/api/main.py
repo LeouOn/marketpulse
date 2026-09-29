@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 MarketPulse FastAPI Application
 Real-time market internals analysis API
@@ -11,10 +11,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from contextlib import asynccontextmanager
-from datetime import datetime
 import asyncio
 import os
+from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +28,7 @@ from src.api.routers import deps as router_deps
 # Import with error handling for missing dependencies
 try:
     from src.core.config import get_settings
+
     settings = get_settings()
 except Exception as e:
     logger.warning(f"Could not load config: {e}")
@@ -56,6 +57,7 @@ collector = None
 ohlc_analyzer = None
 _scheduler = None
 _startup_tasks = []
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -88,7 +90,6 @@ async def lifespan(app: FastAPI):
         _startup_tasks.append(asyncio.create_task(ensure_yield_curve_populated()))
     except Exception as e:
         logger.warning(f"yield-curve startup population could not be scheduled: {e}")
-
 
     # Initialize components with error handling
     if MarketPulseCollector:
@@ -127,12 +128,11 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"MarketScheduler stop failed: {e}")
 
+
 app = FastAPI(
-    title="MarketPulse API",
-    description="Real-time market internals analysis API",
-    version="0.1.0",
-    lifespan=lifespan
+    title="MarketPulse API", description="Real-time market internals analysis API", version="0.1.0", lifespan=lifespan
 )
+
 
 # Global exception handler to ensure JSON responses
 @app.exception_handler(Exception)
@@ -140,6 +140,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global exception handler caught: {exc}")
     logger.error(f"Request: {request.method} {request.url}")
     import traceback
+
     logger.error(f"Traceback: {traceback.format_exc()}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -147,9 +148,10 @@ async def global_exception_handler(request: Request, exc: Exception):
             "success": False,
             "error": str(exc),
             "detail": "Internal server error",
-            "timestamp": datetime.now().isoformat()
-        }
+            "timestamp": datetime.now().isoformat(),
+        },
     )
+
 
 # CORS middleware - more permissive for development
 app.add_middleware(
@@ -166,11 +168,8 @@ db_manager = DatabaseManager(settings.database_url) if settings and DatabaseMana
 @app.get("/")
 async def root():
     """API health check"""
-    return {
-        "message": "MarketPulse API is running",
-        "version": "0.1.0",
-        "timestamp": datetime.now().isoformat()
-    }
+    return {"message": "MarketPulse API is running", "version": "0.1.0", "timestamp": datetime.now().isoformat()}
+
 
 @app.get("/api/debug/routes")
 async def debug_routes():
@@ -180,7 +179,7 @@ async def debug_routes():
         "total_routes": len(routes),
         "routes": routes,
         "market_routes": [r for r in routes if "/api/market" in r["path"]],
-        "llm_routes": [r for r in routes if "/api/llm" in r["path"]]
+        "llm_routes": [r for r in routes if "/api/llm" in r["path"]],
     }
 
 
@@ -215,6 +214,7 @@ except Exception as e:
 # Include ICT router
 try:
     from .ict_endpoints import ict_router
+
     app.include_router(ict_router)
     logger.info("ICT endpoints loaded successfully")
 except Exception as e:
@@ -226,6 +226,7 @@ except Exception as e:
 # strategy/scaling registries, agentic chat) at /api/research/*.
 try:
     from .research_router import router as research_router
+
     app.include_router(research_router)
     logger.info("Research lab endpoints loaded successfully")
 except Exception as e:
@@ -236,6 +237,7 @@ except Exception as e:
 # Include risk management, journaling, and alert routers
 try:
     from .risk_endpoints import alerts_router, journal_router, risk_router
+
     app.include_router(risk_router)
     app.include_router(journal_router)
     app.include_router(alerts_router)
@@ -248,6 +250,7 @@ except Exception as e:
 # Include visualization router
 try:
     from .visualization_endpoints import viz_router
+
     app.include_router(viz_router)
     logger.info("Visualization endpoints loaded successfully")
 except Exception as e:
@@ -258,6 +261,7 @@ except Exception as e:
 # Include divergence detection router
 try:
     from .divergence_endpoints import divergence_router
+
     app.include_router(divergence_router)
     logger.info("Divergence detection endpoints loaded successfully")
 except Exception as e:
@@ -268,6 +272,7 @@ except Exception as e:
 # Include AI trading analyst router
 try:
     from .ai_endpoints import ai_router
+
     app.include_router(ai_router)
     logger.info("AI Trading Analyst endpoints loaded successfully")
 except Exception as e:
@@ -278,6 +283,7 @@ except Exception as e:
 # Include backtesting & optimization router
 try:
     from .backtest_endpoints import backtest_router
+
     app.include_router(backtest_router)
     logger.info("Backtesting & optimization endpoints loaded successfully")
 except Exception as e:
@@ -288,6 +294,7 @@ except Exception as e:
 # REST endpoints at /api/yield-curve/* for the daily Treasury pipeline.
 try:
     from .routers.yield_curve import router as yield_curve_router
+
     app.include_router(yield_curve_router)
     logger.info("Yield curve endpoints loaded successfully")
 except Exception as e:
@@ -296,4 +303,5 @@ except Exception as e:
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

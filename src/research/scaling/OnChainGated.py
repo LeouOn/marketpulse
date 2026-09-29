@@ -47,9 +47,7 @@ class OnChainGated(ScalingModel):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("base_buy_multiplier", 1.0) <= 0:
-            raise InvalidParamsError(
-                f"base_buy_multiplier must be > 0, got {params['base_buy_multiplier']}"
-            )
+            raise InvalidParamsError(f"base_buy_multiplier must be > 0, got {params['base_buy_multiplier']}")
         bands = params.get("mvrv_bands", [-1.0, 0.0, 1.5, 3.0, 5.0])
         mults = params.get("mvrv_multipliers", [2.0, 1.5, 1.0, 0.75, 0.5])
         if len(bands) != len(mults) or len(bands) == 0:

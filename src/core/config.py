@@ -114,6 +114,7 @@ class LLMSettings(BaseSettings):
         OpenAI-compatible, no auth (any bearer token accepted). The
         default port is 8001 -- 8000 is the MarketPulse API itself.
         """
+
         base_url: str = "http://127.0.0.1:8001/v1"
         api_key: str = "not-needed"
         timeout: int = 300
@@ -126,11 +127,12 @@ class LLMSettings(BaseSettings):
         endpoint). Set ``LLM_PROVIDER`` to ``deepseek``, ``lm_studio``, or
         ``openrouter`` to override at runtime.
         """
-        reasoning: str = "MiniMax-M3"               # Multi-step analysis, hypothesis testing
-        fast: str = "MiniMax-M3"                     # Quick checks, data validation
-        standard: str = "MiniMax-M3"                 # Default chat / analysis
-        structured_output: str = "MiniMax-M3"        # Function calling, JSON schema
-        primary_provider: str = "minimax"            # minimax | deepseek | lm_studio | openrouter
+
+        reasoning: str = "MiniMax-M3"  # Multi-step analysis, hypothesis testing
+        fast: str = "MiniMax-M3"  # Quick checks, data validation
+        standard: str = "MiniMax-M3"  # Default chat / analysis
+        structured_output: str = "MiniMax-M3"  # Function calling, JSON schema
+        primary_provider: str = "minimax"  # minimax | deepseek | lm_studio | openrouter
         fallback_providers: str = "deepseek,lm_studio,openrouter"
 
     primary: PrimaryConfig = Field(default_factory=PrimaryConfig)

@@ -7,7 +7,6 @@ each subcommand runs without error and produces the expected JSON shape.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -72,9 +71,12 @@ def test_cli_backtest(seeded_data, capsys):
     rc = research_cli.main(
         [
             "backtest",
-            "--strategy", "BuyAndHold",
-            "--start", "2024-01-15",
-            "--end", "2024-04-01",
+            "--strategy",
+            "BuyAndHold",
+            "--start",
+            "2024-01-15",
+            "--end",
+            "2024-04-01",
         ]
     )
     assert rc == 0
@@ -88,10 +90,14 @@ def test_cli_backtest_with_strategy_params(seeded_data, capsys):
     rc = research_cli.main(
         [
             "backtest",
-            "--strategy", "DCAFixedAmount",
-            "--strategy-params", '{"amount_usd": 50, "every_n_bars": 3}',
-            "--start", "2024-01-15",
-            "--end", "2024-04-01",
+            "--strategy",
+            "DCAFixedAmount",
+            "--strategy-params",
+            '{"amount_usd": 50, "every_n_bars": 3}',
+            "--start",
+            "2024-01-15",
+            "--end",
+            "2024-04-01",
         ]
     )
     assert rc == 0
@@ -105,10 +111,14 @@ def test_cli_compare(seeded_data, capsys):
     rc = research_cli.main(
         [
             "compare",
-            "--assets", "BTC",
-            "--strategy", "BuyAndHold",
-            "--start", "2024-01-15",
-            "--end", "2024-04-01",
+            "--assets",
+            "BTC",
+            "--strategy",
+            "BuyAndHold",
+            "--start",
+            "2024-01-15",
+            "--end",
+            "2024-04-01",
         ]
     )
     assert rc == 0
@@ -122,13 +132,20 @@ def test_cli_montecarlo_gbm(seeded_data, capsys):
     rc = research_cli.main(
         [
             "montecarlo",
-            "--method", "gbm",
-            "--n-paths", "100",
-            "--n-steps", "50",
-            "--mu", "0.3",
-            "--sigma", "0.5",
-            "--starting-value", "10000",
-            "--seed", "0",
+            "--method",
+            "gbm",
+            "--n-paths",
+            "100",
+            "--n-steps",
+            "50",
+            "--mu",
+            "0.3",
+            "--sigma",
+            "0.5",
+            "--starting-value",
+            "10000",
+            "--seed",
+            "0",
         ]
     )
     assert rc == 0
@@ -140,11 +157,16 @@ def test_cli_montecarlo_block_bootstrap(seeded_data, capsys):
     rc = research_cli.main(
         [
             "montecarlo",
-            "--method", "block_bootstrap",
-            "--n-paths", "50",
-            "--n-steps", "100",
-            "--start", "2024-01-15",
-            "--end", "2024-04-01",
+            "--method",
+            "block_bootstrap",
+            "--n-paths",
+            "50",
+            "--n-steps",
+            "100",
+            "--start",
+            "2024-01-15",
+            "--end",
+            "2024-04-01",
         ]
     )
     assert rc == 0

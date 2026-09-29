@@ -8,7 +8,6 @@ Offline: history and status are monkeypatched; no DB, no network.
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -28,17 +27,19 @@ def client():
 def _stub_rows(n=2):
     rows = []
     for _i in range(n):
-        rows.append(SimpleNamespace(
-            date=date(2026, 9, 25),
-            curve={"2y": 3.4, "10y": 4.05},
-            spreads={"2s10s": 65.0, "3m10y": 105.0, "5s30s": 55.0, "2s30s": 95.0},
-            shape="NORMAL",
-            shape_trend="STEEPENING",
-            recession_prob_nyfed=0.30,
-            spread_2s10s_delta_5d=2.0,
-            spread_2s10s_delta_30d=8.0,
-            zscore_2s10s_90d=0.4,
-        ))
+        rows.append(
+            SimpleNamespace(
+                date=date(2026, 9, 25),
+                curve={"2y": 3.4, "10y": 4.05},
+                spreads={"2s10s": 65.0, "3m10y": 105.0, "5s30s": 55.0, "2s30s": 95.0},
+                shape="NORMAL",
+                shape_trend="STEEPENING",
+                recession_prob_nyfed=0.30,
+                spread_2s10s_delta_5d=2.0,
+                spread_2s10s_delta_30d=8.0,
+                zscore_2s10s_90d=0.4,
+            )
+        )
     return rows
 
 
@@ -114,6 +115,7 @@ class TestManualTrigger:
             return {"saved": 1, "date": "2026-09-28", "error": None}
 
         import src.scheduler.yield_curve_job as job_mod
+
         monkeypatch.setattr(job_mod, "run_yield_curve_pipeline", _fake_pipeline)
         r = client.post("/api/yield-curve/refresh")
         assert r.status_code == 200, r.text

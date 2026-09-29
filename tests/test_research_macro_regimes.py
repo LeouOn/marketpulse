@@ -32,7 +32,6 @@ Layout
 from __future__ import annotations
 
 import os
-import shutil
 from datetime import date
 from pathlib import Path
 
@@ -50,7 +49,6 @@ from src.research.macro.regimes import (  # noqa: E402
     generate_regime_tape,
 )
 
-
 # ---------------------------------------------------------------------------
 # Live-test opt-in (mirrors T11's pattern in test_research_macro_factors.py)
 # ---------------------------------------------------------------------------
@@ -58,10 +56,7 @@ from src.research.macro.regimes import (  # noqa: E402
 _LIVE_ENABLED = os.getenv("RUN_LIVE_TESTS", "") == "1"
 _SKIP_LIVE = pytest.mark.skipif(
     not _LIVE_ENABLED,
-    reason=(
-        "Set RUN_LIVE_TESTS=1 to run live FRED/Yahoo backrun validation "
-        "(requires FRED_API_KEY)."
-    ),
+    reason=("Set RUN_LIVE_TESTS=1 to run live FRED/Yahoo backrun validation (requires FRED_API_KEY)."),
 )
 
 
@@ -204,7 +199,7 @@ class TestSigmoid:
         assert isinstance(out, pd.Series)
         assert out.index.equals(s.index)
         assert out.iloc[0] == pytest.approx(0.119, abs=1e-3)  # x=0, t=1
-        assert out.iloc[1] == pytest.approx(0.5)               # x=t
+        assert out.iloc[1] == pytest.approx(0.5)  # x=t
         assert out.iloc[2] == pytest.approx(0.881, abs=1e-3)  # x=2, t=1
 
 
@@ -320,12 +315,12 @@ class TestMissingFactor:
 
         # Shared breakeven-collapse pattern.
         bev_values = np.full(days, 2.0)
-        bev_values[spike_at:spike_at + 60] = 0.5  # breakeven collapse
+        bev_values[spike_at : spike_at + 60] = 0.5  # breakeven collapse
         bev_series = pd.Series(bev_values, index=idx)
 
         # VIX spike pattern.
         vix_values = np.full(days, 16.0)
-        vix_values[spike_at:spike_at + 60] = 80.0  # 2-month vol spike
+        vix_values[spike_at : spike_at + 60] = 80.0  # 2-month vol spike
         vix_series = pd.Series(vix_values, index=idx)
 
         # VIX-present: both signals.
@@ -378,10 +373,8 @@ class TestRecessionPrecedence:
         df["sahm_recession"] = sahm_series
 
         logits = RulesBasedClassifier().compute_logits(df)
-        rec_window = logits.loc[idx[2000]:idx[2069], "RECESSION"]
-        assert (rec_window == 1.0).all(), (
-            "RECESSION logit must be exactly 1.0 when sahm_recession=True"
-        )
+        rec_window = logits.loc[idx[2000] : idx[2069], "RECESSION"]
+        assert (rec_window == 1.0).all(), "RECESSION logit must be exactly 1.0 when sahm_recession=True"
 
     def test_recession_is_top_probability_when_sahm_true(self):
         # On Sahm-True days, RECESSION must be the highest mean prob
@@ -394,12 +387,11 @@ class TestRecessionPrecedence:
         df["sahm_recession"] = pd.Series(sahm_values, index=idx)
 
         probs = RulesBasedClassifier().classify(df)
-        rec_window = probs.loc[idx[2010]:idx[2069]]  # skip first 10d edge effects
+        rec_window = probs.loc[idx[2010] : idx[2069]]  # skip first 10d edge effects
         mean_probs = rec_window.mean()
         top1 = mean_probs.idxmax()
         assert top1 == "RECESSION", (
-            f"RECESSION must be the dominant regime when Sahm fires; got {top1}. "
-            f"Mean probs: {mean_probs.to_dict()}"
+            f"RECESSION must be the dominant regime when Sahm fires; got {top1}. Mean probs: {mean_probs.to_dict()}"
         )
 
     def test_recession_logit_zero_when_sahm_false_ism_neutral(self):
@@ -485,26 +477,22 @@ class TestRegimeFormulasFire:
         idx = pd.date_range("2010-01-01", periods=days, freq="D")
         df = _synthetic_factor_df()
         # Inject a 60-day window with elevated breakevens + hot CPI.
-        df.loc[idx[2000]:idx[2059], "breakeven_10y"] = 3.5
-        df.loc[idx[2000]:idx[2059], "cpi_yoy"] = 0.09
+        df.loc[idx[2000] : idx[2059], "breakeven_10y"] = 3.5
+        df.loc[idx[2000] : idx[2059], "cpi_yoy"] = 0.09
         probs = RulesBasedClassifier().classify(df)
-        window = probs.loc[idx[2030]:idx[2059]]
+        window = probs.loc[idx[2030] : idx[2059]]
         top2 = window.mean().nlargest(2).index.tolist()
-        assert "INFLATION_ACCEL" in top2, (
-            f"INFLATION_ACCEL should fire on hot breakevens + CPI; top-2 was {top2}"
-        )
+        assert "INFLATION_ACCEL" in top2, f"INFLATION_ACCEL should fire on hot breakevens + CPI; top-2 was {top2}"
 
     def test_real_yield_shock_fires_on_spiking_real_yields(self):
         days = 2500
         idx = pd.date_range("2010-01-01", periods=days, freq="D")
         df = _synthetic_factor_df()
-        df.loc[idx[2000]:idx[2059], "real_yield_10y"] = 2.0
+        df.loc[idx[2000] : idx[2059], "real_yield_10y"] = 2.0
         probs = RulesBasedClassifier().classify(df)
-        window = probs.loc[idx[2030]:idx[2059]]
+        window = probs.loc[idx[2030] : idx[2059]]
         top2 = window.mean().nlargest(2).index.tolist()
-        assert "REAL_YIELD_SHOCK" in top2, (
-            f"REAL_YIELD_SHOCK should fire on real-yield spike; top-2 was {top2}"
-        )
+        assert "REAL_YIELD_SHOCK" in top2, f"REAL_YIELD_SHOCK should fire on real-yield spike; top-2 was {top2}"
 
 
 # ===========================================================================
@@ -640,8 +628,7 @@ def test_generate_regime_tape():
     dominant_counts = tape["dominant_regime"].value_counts()
     for regime in REGIME_COLUMNS:
         assert regime in dominant_counts.index, (
-            f"Regime {regime} never appears as dominant in the tape; "
-            f"counts: {dominant_counts.to_dict()}"
+            f"Regime {regime} never appears as dominant in the tape; counts: {dominant_counts.to_dict()}"
         )
 
     # RISK_ON is the most common dominant regime.

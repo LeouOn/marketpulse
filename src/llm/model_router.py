@@ -46,17 +46,19 @@ from .minimax_client import MiniMaxClient
 # Provider registry entry
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ProviderEntry:
-    name: str                        # "deepseek", "lm_studio", "openrouter"
-    client: Any = None               # Client instance (lazy-init)
-    healthy: bool | None = None      # None = unchecked
-    priority: int = 0                # Lower = higher priority
+    name: str  # "deepseek", "lm_studio", "openrouter"
+    client: Any = None  # Client instance (lazy-init)
+    healthy: bool | None = None  # None = unchecked
+    priority: int = 0  # Lower = higher priority
 
 
 # ---------------------------------------------------------------------------
 # ModelRouter
 # ---------------------------------------------------------------------------
+
 
 class ModelRouter:
     """Dispatch LLM requests to the best provider for each capability."""
@@ -76,11 +78,7 @@ class ModelRouter:
         # Build capability map from config
         self._build_capability_map()
 
-        self._fallback_chain: list[str] = [
-            p.strip()
-            for p in self._routing.fallback_providers.split(",")
-            if p.strip()
-        ]
+        self._fallback_chain: list[str] = [p.strip() for p in self._routing.fallback_providers.split(",") if p.strip()]
 
     # -- capability map ---------------------------------------------------
 
@@ -128,9 +126,7 @@ class ModelRouter:
             prefix = model_id.split("/", 1)[0]
             if prefix in ("ds4", "minimax", "deepseek", "lm_studio", "openrouter"):
                 return prefix
-        if model_id == self.settings.llm.ds4.model and (
-            default == "ds4" or self._routing.primary_provider == "ds4"
-        ):
+        if model_id == self.settings.llm.ds4.model and (default == "ds4" or self._routing.primary_provider == "ds4"):
             return "ds4"
         if "minimax" in model_id.lower() or "m3" in model_id.lower():
             return "minimax"
@@ -181,9 +177,7 @@ class ModelRouter:
                 try:
                     await entry.client.__aenter__()
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to enter provider {entry.name}: {e}"
-                    )
+                    logger.warning(f"Failed to enter provider {entry.name}: {e}")
 
         # Quick health check on primary
         primary = self._routing.primary_provider
@@ -254,9 +248,7 @@ class ModelRouter:
 
     # -- routing ----------------------------------------------------------
 
-    async def route(
-        self, capability: str = "standard"
-    ) -> tuple[Any, str]:
+    async def route(self, capability: str = "standard") -> tuple[Any, str]:
         """Resolve a capability to ``(client, model_id)``.
 
         Returns the highest-priority healthy provider that can serve
@@ -280,16 +272,12 @@ class ModelRouter:
         if preferred_provider in self._providers:
             entry = self._providers[preferred_provider]
             if entry.healthy or await self._check_provider(preferred_provider):
-                logger.debug(
-                    f"ModelRouter: {capability} → {preferred_provider}/{model_id}"
-                )
+                logger.debug(f"ModelRouter: {capability} → {preferred_provider}/{model_id}")
                 return entry.client, model_id
 
         # Fallback chain
         primary = self._routing.primary_provider
-        fallback_names = [primary] + [
-            n for n in self._fallback_chain if n != preferred_provider
-        ]
+        fallback_names = [primary] + [n for n in self._fallback_chain if n != preferred_provider]
 
         for name in fallback_names:
             if name not in self._providers:
@@ -299,23 +287,17 @@ class ModelRouter:
                 # Map capability to a model on this fallback provider
                 fb_model = self._fallback_model_for(name, capability)
                 logger.warning(
-                    f"ModelRouter: {capability} → FALLBACK "
-                    f"{name}/{fb_model} (preferred {preferred_provider} unhealthy)"
+                    f"ModelRouter: {capability} → FALLBACK {name}/{fb_model} (preferred {preferred_provider} unhealthy)"
                 )
                 return entry.client, fb_model
 
         # Last resort -- return primary client even if unhealthy
         entry = self._providers.get(primary)
         if entry:
-            logger.error(
-                f"ModelRouter: all providers unhealthy for {capability} -- "
-                f"returning {primary} anyway"
-            )
+            logger.error(f"ModelRouter: all providers unhealthy for {capability} -- returning {primary} anyway")
             return entry.client, model_id
 
-        raise RuntimeError(
-            f"No provider available for capability '{capability}'"
-        )
+        raise RuntimeError(f"No provider available for capability '{capability}'")
 
     def _fallback_model_for(self, provider: str, capability: str) -> str:
         """Pick a sensible model on a fallback provider."""
@@ -382,54 +364,65 @@ class ModelRouter:
 
         # MiniMax (default primary)
         mm = self.settings.llm.minimax
-        models.append({
-            "id": mm.model,
-            "provider": "minimax",
-            "capability": "reasoning",
-            "description": f"{mm.model} via minimax.io (international coding plan)",
-            "recommended": True,
-        })
+        models.append(
+            {
+                "id": mm.model,
+                "provider": "minimax",
+                "capability": "reasoning",
+                "description": f"{mm.model} via minimax.io (international coding plan)",
+                "recommended": True,
+            }
+        )
 
         # DeepSeek models
         ds = self._deepseek_cfg
-        models.append({
-            "id": ds.model_pro,
-            "provider": "deepseek",
-            "capability": "reasoning",
-            "description": "DeepSeek V4 Pro -- full reasoning, function calling",
-            "recommended": False,
-        })
-        models.append({
-            "id": ds.model_flash,
-            "provider": "deepseek",
-            "capability": "fast",
-            "description": "DeepSeek V4 Flash -- fast, cost-effective",
-            "recommended": False,
-        })
+        models.append(
+            {
+                "id": ds.model_pro,
+                "provider": "deepseek",
+                "capability": "reasoning",
+                "description": "DeepSeek V4 Pro -- full reasoning, function calling",
+                "recommended": False,
+            }
+        )
+        models.append(
+            {
+                "id": ds.model_flash,
+                "provider": "deepseek",
+                "capability": "fast",
+                "description": "DeepSeek V4 Flash -- fast, cost-effective",
+                "recommended": False,
+            }
+        )
 
         # LM Studio (local) -- placeholder; real models populated at runtime
-        models.append({
-            "id": "lm-studio-local",
-            "provider": "lm_studio",
-            "capability": "fallback",
-            "description": "Local model via LM Studio (auto-detected)",
-            "recommended": False,
-        })
+        models.append(
+            {
+                "id": "lm-studio-local",
+                "provider": "lm_studio",
+                "capability": "fallback",
+                "description": "Local model via LM Studio (auto-detected)",
+                "recommended": False,
+            }
+        )
 
         # ds4 (local DeepSeek V4 Flash, antirez build)
         ds4 = self.settings.llm.ds4
-        models.append({
-            "id": ds4.model,
-            "provider": "ds4",
-            "capability": "fast",
-            "description": "Local DeepSeek V4 Flash via ds4 (no auth, tool calling)",
-            "recommended": False,
-        })
+        models.append(
+            {
+                "id": ds4.model,
+                "provider": "ds4",
+                "capability": "fast",
+                "description": "Local DeepSeek V4 Flash via ds4 (no auth, tool calling)",
+                "recommended": False,
+            }
+        )
 
         return models
 
 
 # -- helpers ---------------------------------------------------------------
+
 
 class _suppress:
     """Context manager that silently swallows all exceptions."""

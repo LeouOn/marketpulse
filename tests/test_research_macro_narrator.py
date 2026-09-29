@@ -42,7 +42,6 @@ from src.research.macro.narrator import (
     RegimeJudgeOutput,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -163,9 +162,7 @@ def _mock_router() -> AsyncMock:
 class TestHappyPath:
     """Mock returns valid JSON; output parsed; router called exactly once."""
 
-    async def test_happy_path_parses_and_calls_router_once(
-        self, tmp_path: Path
-    ):
+    async def test_happy_path_parses_and_calls_router_once(self, tmp_path: Path):
         router = _mock_router()
         narrator = LLMJudgeNarrator(model_router=router, cache_dir=tmp_path)
 
@@ -298,13 +295,9 @@ class TestProbabilitiesValidator:
 class TestRetryLogic:
     """First call malformed -> retry with stricter prompt succeeds."""
 
-    async def test_malformed_first_call_triggers_retry_then_success(
-        self, tmp_path: Path
-    ):
+    async def test_malformed_first_call_triggers_retry_then_success(self, tmp_path: Path):
         router = AsyncMock()
-        router.generate = AsyncMock(
-            side_effect=[_garbage_response(), _good_response()]
-        )
+        router.generate = AsyncMock(side_effect=[_garbage_response(), _good_response()])
         narrator = LLMJudgeNarrator(model_router=router, cache_dir=tmp_path)
 
         output = await narrator.judge_and_narrate(
@@ -462,15 +455,12 @@ class TestFedStatementsStub:
 
         assert isinstance(output, RegimeJudgeOutput)
         # Inspect the actual prompt sent to the LLM.
-        sent_messages = router.generate.await_args.kwargs.get("messages") or \
-            router.generate.await_args.args[0]
+        sent_messages = router.generate.await_args.kwargs.get("messages") or router.generate.await_args.args[0]
         sent_prompt = sent_messages[0]["content"]
         # The placeholder text must be present.
         assert "(no recent statements available)" in sent_prompt
 
-    async def test_non_empty_fed_statements_flow_into_prompt(
-        self, tmp_path: Path
-    ):
+    async def test_non_empty_fed_statements_flow_into_prompt(self, tmp_path: Path):
         router = _mock_router()
         narrator = LLMJudgeNarrator(model_router=router, cache_dir=tmp_path)
 
@@ -481,8 +471,7 @@ class TestFedStatementsStub:
             fed_statements="FOMC Jan 2024: rates unchanged, patient stance.",
         )
 
-        sent_messages = router.generate.await_args.kwargs.get("messages") or \
-            router.generate.await_args.args[0]
+        sent_messages = router.generate.await_args.kwargs.get("messages") or router.generate.await_args.args[0]
         sent_prompt = sent_messages[0]["content"]
         assert "FOMC Jan 2024" in sent_prompt
 
@@ -497,9 +486,7 @@ class TestDoubleFailureRaises:
 
     async def test_two_failures_raise_llm_judge_error(self, tmp_path: Path):
         router = AsyncMock()
-        router.generate = AsyncMock(
-            side_effect=[_garbage_response(), _garbage_response()]
-        )
+        router.generate = AsyncMock(side_effect=[_garbage_response(), _garbage_response()])
         narrator = LLMJudgeNarrator(model_router=router, cache_dir=tmp_path)
 
         with pytest.raises(LLMJudgeError):
@@ -515,9 +502,7 @@ class TestDoubleFailureRaises:
     async def test_bad_sum_then_garbage_raises(self, tmp_path: Path):
         """First call sums wrong (ValidationError), second is garbage."""
         router = AsyncMock()
-        router.generate = AsyncMock(
-            side_effect=[_bad_sum_response(), _garbage_response()]
-        )
+        router.generate = AsyncMock(side_effect=[_bad_sum_response(), _garbage_response()])
         narrator = LLMJudgeNarrator(model_router=router, cache_dir=tmp_path)
 
         with pytest.raises(LLMJudgeError):

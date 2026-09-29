@@ -12,14 +12,15 @@ Regimes:
 - BREAKOUT_PENDING: Coiling, wait for direction
 """
 
-import asyncio
-from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
+
 from loguru import logger
 
 try:
     from src.llm.llm_client import LMStudioClient
+
     LLM_AVAILABLE = True
 except ImportError:
     LLM_AVAILABLE = False
@@ -29,6 +30,7 @@ except ImportError:
 @dataclass
 class MarketData:
     """Current market data for regime classification"""
+
     # Price action
     symbol: str
     current_price: float
@@ -62,6 +64,7 @@ class MarketData:
 @dataclass
 class RegimeAnalysis:
     """Market regime classification result"""
+
     # Classification
     regime: str  # TRENDING_BULLISH, TRENDING_BEARISH, etc.
     confidence: float  # 0-100%
@@ -149,6 +152,7 @@ class MarketRegimeClassifier:
             # Use Anthropic Claude (via AI analyst if available)
             try:
                 from src.ai.massive_analyst import MassiveAIAnalyst
+
                 analyst = MassiveAIAnalyst()
                 await analyst.create_agent()
 
@@ -167,14 +171,14 @@ class MarketRegimeClassifier:
 
             async with LMStudioClient() as client:
                 response = await client.generate_completion(
-                    model='quick_analysis',
-                    messages=[{'role': 'user', 'content': prompt}],
+                    model="quick_analysis",
+                    messages=[{"role": "user", "content": prompt}],
                     max_tokens=400,
-                    temperature=0.3  # Lower temperature for classification
+                    temperature=0.3,  # Lower temperature for classification
                 )
 
-                if response and 'choices' in response:
-                    response_text = response['choices'][0]['message']['content']
+                if response and "choices" in response:
+                    response_text = response["choices"][0]["message"]["content"]
                     return self._parse_llm_response(response_text, market_data)
 
             raise RuntimeError("LLM response empty")
@@ -190,9 +194,7 @@ class MarketRegimeClassifier:
         ema_21 = _px(market_data.ema_21)
         btc_corr = _px(market_data.nq_btc_corr)
         versus_sma = (
-            "Above"
-            if market_data.sma_20 is not None and market_data.current_price > market_data.sma_20
-            else "Below"
+            "Above" if market_data.sma_20 is not None and market_data.current_price > market_data.sma_20 else "Below"
         )
 
         prompt = f"""Analyze the current {market_data.symbol} market regime and provide classification.
@@ -279,7 +281,8 @@ Be concise but specific. Focus on actionable insights."""
         # Extract confidence
         confidence = 75.0  # Default
         import re
-        conf_match = re.search(r'confidence[:\s]+(\d+)%?', response_lower)
+
+        conf_match = re.search(r"confidence[:\s]+(\d+)%?", response_lower)
         if conf_match:
             confidence = float(conf_match.group(1))
 
@@ -294,7 +297,7 @@ Be concise but specific. Focus on actionable insights."""
 
         # Extract strategy (first sentence after "strategy" or "optimal")
         strategy = "Trade according to regime"
-        strategy_match = re.search(r'(?:optimal strategy|strategy)[:\s]+([^.]+)', response_lower)
+        strategy_match = re.search(r"(?:optimal strategy|strategy)[:\s]+([^.]+)", response_lower)
         if strategy_match:
             strategy = strategy_match.group(1).strip()
 
@@ -306,7 +309,7 @@ Be concise but specific. Focus on actionable insights."""
             key_support=market_data.recent_low,
             key_resistance=market_data.recent_high,
             reasoning=response,
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
         )
 
     def _classify_with_rules(self, market_data: MarketData) -> RegimeAnalysis:
@@ -320,8 +323,7 @@ Be concise but specific. Focus on actionable insights."""
         # Check trend
         if market_data.sma_20 and market_data.sma_50:
             # Strong uptrend
-            if (market_data.current_price > market_data.sma_20 > market_data.sma_50 and
-                market_data.vix < 20):
+            if market_data.current_price > market_data.sma_20 > market_data.sma_50 and market_data.vix < 20:
                 return RegimeAnalysis(
                     regime="TRENDING_BULLISH",
                     confidence=80.0,
@@ -329,12 +331,11 @@ Be concise but specific. Focus on actionable insights."""
                     optimal_strategy="Favor FVG longs, avoid shorts. Use wider stops.",
                     key_support=market_data.sma_20,
                     key_resistance=market_data.recent_high,
-                    reasoning="Price > SMA20 > SMA50, low VIX, clear uptrend"
+                    reasoning="Price > SMA20 > SMA50, low VIX, clear uptrend",
                 )
 
             # Strong downtrend
-            elif (market_data.current_price < market_data.sma_20 < market_data.sma_50 and
-                  market_data.vix < 25):
+            elif market_data.current_price < market_data.sma_20 < market_data.sma_50 and market_data.vix < 25:
                 return RegimeAnalysis(
                     regime="TRENDING_BEARISH",
                     confidence=80.0,
@@ -342,7 +343,7 @@ Be concise but specific. Focus on actionable insights."""
                     optimal_strategy="Favor FVG shorts, avoid longs. Use wider stops.",
                     key_support=market_data.recent_low,
                     key_resistance=market_data.sma_20,
-                    reasoning="Price < SMA20 < SMA50, clear downtrend"
+                    reasoning="Price < SMA20 < SMA50, clear downtrend",
                 )
 
         # Check volatility
@@ -352,7 +353,7 @@ Be concise but specific. Focus on actionable insights."""
                 confidence=75.0,
                 recommended_bias="avoid",
                 optimal_strategy="Reduce size or avoid trading. High volatility, likely whipsaws.",
-                reasoning="VIX > 30 or ATR > 3%, high volatility environment"
+                reasoning="VIX > 30 or ATR > 3%, high volatility environment",
             )
 
         # Check for coiling (low volatility)
@@ -362,7 +363,7 @@ Be concise but specific. Focus on actionable insights."""
                 confidence=70.0,
                 recommended_bias="neutral",
                 optimal_strategy="Wait for direction, then trade breakout. Coiling pattern.",
-                reasoning="Low VIX and ATR, market compressing"
+                reasoning="Low VIX and ATR, market compressing",
             )
 
         # Default to range-bound
@@ -373,7 +374,7 @@ Be concise but specific. Focus on actionable insights."""
             optimal_strategy="Trade both directions, fade extremes. Use tight stops.",
             key_support=market_data.recent_low,
             key_resistance=market_data.recent_high,
-            reasoning="Mixed signals, range-bound market"
+            reasoning="Mixed signals, range-bound market",
         )
 
 
@@ -399,33 +400,34 @@ async def classify_current_regime(symbol: str = "NQ") -> RegimeAnalysis:
         raise ValueError(f"No data available for {symbol}")
 
     # Calculate metrics
-    current_price = float(df['close'].iloc[-1])
-    recent_high = float(df['high'].iloc[-50:].max())
-    recent_low = float(df['low'].iloc[-50:].min())
+    current_price = float(df["close"].iloc[-1])
+    recent_high = float(df["high"].iloc[-50:].max())
+    recent_low = float(df["low"].iloc[-50:].min())
     range_points = recent_high - recent_low
 
     # Volume
-    volume = int(df['volume'].iloc[-1])
-    avg_volume = int(df['volume'].mean())
+    volume = int(df["volume"].iloc[-1])
+    avg_volume = int(df["volume"].mean())
 
     # Get VIX
     vix_df = bars_frame(client, "^VIX", period="5d", interval="1d")
-    vix = float(vix_df['close'].iloc[-1]) if not vix_df.empty else 20.0
+    vix = float(vix_df["close"].iloc[-1]) if not vix_df.empty else 20.0
 
     # Calculate indicators
     from src.analysis.technical_indicators import TechnicalIndicators
-    df_with_ind = TechnicalIndicators.calculate_all(df, ['sma_20', 'sma_50', 'ema_21', 'atr'])
 
-    sma_20 = float(df_with_ind['sma_20'].iloc[-1])
-    sma_50 = float(df_with_ind['sma_50'].iloc[-1])
-    ema_21 = float(df_with_ind['ema_21'].iloc[-1])
-    atr = float(df_with_ind['atr'].iloc[-1])
+    df_with_ind = TechnicalIndicators.calculate_all(df, ["sma_20", "sma_50", "ema_21", "atr"])
+
+    sma_20 = float(df_with_ind["sma_20"].iloc[-1])
+    sma_50 = float(df_with_ind["sma_50"].iloc[-1])
+    ema_21 = float(df_with_ind["ema_21"].iloc[-1])
+    atr = float(df_with_ind["atr"].iloc[-1])
 
     # Correlation with SPY
     spy_df = bars_frame(client, "SPY", period="5d", interval="5m")
     if not spy_df.empty:
-        nq_returns = df['close'].pct_change().dropna()
-        spy_returns = spy_df['close'].pct_change().dropna()
+        nq_returns = df["close"].pct_change().dropna()
+        spy_returns = spy_df["close"].pct_change().dropna()
         # Align indices
         common_index = nq_returns.index.intersection(spy_returns.index)
         if len(common_index) > 10:
@@ -452,7 +454,7 @@ async def classify_current_regime(symbol: str = "NQ") -> RegimeAnalysis:
         ema_21=ema_21,
         recent_high=recent_high,
         recent_low=recent_low,
-        timestamp=datetime.now()
+        timestamp=datetime.now(),
     )
 
     # Classify

@@ -27,7 +27,6 @@ import pytest
 
 from src.research.loans import FixedRateLoan
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -165,9 +164,7 @@ def test_create_mortgage_helper_returns_fixed_rate_loan() -> None:
     purchase_price = 500_000.0
     current_rate = 0.065  # 6.5% -- runtime override from MORTGAGE30US.
 
-    loan = strat._create_mortgage(
-        current_rate=current_rate, purchase_price=purchase_price
-    )
+    loan = strat._create_mortgage(current_rate=current_rate, purchase_price=purchase_price)
 
     assert isinstance(loan, FixedRateLoan)
     # Loan principal = purchase_price * (1 - down_payment_pct) = 500K * 0.80.
@@ -192,9 +189,7 @@ def test_down_payment_calculation_is_20_percent() -> None:
     strat = MortgageCycleAccumulation()
     purchase_price = 500_000.0
 
-    loan = strat._create_mortgage(
-        current_rate=0.07, purchase_price=purchase_price
-    )
+    loan = strat._create_mortgage(current_rate=0.07, purchase_price=purchase_price)
 
     expected_down = purchase_price * strat.default_params["down_payment_pct"]
     expected_principal = purchase_price - expected_down
@@ -227,7 +222,7 @@ def test_thirty_year_housing_dca_with_mortgage_positive_equity() -> None:
     n_months = 360
     monthly_growth = (1.04) ** (1.0 / 12.0)
     starts_at = 100.0
-    closes = [starts_at * (monthly_growth ** i) for i in range(n_months)]
+    closes = [starts_at * (monthly_growth**i) for i in range(n_months)]
     idx = pd.date_range("1990-01-31", periods=n_months, freq="ME")
     ohlcv = pd.DataFrame(
         {
@@ -243,17 +238,13 @@ def test_thirty_year_housing_dca_with_mortgage_positive_equity() -> None:
     # --- Mortgage: 80% LTV on the entry-price property --------------------
     strat = MortgageCycleAccumulation()
     entry_price = closes[0]
-    loan = strat._create_mortgage(
-        current_rate=0.07, purchase_price=entry_price * 1000.0
-    )
+    loan = strat._create_mortgage(current_rate=0.07, purchase_price=entry_price * 1000.0)
     # Track loan principal outstanding (interest-only -> constant until balloon).
     principal_outstanding = loan.principal
 
     # --- Walk bars: at each month, accumulate `intensity` units of housing
     # at the prevailing price. Property units accumulate; debt stays flat ---
-    factor_df = _monthly_dti_factor_df(
-        n_months=n_months, prior_value=7.0, current_value=7.0
-    )
+    factor_df = _monthly_dti_factor_df(n_months=n_months, prior_value=7.0, current_value=7.0)
     signals = strat.generate_signals(ohlcv, factor_df=factor_df)
 
     units_owned = 0.0

@@ -8,10 +8,10 @@ The hawkish score is normalized to [0, 1] where:
 - 1.0 = maximally hawkish (Volcker-style)
 - 0.0 = maximally dovish (hyper-accommodative)
 """
+
 from __future__ import annotations
 
 from src.warsh.tools import ToolName
-
 
 # ---------------------------------------------------------------------------
 # Persona definitions
@@ -288,12 +288,12 @@ def get_market_prediction(tool_values: dict) -> dict[str, str]:
     if score >= 0.6:
         # Strongly hawkish
         return {
-            "stocks": "bearish",   # multiple compression
-            "bonds": "bearish",    # yields up = prices down
-            "gold": "bearish",     # real rates up
-            "crypto": "bearish",   # risk-off
-            "oil": "neutral",      # demand destruction vs. dollar
-            "dollar": "bullish",   # higher real yields attract flows
+            "stocks": "bearish",  # multiple compression
+            "bonds": "bearish",  # yields up = prices down
+            "gold": "bearish",  # real rates up
+            "crypto": "bearish",  # risk-off
+            "oil": "neutral",  # demand destruction vs. dollar
+            "dollar": "bullish",  # higher real yields attract flows
         }
     if score >= 0.4:
         # Balanced / neutral
@@ -307,10 +307,10 @@ def get_market_prediction(tool_values: dict) -> dict[str, str]:
         }
     # Dovish
     return {
-        "stocks": "bullish",   # multiple expansion
-        "bonds": "bullish",    # yields down = prices up
-        "gold": "bullish",     # real rates down
-        "crypto": "bullish",   # risk-on + liquidity
-        "oil": "bullish",      # growth stimulus + weak dollar
-        "dollar": "bearish",   # lower real yields
+        "stocks": "bullish",  # multiple expansion
+        "bonds": "bullish",  # yields down = prices up
+        "gold": "bullish",  # real rates down
+        "crypto": "bullish",  # risk-on + liquidity
+        "oil": "bullish",  # growth stimulus + weak dollar
+        "dollar": "bearish",  # lower real yields
     }

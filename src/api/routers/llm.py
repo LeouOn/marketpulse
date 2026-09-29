@@ -471,11 +471,15 @@ async def get_model_status():
     """Get multi-provider model status (all five providers + routing)."""
     try:
         ds = settings.llm.deepseek
-        ds_configured = bool(ds.api_key and ds.api_key not in ("your_deepseek_api_key", "") and not ds.api_key.startswith("${"))
+        ds_configured = bool(
+            ds.api_key and ds.api_key not in ("your_deepseek_api_key", "") and not ds.api_key.startswith("${")
+        )
         mm = settings.llm.minimax
         mm_configured = bool(mm.api_key and mm.api_key != "your_minimax_api_key" and not mm.api_key.startswith("${"))
         orr = settings.llm.fallback
-        orr_configured = bool(orr.api_key and orr.api_key != "your_openrouter_api_key" and not orr.api_key.startswith("${"))
+        orr_configured = bool(
+            orr.api_key and orr.api_key != "your_openrouter_api_key" and not orr.api_key.startswith("${")
+        )
         ds4 = settings.llm.ds4
 
         status_info = {

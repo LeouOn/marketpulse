@@ -5,15 +5,11 @@ Network-dependent fetchers are mocked so these tests run offline.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 import pytest
 
 from src.research import data as data_mod
 from src.research.data import (
-    DAILY_CSV,
-    HOURLY_CSV,
     _max_drawdown,
     _merge,
     data_summary,
@@ -21,7 +17,6 @@ from src.research.data import (
     load_hourly,
     update_cache,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -50,9 +45,7 @@ def tmp_data_dir(tmp_path, monkeypatch):
 def sample_daily() -> pd.DataFrame:
     return pd.DataFrame(
         {
-            "ts": pd.to_datetime(
-                ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"]
-            ),
+            "ts": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"]),
             "open": [42000.0, 42500.0, 43000.0, 42800.0],
             "high": [42600.0, 43200.0, 43500.0, 43100.0],
             "low": [41800.0, 42400.0, 42700.0, 42500.0],

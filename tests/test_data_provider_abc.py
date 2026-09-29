@@ -18,7 +18,6 @@ import pytest
 
 from src.research.data import AssetConfig, AssetRegistry, DataProvider
 
-
 # ---------------------------------------------------------------------------
 # DataProvider: abstractness + concrete-subclass contract
 # ---------------------------------------------------------------------------
@@ -68,9 +67,7 @@ def test_concrete_dataprovider_subclass_works_and_inherits_load_monthly():
 
     daily = provider.load_daily(date(2024, 1, 1), date(2024, 3, 31))
     assert not daily.empty
-    assert set(["ts", "open", "high", "low", "close", "volume", "source"]).issubset(
-        daily.columns
-    )
+    assert set(["ts", "open", "high", "low", "close", "volume", "source"]).issubset(daily.columns)
 
     monthly = provider.load_monthly(date(2024, 1, 1), date(2024, 3, 31))
     # Default implementation resamples to month-end (3 months: Jan/Feb/Mar 2024).

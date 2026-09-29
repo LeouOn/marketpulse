@@ -29,7 +29,6 @@ Scenarios
 from __future__ import annotations
 
 import dataclasses
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import numpy as np
@@ -39,8 +38,7 @@ import pytest
 from src.research.data import AssetConfig
 from src.research.macro.model import MacroRegimeModel, RegimeClassification
 from src.research.macro.narrator import LLMJudgeError, RegimeJudgeOutput
-from src.research.macro.regimes import REGIME_COLUMNS, Regime, RulesBasedClassifier
-
+from src.research.macro.regimes import Regime, RulesBasedClassifier
 
 # ---------------------------------------------------------------------------
 # Synthetic factor frame (mirrors test_research_macro_regimes.py pattern)
@@ -181,9 +179,7 @@ def factor_df() -> pd.DataFrame:
 class TestRulesOnlyDefault:
     """Default path: ``alpha=1.0, use_llm=False`` returns rules-only output."""
 
-    async def test_rules_only_returns_correct_source_and_narrative(
-        self, rules_classifier, factor_df
-    ):
+    async def test_rules_only_returns_correct_source_and_narrative(self, rules_classifier, factor_df):
         model = MacroRegimeModel(rules=rules_classifier, judge=None)
         result = await model.classify(factor_df)
 
@@ -192,9 +188,7 @@ class TestRulesOnlyDefault:
         assert result.narrative is None
         assert result.alpha == 1.0
 
-    async def test_rules_only_probs_are_regime_keyed_and_sum_to_one(
-        self, rules_classifier, factor_df
-    ):
+    async def test_rules_only_probs_are_regime_keyed_and_sum_to_one(self, rules_classifier, factor_df):
         model = MacroRegimeModel(rules=rules_classifier)
         result = await model.classify(factor_df)
 
@@ -203,9 +197,7 @@ class TestRulesOnlyDefault:
         assert all(isinstance(k, Regime) for k in result.probs)
         assert sum(result.probs.values()) == pytest.approx(1.0, abs=1e-9)
 
-    async def test_rules_only_regime_is_valid_enum_member(
-        self, rules_classifier, factor_df
-    ):
+    async def test_rules_only_regime_is_valid_enum_member(self, rules_classifier, factor_df):
         model = MacroRegimeModel(rules=rules_classifier)
         result = await model.classify(factor_df)
 
@@ -223,9 +215,7 @@ class TestAlphaOneSkipsLLM:
     """``alpha=1.0`` means "rules-only" -- even with ``use_llm=True`` the
     judge is never called (no blend to perform)."""
 
-    async def test_alpha_one_with_use_llm_does_not_call_judge(
-        self, rules_classifier, factor_df
-    ):
+    async def test_alpha_one_with_use_llm_does_not_call_judge(self, rules_classifier, factor_df):
         judge = _mock_judge()
         model = MacroRegimeModel(rules=rules_classifier, judge=judge)
 
@@ -250,9 +240,7 @@ class TestGuardrailAlphaWithoutLLM:
         with pytest.raises(ValueError, match="alpha.*use_llm"):
             await model.classify(factor_df, alpha=0.7, use_llm=False)
 
-    async def test_guardrail_message_mentions_both_knobs(
-        self, rules_classifier, factor_df
-    ):
+    async def test_guardrail_message_mentions_both_knobs(self, rules_classifier, factor_df):
         model = MacroRegimeModel(rules=rules_classifier)
         with pytest.raises(ValueError) as exc_info:
             await model.classify(factor_df, alpha=0.5, use_llm=False)
@@ -284,9 +272,7 @@ class TestGuardrailLLMWithoutJudge:
 class TestEnsembleBlend:
     """Weighted ensemble: ``final = alpha * rules + (1-alpha) * llm``."""
 
-    async def test_ensemble_calls_judge_and_blends(
-        self, rules_classifier, factor_df
-    ):
+    async def test_ensemble_calls_judge_and_blends(self, rules_classifier, factor_df):
         judge = _mock_judge()
         model = MacroRegimeModel(rules=rules_classifier, judge=judge)
 
@@ -368,9 +354,7 @@ class TestDeterminism:
 class TestLLMFailureFallback:
     """If the judge raises, the ensembler catches + falls back to rules."""
 
-    async def test_llm_failure_returns_rules_source(
-        self, rules_classifier, factor_df
-    ):
+    async def test_llm_failure_returns_rules_source(self, rules_classifier, factor_df):
         judge = _failing_judge(LLMJudgeError("simulated double failure"))
         model = MacroRegimeModel(rules=rules_classifier, judge=judge)
 
@@ -390,9 +374,7 @@ class TestLLMFailureFallback:
         # they asked for; source tells them what actually ran).
         assert result.alpha == 0.5
 
-    async def test_llm_generic_exception_also_falls_back(
-        self, rules_classifier, factor_df
-    ):
+    async def test_llm_generic_exception_also_falls_back(self, rules_classifier, factor_df):
         """Any exception (not just LLMJudgeError) triggers the fallback."""
         judge = _failing_judge(RuntimeError("network glitch"))
         model = MacroRegimeModel(rules=rules_classifier, judge=judge)
@@ -473,9 +455,9 @@ class TestTimestampSlicing:
         expected_row = expected_df.loc[mid_idx]
 
         for r in Regime:
-            assert result.probs[r] == pytest.approx(
-                float(expected_row[r.value]), abs=1e-9
-            ), f"mismatch at {r.name} for ts={ts}"
+            assert result.probs[r] == pytest.approx(float(expected_row[r.value]), abs=1e-9), (
+                f"mismatch at {r.name} for ts={ts}"
+            )
 
         # And the result's timestamp is echoed back.
         assert result.timestamp == ts
@@ -512,9 +494,7 @@ class TestArgmaxRegime:
         assert argmax == Regime.RECESSION
         assert argmax == result.regime
 
-    async def test_argmax_on_neutral_window_is_risk_on(
-        self, rules_classifier, factor_df
-    ):
+    async def test_argmax_on_neutral_window_is_risk_on(self, rules_classifier, factor_df):
         """In a known-neutral window (2017), RISK_ON dominates (residual regime).
 
         We slice to a timestamp in the 2017-2018 window that T12's

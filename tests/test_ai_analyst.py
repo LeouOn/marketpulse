@@ -68,12 +68,7 @@ def _capture_model_requests(agent) -> list[ModelRequest]:
 
 
 def _user_prompt_text(requests) -> str:
-    return "\n".join(
-        part.content
-        for request in requests
-        for part in request.parts
-        if isinstance(part, UserPromptPart)
-    )
+    return "\n".join(part.content for request in requests for part in request.parts if isinstance(part, UserPromptPart))
 
 
 # ---------------------------------------------------------------------------
@@ -164,8 +159,7 @@ async def test_agent_keeps_the_trading_analyst_system_prompt(anthropic_env):
     # instructions= and system_prompt= both deliver it, by different routes.
     first = requests[0]
     delivered = " ".join(
-        [str(first.instructions or "")]
-        + [getattr(p, "content", "") for p in first.parts if hasattr(p, "content")]
+        [str(first.instructions or "")] + [getattr(p, "content", "") for p in first.parts if hasattr(p, "content")]
     )
     assert "trading analyst" in delivered.lower()
 
@@ -215,9 +209,7 @@ async def test_query_appends_technical_analysis_to_prompt(anthropic_env, monkeyp
             idx = pd.date_range("2024-01-01", periods=60, freq="D")
             prices = [100.0 + i for i in range(60)]
             # Match get_bars: a ticker level stays on the columns until flattened.
-            columns = pd.MultiIndex.from_tuples(
-                (field, symbol) for field in ("open", "high", "low", "close", "volume")
-            )
+            columns = pd.MultiIndex.from_tuples((field, symbol) for field in ("open", "high", "low", "close", "volume"))
             frame = pd.DataFrame(index=idx, columns=columns, dtype=float)
             frame[("open", symbol)] = prices
             frame[("high", symbol)] = [p + 2 for p in prices]
@@ -376,9 +368,7 @@ def test_analyst_needs_no_anthropic_key(monkeypatch):
     """The old hard blocker is gone: a MiniMax key is enough to build the analyst."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
-    analyst = MassiveAIAnalyst(
-        settings=_settings("minimax", minimax__api_key="minimax-key")
-    )
+    analyst = MassiveAIAnalyst(settings=_settings("minimax", minimax__api_key="minimax-key"))
 
     assert analyst.provider.api_key == "minimax-key"
 
@@ -386,9 +376,7 @@ def test_analyst_needs_no_anthropic_key(monkeypatch):
 def test_analyst_model_targets_the_configured_base_url():
     """The model must point at the provider's own host, not api.anthropic.com."""
     analyst = MassiveAIAnalyst(
-        settings=_settings(
-            "minimax", minimax__api_key="k", minimax__base_url="https://api.minimax.io/v1"
-        )
+        settings=_settings("minimax", minimax__api_key="k", minimax__base_url="https://api.minimax.io/v1")
     )
 
     assert analyst.model.base_url.startswith("https://api.minimax.io/v1")
@@ -438,9 +426,7 @@ def test_placeholder_key_is_treated_as_missing():
 
 async def test_agent_runs_on_the_configured_model():
     """The agent is wired to the provider model, not to a Claude string."""
-    analyst = MassiveAIAnalyst(
-        settings=_settings("minimax", minimax__api_key="minimax-key")
-    )
+    analyst = MassiveAIAnalyst(settings=_settings("minimax", minimax__api_key="minimax-key"))
 
     agent = await analyst.create_agent()
 
@@ -458,9 +444,7 @@ async def test_agent_runs_on_the_configured_model():
 def test_status_reports_the_provider_in_use(status_client):
     from src.api import ai_endpoints
 
-    analyst = MassiveAIAnalyst(
-        settings=_settings("minimax", minimax__api_key="minimax-key")
-    )
+    analyst = MassiveAIAnalyst(settings=_settings("minimax", minimax__api_key="minimax-key"))
     ai_endpoints.analyst = analyst
 
     data = status_client.get("/api/ai/status").json()["data"]

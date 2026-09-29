@@ -10,18 +10,18 @@ Serves interactive charts and visualizations:
 - Risk dashboards
 """
 
+from datetime import datetime
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
-from typing import Optional, List
-from datetime import datetime, timedelta
 from loguru import logger
-import pandas as pd
+from pydantic import BaseModel
 
-from src.visualization.chart_generator import ChartGenerator
-from src.api.yahoo_client import YahooFinanceClient
-from src.analysis.technical_indicators import TechnicalIndicators, identify_trends, get_support_resistance
+from src.analysis.technical_indicators import TechnicalIndicators, get_support_resistance, identify_trends
 from src.analysis.yahoo_bars import bars_frame
+from src.api.yahoo_client import YahooFinanceClient
+from src.visualization.chart_generator import ChartGenerator
 
 
 def _json_float(value):
@@ -34,16 +34,18 @@ def _json_float(value):
         return None
     return number
 
+
 # Initialize router
 viz_router = APIRouter(prefix="/api/viz", tags=["Visualizations"])
 
 # Initialize services
-chart_gen = ChartGenerator(theme='dark')
+chart_gen = ChartGenerator(theme="dark")
 yahoo_client = YahooFinanceClient()
 
 
 class ChartRequest(BaseModel):
     """Request for chart generation"""
+
     symbol: str
     timeframe: str = "1d"  # 1m, 5m, 15m, 1h, 1d
     period: str = "1mo"  # 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, max
@@ -68,11 +70,7 @@ async def get_candlestick_chart(request: ChartRequest):
     """
     try:
         # Get historical data
-        df = bars_frame(yahoo_client, 
-            symbol=request.symbol,
-            period=request.period,
-            interval=request.timeframe
-        )
+        df = bars_frame(yahoo_client, symbol=request.symbol, period=request.period, interval=request.timeframe)
 
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {request.symbol}")
@@ -83,14 +81,11 @@ async def get_candlestick_chart(request: ChartRequest):
             title=f"{request.symbol} - {request.timeframe}",
             indicators=request.indicators,
             show_volume=request.show_volume,
-            height=request.height
+            height=request.height,
         )
 
         # Return as HTML
-        html = fig.to_html(
-            include_plotlyjs='cdn',
-            config={'displayModeBar': True, 'responsive': True}
-        )
+        html = fig.to_html(include_plotlyjs="cdn", config={"displayModeBar": True, "responsive": True})
 
         return HTMLResponse(content=html)
 
@@ -107,7 +102,7 @@ async def get_candlestick_chart_simple(
     timeframe: str = Query("1d"),
     period: str = Query("1mo"),
     indicators: Optional[str] = Query(None),  # Comma-separated
-    height: int = Query(800)
+    height: int = Query(800),
 ):
     """
     Get candlestick chart (simple GET endpoint)
@@ -122,25 +117,15 @@ async def get_candlestick_chart_simple(
     Returns:
         HTML page with interactive chart
     """
-    indicator_list = indicators.split(',') if indicators else None
+    indicator_list = indicators.split(",") if indicators else None
 
-    request = ChartRequest(
-        symbol=symbol,
-        timeframe=timeframe,
-        period=period,
-        indicators=indicator_list,
-        height=height
-    )
+    request = ChartRequest(symbol=symbol, timeframe=timeframe, period=period, indicators=indicator_list, height=height)
 
     return await get_candlestick_chart(request)
 
 
 @viz_router.get("/indicators/{symbol}")
-async def get_indicator_panel(
-    symbol: str,
-    timeframe: str = Query("1d"),
-    period: str = Query("1mo")
-):
+async def get_indicator_panel(symbol: str, timeframe: str = Query("1d"), period: str = Query("1mo")):
     """
     Get technical indicator panel
 
@@ -150,26 +135,16 @@ async def get_indicator_panel(
     """
     try:
         # Get historical data
-        df = bars_frame(yahoo_client, 
-            symbol=symbol,
-            period=period,
-            interval=timeframe
-        )
+        df = bars_frame(yahoo_client, symbol=symbol, period=period, interval=timeframe)
 
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
 
         # Generate indicator panel
-        fig = chart_gen.create_indicator_panel(
-            df=df,
-            title=f"{symbol} - Technical Indicators"
-        )
+        fig = chart_gen.create_indicator_panel(df=df, title=f"{symbol} - Technical Indicators")
 
         # Return as HTML
-        html = fig.to_html(
-            include_plotlyjs='cdn',
-            config={'displayModeBar': True, 'responsive': True}
-        )
+        html = fig.to_html(include_plotlyjs="cdn", config={"displayModeBar": True, "responsive": True})
 
         return HTMLResponse(content=html)
 
@@ -182,10 +157,7 @@ async def get_indicator_panel(
 
 @viz_router.get("/volume-profile/{symbol}")
 async def get_volume_profile(
-    symbol: str,
-    timeframe: str = Query("1d"),
-    period: str = Query("1mo"),
-    bins: int = Query(50)
+    symbol: str, timeframe: str = Query("1d"), period: str = Query("1mo"), bins: int = Query(50)
 ):
     """
     Get volume profile chart
@@ -196,27 +168,16 @@ async def get_volume_profile(
     """
     try:
         # Get historical data
-        df = bars_frame(yahoo_client, 
-            symbol=symbol,
-            period=period,
-            interval=timeframe
-        )
+        df = bars_frame(yahoo_client, symbol=symbol, period=period, interval=timeframe)
 
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
 
         # Generate volume profile
-        fig = chart_gen.create_volume_profile(
-            df=df,
-            bins=bins,
-            title=f"{symbol} - Volume Profile"
-        )
+        fig = chart_gen.create_volume_profile(df=df, bins=bins, title=f"{symbol} - Volume Profile")
 
         # Return as HTML
-        html = fig.to_html(
-            include_plotlyjs='cdn',
-            config={'displayModeBar': True, 'responsive': True}
-        )
+        html = fig.to_html(include_plotlyjs="cdn", config={"displayModeBar": True, "responsive": True})
 
         return HTMLResponse(content=html)
 
@@ -228,9 +189,7 @@ async def get_volume_profile(
 
 
 @viz_router.get("/market-heatmap")
-async def get_market_heatmap(
-    sector: bool = Query(True, description="Show sector heatmap")
-):
+async def get_market_heatmap(sector: bool = Query(True, description="Show sector heatmap")):
     """
     Get market heatmap
 
@@ -242,26 +201,26 @@ async def get_market_heatmap(
         if sector:
             # Get sector ETF performance
             sector_etfs = {
-                'Technology': 'XLK',
-                'Financials': 'XLF',
-                'Healthcare': 'XLV',
-                'Consumer Discretionary': 'XLY',
-                'Communication': 'XLC',
-                'Industrials': 'XLI',
-                'Consumer Staples': 'XLP',
-                'Energy': 'XLE',
-                'Utilities': 'XLU',
-                'Real Estate': 'XLRE',
-                'Materials': 'XLB'
+                "Technology": "XLK",
+                "Financials": "XLF",
+                "Healthcare": "XLV",
+                "Consumer Discretionary": "XLY",
+                "Communication": "XLC",
+                "Industrials": "XLI",
+                "Consumer Staples": "XLP",
+                "Energy": "XLE",
+                "Utilities": "XLU",
+                "Real Estate": "XLRE",
+                "Materials": "XLB",
             }
 
             performance = {}
             for name, symbol in sector_etfs.items():
                 try:
-                    df = bars_frame(yahoo_client, symbol, period='5d', interval='1d')
+                    df = bars_frame(yahoo_client, symbol, period="5d", interval="1d")
                     if not df.empty and len(df) >= 2:
                         # Calculate daily change
-                        change = ((df['close'].iloc[-1] - df['close'].iloc[-2]) / df['close'].iloc[-2]) * 100
+                        change = ((df["close"].iloc[-1] - df["close"].iloc[-2]) / df["close"].iloc[-2]) * 100
                         performance[name] = change
                 except Exception as exc:
                     logger.debug(f"Heatmap skipped {symbol}: {exc}")
@@ -271,19 +230,19 @@ async def get_market_heatmap(
         else:
             # Get major indices
             indices = {
-                'S&P 500': '^GSPC',
-                'Nasdaq': '^IXIC',
-                'Dow Jones': '^DJI',
-                'Russell 2000': '^RUT',
-                'VIX': '^VIX'
+                "S&P 500": "^GSPC",
+                "Nasdaq": "^IXIC",
+                "Dow Jones": "^DJI",
+                "Russell 2000": "^RUT",
+                "VIX": "^VIX",
             }
 
             performance = {}
             for name, symbol in indices.items():
                 try:
-                    df = bars_frame(yahoo_client, symbol, period='5d', interval='1d')
+                    df = bars_frame(yahoo_client, symbol, period="5d", interval="1d")
                     if not df.empty and len(df) >= 2:
-                        change = ((df['close'].iloc[-1] - df['close'].iloc[-2]) / df['close'].iloc[-2]) * 100
+                        change = ((df["close"].iloc[-1] - df["close"].iloc[-2]) / df["close"].iloc[-2]) * 100
                         performance[name] = change
                 except Exception as exc:
                     logger.debug(f"Heatmap skipped {symbol}: {exc}")
@@ -298,16 +257,10 @@ async def get_market_heatmap(
             )
 
         # Generate heatmap
-        fig = chart_gen.create_market_heatmap(
-            data=performance,
-            title=title
-        )
+        fig = chart_gen.create_market_heatmap(data=performance, title=title)
 
         # Return as HTML
-        html = fig.to_html(
-            include_plotlyjs='cdn',
-            config={'displayModeBar': True, 'responsive': True}
-        )
+        html = fig.to_html(include_plotlyjs="cdn", config={"displayModeBar": True, "responsive": True})
 
         return HTMLResponse(content=html)
 
@@ -319,11 +272,7 @@ async def get_market_heatmap(
 
 
 @viz_router.get("/analysis/{symbol}")
-async def get_technical_analysis(
-    symbol: str,
-    timeframe: str = Query("1d"),
-    period: str = Query("1mo")
-):
+async def get_technical_analysis(symbol: str, timeframe: str = Query("1d"), period: str = Query("1mo")):
     """
     Get comprehensive technical analysis
 
@@ -337,11 +286,7 @@ async def get_technical_analysis(
     """
     try:
         # Get historical data
-        df = bars_frame(yahoo_client, 
-            symbol=symbol,
-            period=period,
-            interval=timeframe
-        )
+        df = bars_frame(yahoo_client, symbol=symbol, period=period, interval=timeframe)
 
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
@@ -360,31 +305,33 @@ async def get_technical_analysis(
 
         # Build response
         analysis = {
-            'symbol': symbol,
-            'timestamp': datetime.now().isoformat(),
-            'current_price': _json_float(latest['close']),
-            'trends': trends,
-            'support_resistance': {
-                'resistance': [_json_float(x) for x in sr_levels['resistance']],
-                'support': [_json_float(x) for x in sr_levels['support']]
+            "symbol": symbol,
+            "timestamp": datetime.now().isoformat(),
+            "current_price": _json_float(latest["close"]),
+            "trends": trends,
+            "support_resistance": {
+                "resistance": [_json_float(x) for x in sr_levels["resistance"]],
+                "support": [_json_float(x) for x in sr_levels["support"]],
             },
-            'indicators': {
-                'sma_20': _json_float(latest['sma_20']) if 'sma_20' in latest else None,
-                'sma_50': _json_float(latest['sma_50']) if 'sma_50' in latest else None,
-                'sma_200': _json_float(latest['sma_200']) if 'sma_200' in latest else None,
-                'ema_21': _json_float(latest['ema_21']) if 'ema_21' in latest else None,
-                'rsi': _json_float(latest['rsi']) if 'rsi' in latest else None,
-                'macd': _json_float(latest['macd']) if 'macd' in latest else None,
-                'macd_signal': _json_float(latest['macd_signal']) if 'macd_signal' in latest else None,
-                'bb_upper': _json_float(latest['bb_upper']) if 'bb_upper' in latest else None,
-                'bb_lower': _json_float(latest['bb_lower']) if 'bb_lower' in latest else None,
-                'atr': _json_float(latest['atr']) if 'atr' in latest else None,
-                'adx': _json_float(latest['adx']) if 'adx' in latest else None
+            "indicators": {
+                "sma_20": _json_float(latest["sma_20"]) if "sma_20" in latest else None,
+                "sma_50": _json_float(latest["sma_50"]) if "sma_50" in latest else None,
+                "sma_200": _json_float(latest["sma_200"]) if "sma_200" in latest else None,
+                "ema_21": _json_float(latest["ema_21"]) if "ema_21" in latest else None,
+                "rsi": _json_float(latest["rsi"]) if "rsi" in latest else None,
+                "macd": _json_float(latest["macd"]) if "macd" in latest else None,
+                "macd_signal": _json_float(latest["macd_signal"]) if "macd_signal" in latest else None,
+                "bb_upper": _json_float(latest["bb_upper"]) if "bb_upper" in latest else None,
+                "bb_lower": _json_float(latest["bb_lower"]) if "bb_lower" in latest else None,
+                "atr": _json_float(latest["atr"]) if "atr" in latest else None,
+                "adx": _json_float(latest["adx"]) if "adx" in latest else None,
             },
-            'signals': {
-                'overall': 'bullish' if sum(1 for t in trends.values() if 'bullish' in t) > sum(1 for t in trends.values() if 'bearish' in t) else 'bearish',
-                'strength': len([t for t in trends.values() if 'strong' in t])
-            }
+            "signals": {
+                "overall": "bullish"
+                if sum(1 for t in trends.values() if "bullish" in t) > sum(1 for t in trends.values() if "bearish" in t)
+                else "bearish",
+                "strength": len([t for t in trends.values() if "strong" in t]),
+            },
         }
 
         return JSONResponse(content={"success": True, "data": analysis})
@@ -397,11 +344,7 @@ async def get_technical_analysis(
 
 
 @viz_router.get("/dashboard/{symbol}")
-async def get_trading_dashboard(
-    symbol: str,
-    timeframe: str = Query("1d"),
-    period: str = Query("3mo")
-):
+async def get_trading_dashboard(symbol: str, timeframe: str = Query("1d"), period: str = Query("3mo")):
     """
     Get complete trading dashboard
 
@@ -411,11 +354,7 @@ async def get_trading_dashboard(
     """
     try:
         # Get data
-        df = bars_frame(yahoo_client, 
-            symbol=symbol,
-            period=period,
-            interval=timeframe
-        )
+        df = bars_frame(yahoo_client, symbol=symbol, period=period, interval=timeframe)
 
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
@@ -424,15 +363,12 @@ async def get_trading_dashboard(
         price_chart = chart_gen.create_candlestick_chart(
             df=df,
             title=f"{symbol} Price Chart",
-            indicators=['sma_20', 'sma_50', 'ema_21', 'vwap', 'bollinger'],
+            indicators=["sma_20", "sma_50", "ema_21", "vwap", "bollinger"],
             show_volume=True,
-            height=600
+            height=600,
         )
 
-        indicator_panel = chart_gen.create_indicator_panel(
-            df=df,
-            title=f"{symbol} Indicators"
-        )
+        indicator_panel = chart_gen.create_indicator_panel(df=df, title=f"{symbol} Indicators")
 
         # Calculate analysis
         df_with_indicators = TechnicalIndicators.calculate_all(df)
@@ -526,39 +462,39 @@ async def get_trading_dashboard(
     <div class="dashboard">
         <div class="header">
             <h1>{symbol} Trading Dashboard</h1>
-            <p>Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p>Last Updated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
         </div>
 
         <div class="metrics">
             <div class="metric-card">
                 <div class="metric-label">Current Price</div>
-                <div class="metric-value">${latest['close']:.2f}</div>
+                <div class="metric-value">${latest["close"]:.2f}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">RSI (14)</div>
-                <div class="metric-value {'bullish' if latest.get('rsi', 50) < 30 else 'bearish' if latest.get('rsi', 50) > 70 else 'neutral'}">
-                    {latest.get('rsi', 0):.1f}
+                <div class="metric-value {"bullish" if latest.get("rsi", 50) < 30 else "bearish" if latest.get("rsi", 50) > 70 else "neutral"}">
+                    {latest.get("rsi", 0):.1f}
                 </div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Trend</div>
-                <div class="metric-value {trends.get('sma_trend', 'neutral').replace('_', ' ')}">
-                    {trends.get('sma_trend', 'neutral').replace('_', ' ').title()}
+                <div class="metric-value {trends.get("sma_trend", "neutral").replace("_", " ")}">
+                    {trends.get("sma_trend", "neutral").replace("_", " ").title()}
                 </div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">MACD Signal</div>
-                <div class="metric-value {trends.get('macd_signal', 'neutral')}">
-                    {trends.get('macd_signal', 'neutral').title()}
+                <div class="metric-value {trends.get("macd_signal", "neutral")}">
+                    {trends.get("macd_signal", "neutral").title()}
                 </div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">ATR</div>
-                <div class="metric-value">{latest.get('atr', 0):.2f}</div>
+                <div class="metric-value">{latest.get("atr", 0):.2f}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Volume</div>
-                <div class="metric-value">{latest.get('volume', 0):,.0f}</div>
+                <div class="metric-value">{latest.get("volume", 0):,.0f}</div>
             </div>
         </div>
 
@@ -572,12 +508,12 @@ async def get_trading_dashboard(
 
         <div class="analysis">
             <h3>Support & Resistance</h3>
-            <p><strong>Resistance:</strong> {', '.join([f'${x:.2f}' for x in sr_levels['resistance']])}</p>
-            <p><strong>Support:</strong> {', '.join([f'${x:.2f}' for x in sr_levels['support']])}</p>
+            <p><strong>Resistance:</strong> {", ".join([f"${x:.2f}" for x in sr_levels["resistance"]])}</p>
+            <p><strong>Support:</strong> {", ".join([f"${x:.2f}" for x in sr_levels["support"]])}</p>
 
             <h3>Trend Analysis</h3>
             <ul class="signal-list">
-                {''.join([f'<li><strong>{k.replace("_", " ").title()}:</strong> <span class="{v}">{v.replace("_", " ").title()}</span></li>' for k, v in trends.items()])}
+                {"".join([f'<li><strong>{k.replace("_", " ").title()}:</strong> <span class="{v}">{v.replace("_", " ").title()}</span></li>' for k, v in trends.items()])}
             </ul>
         </div>
     </div>

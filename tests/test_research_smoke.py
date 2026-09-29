@@ -12,8 +12,6 @@ Run: python -m pytest tests/test_research_smoke.py -v -s
 
 from __future__ import annotations
 
-import os
-import pathlib
 import sys
 
 import pandas as pd

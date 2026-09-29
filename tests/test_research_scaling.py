@@ -333,9 +333,7 @@ def test_validate_sentiment_modulated_rejects_bad_params():
 @pytest.mark.parametrize("tdpy", [12, 252, 365.25])
 def test_volatility_targeted_accepts_trading_days_per_year(tdpy):
     """VolatilityTargeted must accept trading_days_per_year in its params dict."""
-    s = VolatilityTargeted(
-        params={"target_annual_vol": 0.5, "lookback": 60, "trading_days_per_year": tdpy}
-    )
+    s = VolatilityTargeted(params={"target_annual_vol": 0.5, "lookback": 60, "trading_days_per_year": tdpy})
     # The param is merged into the model's params (default_params + user overlay).
     assert s.params["trading_days_per_year"] == tdpy
     # Size call must not raise; returns non-negative tuple.
@@ -362,9 +360,7 @@ def test_volatility_targeted_default_preserves_btc_behavior():
     """Default (no trading_days_per_year) must equal explicit 365.25."""
     r = _returns(mean=0.0, std=0.10, n=200, seed=3)
     s_default = VolatilityTargeted(params={"target_annual_vol": 0.5})
-    s_explicit = VolatilityTargeted(
-        params={"target_annual_vol": 0.5, "trading_days_per_year": 365.25}
-    )
+    s_explicit = VolatilityTargeted(params={"target_annual_vol": 0.5, "trading_days_per_year": 365.25})
     assert s_default.size(10_000, 0, 30_000, r) == s_explicit.size(10_000, 0, 30_000, r)
 
 

@@ -7,17 +7,15 @@ Natural language interface for market analysis powered by:
 - MarketPulse technical analysis
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
-from typing import Optional, List
 from datetime import datetime
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
 from loguru import logger
-import asyncio
-import json
+from pydantic import BaseModel
 
 from src.ai.massive_analyst import MassiveAIAnalyst, TradingContext
-
 
 # Initialize router
 ai_router = APIRouter(prefix="/api/ai", tags=["AI Trading Analyst"])
@@ -36,6 +34,7 @@ def get_analyst() -> MassiveAIAnalyst:
 
 class QueryRequest(BaseModel):
     """Natural language query request"""
+
     question: str
     symbol: Optional[str] = None
     timeframe: str = "1d"
@@ -45,6 +44,7 @@ class QueryRequest(BaseModel):
 
 class TradeRecommendationRequest(BaseModel):
     """Trade recommendation request"""
+
     symbol: str
     timeframe: str = "1d"
     period: str = "3mo"
@@ -54,6 +54,7 @@ class TradeRecommendationRequest(BaseModel):
 
 class TradeValidationRequest(BaseModel):
     """Trade validation request"""
+
     symbol: str
     entry_price: float
     stop_loss: float
@@ -84,27 +85,19 @@ async def query_ai_analyst(request: QueryRequest):
         # Create trading context if symbol provided
         context = None
         if request.symbol:
-            context = TradingContext(
-                symbol=request.symbol,
-                timeframe=request.timeframe,
-                period=request.period
-            )
+            context = TradingContext(symbol=request.symbol, timeframe=request.timeframe, period=request.period)
 
         # Query the AI
         response = await analyst.query(
-            question=request.question,
-            context=context,
-            include_technical_analysis=request.include_technical_analysis
+            question=request.question, context=context, include_technical_analysis=request.include_technical_analysis
         )
 
-        return JSONResponse(content={
-            "success": True,
-            "data": {
-                "question": request.question,
-                "response": response,
-                "timestamp": datetime.now().isoformat()
+        return JSONResponse(
+            content={
+                "success": True,
+                "data": {"question": request.question, "response": response, "timestamp": datetime.now().isoformat()},
             }
-        })
+        )
 
     except Exception as e:
         logger.error(f"Error in AI query: {e}")
@@ -116,7 +109,7 @@ async def query_symbol(
     symbol: str,
     question: str = Query(..., description="Natural language question about the symbol"),
     timeframe: str = Query("1d"),
-    period: str = Query("3mo")
+    period: str = Query("3mo"),
 ):
     """
     Query AI analyst about a specific symbol (GET endpoint)
@@ -126,12 +119,7 @@ async def query_symbol(
     - /api/ai/query/MNQ?question=Give me entry and exit levels
     - /api/ai/query/SPY?question=Analyze divergences and trend
     """
-    request = QueryRequest(
-        question=question,
-        symbol=symbol,
-        timeframe=timeframe,
-        period=period
-    )
+    request = QueryRequest(question=question, symbol=symbol, timeframe=timeframe, period=period)
 
     return await query_ai_analyst(request)
 
@@ -159,18 +147,12 @@ async def get_trade_recommendation(request: TradeRecommendationRequest):
             timeframe=request.timeframe,
             period=request.period,
             account_size=request.account_size,
-            risk_per_trade=request.risk_per_trade
+            risk_per_trade=request.risk_per_trade,
         )
 
-        recommendation = await analyst.get_trade_recommendation(
-            symbol=request.symbol,
-            context=context
-        )
+        recommendation = await analyst.get_trade_recommendation(symbol=request.symbol, context=context)
 
-        return JSONResponse(content={
-            "success": True,
-            "data": recommendation
-        })
+        return JSONResponse(content={"success": True, "data": recommendation})
 
     except Exception as e:
         logger.error(f"Error getting trade recommendation: {e}")
@@ -178,11 +160,7 @@ async def get_trade_recommendation(request: TradeRecommendationRequest):
 
 
 @ai_router.get("/recommend/{symbol}")
-async def get_trade_recommendation_simple(
-    symbol: str,
-    timeframe: str = Query("1d"),
-    period: str = Query("3mo")
-):
+async def get_trade_recommendation_simple(symbol: str, timeframe: str = Query("1d"), period: str = Query("3mo")):
     """
     Get trade recommendation (simple GET endpoint)
 
@@ -190,11 +168,7 @@ async def get_trade_recommendation_simple(
     - /api/ai/recommend/AAPL
     - /api/ai/recommend/MNQ?timeframe=5m&period=1d
     """
-    request = TradeRecommendationRequest(
-        symbol=symbol,
-        timeframe=timeframe,
-        period=period
-    )
+    request = TradeRecommendationRequest(symbol=symbol, timeframe=timeframe, period=period)
 
     return await get_trade_recommendation(request)
 
@@ -220,13 +194,10 @@ async def validate_trade(request: TradeValidationRequest):
             stop_loss=request.stop_loss,
             take_profit=request.take_profit,
             direction=request.direction,
-            contracts=request.contracts
+            contracts=request.contracts,
         )
 
-        return JSONResponse(content={
-            "success": True,
-            "data": validation
-        })
+        return JSONResponse(content={"success": True, "data": validation})
 
     except Exception as e:
         logger.error(f"Error validating trade: {e}")
@@ -240,6 +211,7 @@ async def get_ai_status():
         analyst = get_analyst()
 
         import os
+
         status = {
             # The provider the analyst actually talks to, resolved from app config.
             "provider": analyst.provider.name,
@@ -247,22 +219,19 @@ async def get_ai_status():
             "base_url": analyst.provider.base_url,
             "provider_api_configured": bool(analyst.provider.api_key),
             # Kept so anything still reading the old field keeps working.
-            "anthropic_api_configured": bool(os.getenv('ANTHROPIC_API_KEY')),
-            "massive_api_configured": bool(os.getenv('MASSIVE_API_KEY')),
+            "anthropic_api_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "massive_api_configured": bool(os.getenv("MASSIVE_API_KEY")),
             "message_history_length": len(analyst.message_history),
             "features": {
                 "divergence_detection": True,
                 "ict_analysis": True,
                 "risk_management": True,
                 "technical_indicators": True,
-                "massive_mcp_server": bool(os.getenv('MASSIVE_API_KEY'))
-            }
+                "massive_mcp_server": bool(os.getenv("MASSIVE_API_KEY")),
+            },
         }
 
-        return JSONResponse(content={
-            "success": True,
-            "data": status
-        })
+        return JSONResponse(content={"success": True, "data": status})
 
     except Exception as e:
         logger.error(f"Error getting AI status: {e}")

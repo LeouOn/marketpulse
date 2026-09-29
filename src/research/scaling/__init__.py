@@ -90,17 +90,14 @@ class FixedFractional(ScalingModel):
 
     name: ClassVar[str] = "FixedFractional"
     description: ClassVar[str] = (
-        "Risk a fixed fraction of equity per buy (e.g. 1%). Position size "
-        "grows/shrinks with equity."
+        "Risk a fixed fraction of equity per buy (e.g. 1%). Position size grows/shrinks with equity."
     )
     default_params: ClassVar[dict[str, Any]] = {"fraction": 0.01}
 
     def validate_params(self, params: dict[str, Any]) -> None:
         f = params.get("fraction", 0.01)
         if not (0 < f < 1):
-            raise InvalidParamsError(
-                f"fraction must be in (0, 1), got {f}"
-            )
+            raise InvalidParamsError(f"fraction must be in (0, 1), got {f}")
 
     def size(
         self,
@@ -119,16 +116,12 @@ class FixedDollar(ScalingModel):
     """Buy exactly $N each bar (DCA constant)."""
 
     name: ClassVar[str] = "FixedDollar"
-    description: ClassVar[str] = (
-        "Buy a fixed USD amount each bar (e.g. $100/week). The classic DCA."
-    )
+    description: ClassVar[str] = "Buy a fixed USD amount each bar (e.g. $100/week). The classic DCA."
     default_params: ClassVar[dict[str, Any]] = {"amount_usd": 100.0}
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("amount_usd", 100.0) < 0:
-            raise InvalidParamsError(
-                f"amount_usd must be >= 0, got {params['amount_usd']}"
-            )
+            raise InvalidParamsError(f"amount_usd must be >= 0, got {params['amount_usd']}")
 
     def size(
         self,
@@ -170,13 +163,9 @@ class KellyCriterion(ScalingModel):
     def validate_params(self, params: dict[str, Any]) -> None:
         f = params.get("fraction", 0.5)
         if not (0 < f < 1):
-            raise InvalidParamsError(
-                f"fraction must be in (0, 1), got {f}"
-            )
+            raise InvalidParamsError(f"fraction must be in (0, 1), got {f}")
         if params.get("lookback", 252) <= 0:
-            raise InvalidParamsError(
-                f"lookback must be > 0, got {params['lookback']}"
-            )
+            raise InvalidParamsError(f"lookback must be > 0, got {params['lookback']}")
 
     def size(
         self,
@@ -237,14 +226,10 @@ class VolatilityTargeted(ScalingModel):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("target_annual_vol", 0.20) <= 0:
-            raise InvalidParamsError(
-                f"target_annual_vol must be > 0, got {params['target_annual_vol']}"
-            )
+            raise InvalidParamsError(f"target_annual_vol must be > 0, got {params['target_annual_vol']}")
         mf = params.get("max_fraction", 1.0)
         if not (0 < mf <= 1):
-            raise InvalidParamsError(
-                f"max_fraction must be in (0, 1], got {mf}"
-            )
+            raise InvalidParamsError(f"max_fraction must be in (0, 1], got {mf}")
 
     def size(
         self,
@@ -302,13 +287,9 @@ class RiskParity(ScalingModel):
     def validate_params(self, params: dict[str, Any]) -> None:
         mf = params.get("max_fraction", 1.0)
         if not (0 < mf <= 1):
-            raise InvalidParamsError(
-                f"max_fraction must be in (0, 1], got {mf}"
-            )
+            raise InvalidParamsError(f"max_fraction must be in (0, 1], got {mf}")
         if params.get("lookback", 60) <= 0:
-            raise InvalidParamsError(
-                f"lookback must be > 0, got {params['lookback']}"
-            )
+            raise InvalidParamsError(f"lookback must be > 0, got {params['lookback']}")
 
     def size(
         self,
@@ -356,13 +337,9 @@ class DrawdownScaled(ScalingModel):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("base_fraction", 0.05) <= 0:
-            raise InvalidParamsError(
-                f"base_fraction must be > 0, got {params['base_fraction']}"
-            )
+            raise InvalidParamsError(f"base_fraction must be > 0, got {params['base_fraction']}")
         if params.get("exponent", 1.0) <= 0:
-            raise InvalidParamsError(
-                f"exponent must be > 0, got {params['exponent']}"
-            )
+            raise InvalidParamsError(f"exponent must be > 0, got {params['exponent']}")
 
     def size(
         self,
@@ -409,8 +386,7 @@ class AntiMartingale(ScalingModel):
 
     name: ClassVar[str] = "AntiMartingale"
     description: ClassVar[str] = (
-        "Anti-martingale: increase buy size after consecutive wins, reset "
-        "after a loss. Capitalizes on hot streaks."
+        "Anti-martingale: increase buy size after consecutive wins, reset after a loss. Capitalizes on hot streaks."
     )
     default_params: ClassVar[dict[str, Any]] = {
         "base_amount": 100.0,
@@ -420,17 +396,11 @@ class AntiMartingale(ScalingModel):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("base_amount", 100.0) <= 0:
-            raise InvalidParamsError(
-                f"base_amount must be > 0, got {params['base_amount']}"
-            )
+            raise InvalidParamsError(f"base_amount must be > 0, got {params['base_amount']}")
         if params.get("growth_factor", 2.0) <= 0:
-            raise InvalidParamsError(
-                f"growth_factor must be > 0, got {params['growth_factor']}"
-            )
+            raise InvalidParamsError(f"growth_factor must be > 0, got {params['growth_factor']}")
         if params.get("max_streak", 5) <= 0:
-            raise InvalidParamsError(
-                f"max_streak must be > 0, got {params['max_streak']}"
-            )
+            raise InvalidParamsError(f"max_streak must be > 0, got {params['max_streak']}")
 
     def size(
         self,
@@ -466,17 +436,11 @@ class Martingale(ScalingModel):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         if params.get("base_amount", 100.0) <= 0:
-            raise InvalidParamsError(
-                f"base_amount must be > 0, got {params['base_amount']}"
-            )
+            raise InvalidParamsError(f"base_amount must be > 0, got {params['base_amount']}")
         if params.get("growth_factor", 2.0) <= 0:
-            raise InvalidParamsError(
-                f"growth_factor must be > 0, got {params['growth_factor']}"
-            )
+            raise InvalidParamsError(f"growth_factor must be > 0, got {params['growth_factor']}")
         if params.get("max_streak", 5) <= 0:
-            raise InvalidParamsError(
-                f"max_streak must be > 0, got {params['max_streak']}"
-            )
+            raise InvalidParamsError(f"max_streak must be > 0, got {params['max_streak']}")
 
     def size(
         self,

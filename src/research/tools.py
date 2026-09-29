@@ -76,9 +76,7 @@ def _resolve_asset(asset: str) -> AssetConfig:
     """
     cfg = AssetRegistry.get(asset)
     if cfg is None:
-        raise ValueError(
-            f"Unknown asset: {asset}. Supported: {sorted(AssetRegistry)}"
-        )
+        raise ValueError(f"Unknown asset: {asset}. Supported: {sorted(AssetRegistry)}")
     return cfg
 
 
@@ -390,9 +388,7 @@ def tool_run_montecarlo(args: dict, asset: str = "BTC") -> ToolResult:
             except ValueError as e:
                 return ToolResult(success=False, error=str(e))
             except Exception as e:
-                return ToolResult(
-                    success=False, error=f"{asset} data load failed: {e}"
-                )
+                return ToolResult(success=False, error=f"{asset} data load failed: {e}")
             if df.empty:
                 return ToolResult(
                     success=False,
@@ -582,9 +578,7 @@ def tool_compare_assets(args: dict, asset: str = "BTC") -> ToolResult:
             per_asset[a] = {
                 "normalized_total_return": normalized,
                 "index": [str(t) for t in eq.index.tolist()],
-                "total_return_pct": float(
-                    (eq.iloc[-1] / eq.iloc[0] - 1.0) * 100.0 if eq.iloc[0] else 0.0
-                ),
+                "total_return_pct": float((eq.iloc[-1] / eq.iloc[0] - 1.0) * 100.0 if eq.iloc[0] else 0.0),
             }
         except Exception as e:
             per_asset[a] = {"error": f"{a} backtest failed: {e}"}
@@ -809,7 +803,7 @@ def tool_descriptions() -> list[dict]:
                         "assets": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Asset aliases (e.g. [\"BTC\", \"GOLD\", \"EQUITIES\"])",
+                            "description": 'Asset aliases (e.g. ["BTC", "GOLD", "EQUITIES"])',
                         },
                         "strategy": {"type": "string"},
                         "start": {"type": "string"},
@@ -822,9 +816,7 @@ def tool_descriptions() -> list[dict]:
     ]
 
 
-def execute(
-    name: str, arguments: dict | None = None, asset: str = "BTC"
-) -> ToolResult:
+def execute(name: str, arguments: dict | None = None, asset: str = "BTC") -> ToolResult:
     """Dispatch a tool call by name. Returns a ``ToolResult``.
 
     The ``asset`` argument threads the AssetRegistry context into tools that

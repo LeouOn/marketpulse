@@ -1,4 +1,5 @@
 """History persistence tests against in-memory SQLite."""
+
 from datetime import date, timedelta
 
 import pandas as pd  # noqa: F401  (intentionally unused — keep import parity w/ fetcher test)
@@ -7,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from src.core.database import Base, YieldCurveSnapshot
-from src.yield_curve.history import YieldCurveHistory, SnapshotData
+from src.yield_curve.history import SnapshotData, YieldCurveHistory
 
 
 # SQLite has no real schemas. Use schema_translate_map so the
@@ -20,9 +21,12 @@ def session():
         "sqlite:///:memory:",
         execution_options={"schema_translate_map": {"market_data": None, "analysis": None}},
     )
-    Base.metadata.create_all(engine, tables=[
-        YieldCurveSnapshot.__table__,
-    ])
+    Base.metadata.create_all(
+        engine,
+        tables=[
+            YieldCurveSnapshot.__table__,
+        ],
+    )
     with Session(engine) as s:
         yield s
         s.close()

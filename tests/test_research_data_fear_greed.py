@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 
-from src.research.data.fear_greed import FGI_CSV, fetch_fear_greed
-
+from src.research.data.fear_greed import fetch_fear_greed
 
 # ---------------------------------------------------------------------------
 # Fixtures

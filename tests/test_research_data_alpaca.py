@@ -16,7 +16,6 @@ Spec: ``.omo/plans/multi-asset-macro-research-lab.md`` lines 1194-1238.
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pandas as pd
@@ -24,7 +23,6 @@ import pytest
 
 from src.research.data import DataProvider
 from src.research.data.alpaca import AlpacaProvider
-
 
 # ---------------------------------------------------------------------------
 # Fixtures and helpers

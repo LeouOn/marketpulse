@@ -7,29 +7,31 @@ Scan for and visualize divergences:
 - Interactive charts with divergence overlays
 """
 
+from datetime import datetime
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
-from typing import Optional, List
-from datetime import datetime
 from loguru import logger
+from pydantic import BaseModel
 
 from src.analysis.divergence_detector import DivergenceDetector, scan_for_divergences
-from src.visualization.chart_generator import ChartGenerator
-from src.api.yahoo_client import YahooFinanceClient
 from src.analysis.yahoo_bars import bars_frame
+from src.api.yahoo_client import YahooFinanceClient
+from src.visualization.chart_generator import ChartGenerator
 
 # Initialize router
 divergence_router = APIRouter(prefix="/api/divergence", tags=["Divergence Detection"])
 
 # Initialize services
 detector = DivergenceDetector(min_strength=60.0)
-chart_gen = ChartGenerator(theme='dark')
+chart_gen = ChartGenerator(theme="dark")
 yahoo_client = YahooFinanceClient()
 
 
 class DivergenceScanRequest(BaseModel):
     """Request for divergence scan"""
+
     symbol: str
     timeframe: str = "1d"
     period: str = "3mo"
@@ -46,11 +48,7 @@ async def scan_divergences(request: DivergenceScanRequest):
     """
     try:
         # Get historical data
-        df = bars_frame(yahoo_client, 
-            symbol=request.symbol,
-            period=request.period,
-            interval=request.timeframe
-        )
+        df = bars_frame(yahoo_client, symbol=request.symbol, period=request.period, interval=request.timeframe)
 
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {request.symbol}")
@@ -59,8 +57,8 @@ async def scan_divergences(request: DivergenceScanRequest):
         result = scan_for_divergences(df, min_strength=request.min_strength)
 
         # Add symbol and timestamp
-        result['symbol'] = request.symbol
-        result['timestamp'] = datetime.now().isoformat()
+        result["symbol"] = request.symbol
+        result["timestamp"] = datetime.now().isoformat()
 
         return JSONResponse(content={"success": True, "data": result})
 
@@ -73,10 +71,7 @@ async def scan_divergences(request: DivergenceScanRequest):
 
 @divergence_router.get("/scan/{symbol}")
 async def scan_divergences_simple(
-    symbol: str,
-    timeframe: str = Query("1d"),
-    period: str = Query("3mo"),
-    min_strength: float = Query(60.0)
+    symbol: str, timeframe: str = Query("1d"), period: str = Query("3mo"), min_strength: float = Query(60.0)
 ):
     """
     Scan for divergences (simple GET endpoint)
@@ -90,12 +85,7 @@ async def scan_divergences_simple(
     Returns:
         JSON with divergences
     """
-    request = DivergenceScanRequest(
-        symbol=symbol,
-        timeframe=timeframe,
-        period=period,
-        min_strength=min_strength
-    )
+    request = DivergenceScanRequest(symbol=symbol, timeframe=timeframe, period=period, min_strength=min_strength)
 
     return await scan_divergences(request)
 
@@ -106,7 +96,7 @@ async def get_divergence_chart(
     timeframe: str = Query("1d"),
     period: str = Query("3mo"),
     min_strength: float = Query(60.0),
-    indicators: Optional[str] = Query(None)
+    indicators: Optional[str] = Query(None),
 ):
     """
     Get candlestick chart with divergence overlays
@@ -123,11 +113,7 @@ async def get_divergence_chart(
     """
     try:
         # Get historical data
-        df = bars_frame(yahoo_client, 
-            symbol=symbol,
-            period=period,
-            interval=timeframe
-        )
+        df = bars_frame(yahoo_client, symbol=symbol, period=period, interval=timeframe)
 
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
@@ -136,48 +122,39 @@ async def get_divergence_chart(
         result = scan_for_divergences(df, min_strength=min_strength)
 
         # Parse indicators
-        indicator_list = indicators.split(',') if indicators else ['sma_20', 'ema_50', 'vwap']
+        indicator_list = indicators.split(",") if indicators else ["sma_20", "ema_50", "vwap"]
 
         # Create base chart
         fig = chart_gen.create_candlestick_chart(
-            df=df,
-            title=f"{symbol} - Divergence Analysis",
-            indicators=indicator_list,
-            show_volume=True,
-            height=800
+            df=df, title=f"{symbol} - Divergence Analysis", indicators=indicator_list, show_volume=True, height=800
         )
 
         # Add divergence overlays
-        if result['divergences']:
-            fig = chart_gen.add_divergence_overlays(
-                fig=fig,
-                df=df,
-                divergences=result['divergences']
-            )
+        if result["divergences"]:
+            fig = chart_gen.add_divergence_overlays(fig=fig, df=df, divergences=result["divergences"])
 
         # Add summary text
         summary_text = f"Found {result['total_divergences']} divergences | Signal: {result['signal']}"
-        if result['strongest']:
+        if result["strongest"]:
             summary_text += f"<br>Strongest: {result['strongest']['indicator'].upper()} "
             summary_text += f"{result['strongest']['type'].replace('_', ' ').title()} "
             summary_text += f"(strength: {result['strongest']['strength']:.0f})"
 
         fig.add_annotation(
             text=summary_text,
-            xref="paper", yref="paper",
-            x=0.5, y=1.08,
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=1.08,
             showarrow=False,
-            font=dict(size=14, color='#26a69a'),
-            bgcolor='rgba(0,0,0,0.5)',
-            bordercolor='#26a69a',
-            borderwidth=2
+            font=dict(size=14, color="#26a69a"),
+            bgcolor="rgba(0,0,0,0.5)",
+            bordercolor="#26a69a",
+            borderwidth=2,
         )
 
         # Return as HTML
-        html = fig.to_html(
-            include_plotlyjs='cdn',
-            config={'displayModeBar': True, 'responsive': True}
-        )
+        html = fig.to_html(include_plotlyjs="cdn", config={"displayModeBar": True, "responsive": True})
 
         return HTMLResponse(content=html)
 
@@ -190,10 +167,7 @@ async def get_divergence_chart(
 
 @divergence_router.get("/dashboard/{symbol}")
 async def get_divergence_dashboard(
-    symbol: str,
-    timeframe: str = Query("1d"),
-    period: str = Query("3mo"),
-    min_strength: float = Query(60.0)
+    symbol: str, timeframe: str = Query("1d"), period: str = Query("3mo"), min_strength: float = Query(60.0)
 ):
     """
     Get comprehensive divergence dashboard
@@ -207,11 +181,7 @@ async def get_divergence_dashboard(
     """
     try:
         # Get data
-        df = bars_frame(yahoo_client, 
-            symbol=symbol,
-            period=period,
-            interval=timeframe
-        )
+        df = bars_frame(yahoo_client, symbol=symbol, period=period, interval=timeframe)
 
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
@@ -221,25 +191,14 @@ async def get_divergence_dashboard(
 
         # Create price chart with divergences
         price_chart = chart_gen.create_candlestick_chart(
-            df=df,
-            title=f"{symbol} Price Chart",
-            indicators=['sma_20', 'ema_50', 'vwap'],
-            show_volume=True,
-            height=600
+            df=df, title=f"{symbol} Price Chart", indicators=["sma_20", "ema_50", "vwap"], show_volume=True, height=600
         )
 
-        if result['divergences']:
-            price_chart = chart_gen.add_divergence_overlays(
-                fig=price_chart,
-                df=df,
-                divergences=result['divergences']
-            )
+        if result["divergences"]:
+            price_chart = chart_gen.add_divergence_overlays(fig=price_chart, df=df, divergences=result["divergences"])
 
         # Create indicator panel
-        indicator_panel = chart_gen.create_indicator_panel(
-            df=df,
-            title=f"{symbol} Indicators"
-        )
+        indicator_panel = chart_gen.create_indicator_panel(df=df, title=f"{symbol} Indicators")
 
         # Build HTML dashboard
         html_template = f"""
@@ -348,37 +307,38 @@ async def get_divergence_dashboard(
     <div class="dashboard">
         <div class="header">
             <h1>📊 {symbol} Divergence Dashboard</h1>
-            <p>Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p>Last Updated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
         </div>
 
-        <div class="signal-banner signal-{result['signal']}">
-            Overall Signal: {result['signal'].replace('_', ' ')}
+        <div class="signal-banner signal-{result["signal"]}">
+            Overall Signal: {result["signal"].replace("_", " ")}
         </div>
 
         <div class="metrics">
             <div class="metric-card">
                 <div class="metric-label">Total Divergences</div>
-                <div class="metric-value">{result['total_divergences']}</div>
+                <div class="metric-value">{result["total_divergences"]}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Regular Bullish</div>
-                <div class="metric-value" style="color: #4CAF50;">{result['by_type']['regular_bullish']}</div>
+                <div class="metric-value" style="color: #4CAF50;">{result["by_type"]["regular_bullish"]}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Regular Bearish</div>
-                <div class="metric-value" style="color: #F44336;">{result['by_type']['regular_bearish']}</div>
+                <div class="metric-value" style="color: #F44336;">{result["by_type"]["regular_bearish"]}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Hidden Bullish</div>
-                <div class="metric-value" style="color: #81C784;">{result['by_type']['hidden_bullish']}</div>
+                <div class="metric-value" style="color: #81C784;">{result["by_type"]["hidden_bullish"]}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Hidden Bearish</div>
-                <div class="metric-value" style="color: #E57373;">{result['by_type']['hidden_bearish']}</div>
+                <div class="metric-value" style="color: #E57373;">{result["by_type"]["hidden_bearish"]}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Strongest Signal</div>
-                <div class="metric-value" style="color: #FFD700;">{result['strongest']['strength']:.0f if result['strongest'] else 0}</div>
+                <div class="metric-value" style="color: #FFD700;">{
+            result["strongest"]["strength"]:.0f if result['strongest'] else 0}</div>
             </div>
         </div>
 
@@ -392,8 +352,15 @@ async def get_divergence_dashboard(
 
         <div class="divergence-list">
             <h3>🔍 Detected Divergences</h3>
-            {'<p style="color: #888;">No divergences detected above minimum strength threshold.</p>' if not result['divergences'] else ''}
-            {''.join([f'''
+            {
+            '<p style="color: #888;">No divergences detected above minimum strength threshold.</p>'
+            if not result["divergences"]
+            else ""
+        }
+            {
+            "".join(
+                [
+                    f'''
             <div class="divergence-item div-{'bullish' if 'bullish' in div['type'] else 'bearish'}">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
@@ -418,7 +385,11 @@ async def get_divergence_dashboard(
                     <div class="strength-fill" style="width: {div['strength']}%; background-color: {'#4CAF50' if 'bullish' in div['type'] else '#F44336'};"></div>
                 </div>
             </div>
-            ''' for div in result['divergences']])}
+            '''
+                    for div in result["divergences"]
+                ]
+            )
+        }
         </div>
 
         <div style="background-color: #2d2d2d; padding: 20px; border-radius: 10px;">

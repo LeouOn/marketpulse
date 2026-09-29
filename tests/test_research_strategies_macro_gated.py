@@ -29,13 +29,11 @@ import pytest
 
 from src.research.macro.regimes import Regime
 from src.research.strategies import (
-    BuyAndHold,
     DCAFixedAmount,
     MacroGateMixin,
     MomentumTrend,
     Strategy,
 )
-
 
 # ---------------------------------------------------------------------------
 # Test fixtures
@@ -189,11 +187,11 @@ def test_mixed_regime_tape_applies_per_row() -> None:
     gated = _set_multipliers(_GatedConstant(params={"value": 1.0}), DISTINCT_MULTIPLIERS)
     tape = pd.Series(
         [
-            Regime.RISK_ON,          # 0.5
+            Regime.RISK_ON,  # 0.5
             Regime.DEFLATION_SCARE,  # 0.7
             Regime.INFLATION_ACCEL,  # 0.9
-            Regime.REAL_YIELD_SHOCK, # 1.1
-            Regime.RECESSION,        # 1.5
+            Regime.REAL_YIELD_SHOCK,  # 1.1
+            Regime.RECESSION,  # 1.5
         ],
         index=df.index,
     )
@@ -215,8 +213,8 @@ def test_output_clipped_to_bounds() -> None:
     gated = _GatedConstant(params={"value": 1.0})
     # Contrived multipliers: one above the upper clip, one negative (lower clip).
     gated.regime_multipliers = {
-        Regime.RISK_ON: 2.5,      # 1.0 * 2.5 = 2.5 -> clipped to 1.5
-        Regime.RECESSION: -0.5,   # 1.0 * -0.5 = -0.5 -> clipped to 0.0
+        Regime.RISK_ON: 2.5,  # 1.0 * 2.5 = 2.5 -> clipped to 1.5
+        Regime.RECESSION: -0.5,  # 1.0 * -0.5 = -0.5 -> clipped to 0.0
         Regime.DEFLATION_SCARE: 1.5,  # exactly at upper bound, no clip
         Regime.INFLATION_ACCEL: 0.0,  # exactly at lower bound, no clip
     }

@@ -8,21 +8,23 @@ Run trading strategies on historical data to:
 - Identify best setups and times
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
 from loguru import logger
 
-from src.analysis.ict_signal_generator import ICTSignalGenerator
 from src.analysis.divergence_detector import scan_for_divergences
+from src.analysis.ict_signal_generator import ICTSignalGenerator
 from src.analysis.technical_indicators import TechnicalIndicators
 
 
 @dataclass
 class Trade:
     """Single trade result"""
+
     entry_time: datetime
     exit_time: datetime
     entry_price: float
@@ -37,7 +39,7 @@ class Trade:
 
     # Additional metrics
     max_favorable_excursion: float = 0.0  # MFE
-    max_adverse_excursion: float = 0.0     # MAE
+    max_adverse_excursion: float = 0.0  # MAE
     hour_of_day: int = 0
     day_of_week: int = 0
     cvd_at_entry: Optional[float] = None
@@ -47,6 +49,7 @@ class Trade:
 @dataclass
 class BacktestResults:
     """Comprehensive backtest results"""
+
     # Basic metrics
     total_trades: int
     winning_trades: int
@@ -120,7 +123,7 @@ class Account:
     def can_take_trade(self, signal: Dict[str, Any]) -> bool:
         """Check if we can take this trade"""
         # Simple check: do we have enough capital?
-        required_margin = signal.get('required_margin', 1000)
+        required_margin = signal.get("required_margin", 1000)
         return self.balance >= required_margin
 
 
@@ -128,12 +131,7 @@ class SignalGenerator:
     """Generate trading signals from market data"""
 
     def generate_signal(
-        self,
-        fvgs: Dict[str, Any],
-        divergences: Dict[str, Any],
-        price: float,
-        indicators: Dict[str, float],
-        **kwargs
+        self, fvgs: Dict[str, Any], divergences: Dict[str, Any], price: float, indicators: Dict[str, float], **kwargs
     ) -> Optional[Dict[str, Any]]:
         """
         Generate trading signal
@@ -148,34 +146,34 @@ class SignalGenerator:
             Signal dict or None
         """
         # Check for bullish FVG + divergence combo
-        if len(fvgs.get('bullish', [])) > 0 and divergences.get('signal') in ['BULLISH', 'STRONG_BULLISH']:
-            fvg = fvgs['bullish'][0]
+        if len(fvgs.get("bullish", [])) > 0 and divergences.get("signal") in ["BULLISH", "STRONG_BULLISH"]:
+            fvg = fvgs["bullish"][0]
 
             # Check if price is near FVG
-            if fvg['lower'] <= price <= fvg['upper'] * 1.01:
+            if fvg["lower"] <= price <= fvg["upper"] * 1.01:
                 return {
-                    'direction': 'LONG',
-                    'entry_price': price,
-                    'stop_loss': fvg['lower'] - (fvg['upper'] - fvg['lower']) * 0.2,
-                    'take_profit': price + (price - fvg['lower']) * 2,  # 1:2 R:R
-                    'setup_type': 'FVG_BULLISH_DIVERGENCE',
-                    'required_margin': 1000,
-                    'divergence_strength': divergences.get('strongest', {}).get('strength', 0)
+                    "direction": "LONG",
+                    "entry_price": price,
+                    "stop_loss": fvg["lower"] - (fvg["upper"] - fvg["lower"]) * 0.2,
+                    "take_profit": price + (price - fvg["lower"]) * 2,  # 1:2 R:R
+                    "setup_type": "FVG_BULLISH_DIVERGENCE",
+                    "required_margin": 1000,
+                    "divergence_strength": divergences.get("strongest", {}).get("strength", 0),
                 }
 
         # Check for bearish FVG + divergence combo
-        if len(fvgs.get('bearish', [])) > 0 and divergences.get('signal') in ['BEARISH', 'STRONG_BEARISH']:
-            fvg = fvgs['bearish'][0]
+        if len(fvgs.get("bearish", [])) > 0 and divergences.get("signal") in ["BEARISH", "STRONG_BEARISH"]:
+            fvg = fvgs["bearish"][0]
 
-            if fvg['lower'] * 0.99 <= price <= fvg['upper']:
+            if fvg["lower"] * 0.99 <= price <= fvg["upper"]:
                 return {
-                    'direction': 'SHORT',
-                    'entry_price': price,
-                    'stop_loss': fvg['upper'] + (fvg['upper'] - fvg['lower']) * 0.2,
-                    'take_profit': price - (fvg['upper'] - price) * 2,
-                    'setup_type': 'FVG_BEARISH_DIVERGENCE',
-                    'required_margin': 1000,
-                    'divergence_strength': divergences.get('strongest', {}).get('strength', 0)
+                    "direction": "SHORT",
+                    "entry_price": price,
+                    "stop_loss": fvg["upper"] + (fvg["upper"] - fvg["lower"]) * 0.2,
+                    "take_profit": price - (fvg["upper"] - price) * 2,
+                    "setup_type": "FVG_BEARISH_DIVERGENCE",
+                    "required_margin": 1000,
+                    "divergence_strength": divergences.get("strongest", {}).get("strength", 0),
                 }
 
         return None
@@ -196,28 +194,17 @@ class BacktestEngine:
         self.ict_analyzer = ICTSignalGenerator()
         self.signal_generator = SignalGenerator()
 
-    def load_historical_data(
-        self,
-        symbol: str,
-        start_date: str,
-        end_date: str,
-        interval: str = '5m'
-    ) -> pd.DataFrame:
+    def load_historical_data(self, symbol: str, start_date: str, end_date: str, interval: str = "5m") -> pd.DataFrame:
         """Load historical data"""
         logger.info(f"Loading historical data for {symbol} from {start_date} to {end_date}")
 
         try:
             from src.api.yahoo_client import YahooFinanceClient
+
             client = YahooFinanceClient()
 
             # Convert interval format
-            yf_interval = {
-                '1m': '1m',
-                '5m': '5m',
-                '15m': '15m',
-                '1h': '1h',
-                '1d': '1d'
-            }.get(interval, '5m')
+            yf_interval = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "1d": "1d"}.get(interval, "5m")
 
             # Calculate period
             start = pd.to_datetime(start_date)
@@ -225,15 +212,15 @@ class BacktestEngine:
             days = (end - start).days
 
             if days <= 7:
-                period = '7d'
+                period = "7d"
             elif days <= 30:
-                period = '1mo'
+                period = "1mo"
             elif days <= 90:
-                period = '3mo'
+                period = "3mo"
             elif days <= 180:
-                period = '6mo'
+                period = "6mo"
             else:
-                period = '1y'
+                period = "1y"
 
             from src.analysis.yahoo_bars import bars_frame
 
@@ -256,15 +243,11 @@ class BacktestEngine:
     def calculate_cvd(self, df: pd.DataFrame) -> pd.Series:
         """Calculate Cumulative Volume Delta (simplified)"""
         # Simplified CVD: positive when close > open, negative otherwise
-        cvd = np.where(df['close'] > df['open'], df['volume'], -df['volume'])
+        cvd = np.where(df["close"] > df["open"], df["volume"], -df["volume"])
         return pd.Series(cvd, index=df.index).cumsum()
 
     def execute_backtest_trade(
-        self,
-        signal: Dict[str, Any],
-        candles: pd.DataFrame,
-        entry_index: int,
-        contracts: int
+        self, signal: Dict[str, Any], candles: pd.DataFrame, entry_index: int, contracts: int
     ) -> Trade:
         """
         Simulate trade execution
@@ -279,10 +262,10 @@ class BacktestEngine:
             Trade result
         """
         entry_time = candles.index[entry_index]
-        entry_price = signal['entry_price']
-        stop_loss = signal['stop_loss']
-        take_profit = signal['take_profit']
-        direction = signal['direction']
+        entry_price = signal["entry_price"]
+        stop_loss = signal["stop_loss"]
+        take_profit = signal["take_profit"]
+        direction = signal["direction"]
 
         # Track trade through candles
         max_favorable = 0.0
@@ -292,9 +275,9 @@ class BacktestEngine:
         for i in range(entry_index + 1, min(entry_index + 100, len(candles))):  # Max 100 candles
             candle = candles.iloc[i]
 
-            if direction == 'LONG':
+            if direction == "LONG":
                 # Check for stop hit
-                if candle['low'] <= stop_loss:
+                if candle["low"] <= stop_loss:
                     exit_price = stop_loss
                     exit_time = candles.index[i]
                     pnl = (exit_price - entry_price) * contracts * 20  # $20 per point for NQ
@@ -302,7 +285,7 @@ class BacktestEngine:
                     break
 
                 # Check for target hit
-                if candle['high'] >= take_profit:
+                if candle["high"] >= take_profit:
                     exit_price = take_profit
                     exit_time = candles.index[i]
                     pnl = (exit_price - entry_price) * contracts * 20
@@ -310,14 +293,14 @@ class BacktestEngine:
                     break
 
                 # Track MFE/MAE
-                favorable = candle['high'] - entry_price
-                adverse = entry_price - candle['low']
+                favorable = candle["high"] - entry_price
+                adverse = entry_price - candle["low"]
                 max_favorable = max(max_favorable, favorable)
                 max_adverse = max(max_adverse, adverse)
 
         else:
             # Trade not closed, close at last candle
-            exit_price = candles.iloc[-1]['close']
+            exit_price = candles.iloc[-1]["close"]
             exit_time = candles.index[-1]
             pnl = (exit_price - entry_price) * contracts * 20
             win = pnl > 0
@@ -336,23 +319,23 @@ class BacktestEngine:
             pnl=pnl,
             pnl_percent=pnl_percent,
             duration_minutes=duration,
-            setup_type=signal['setup_type'],
+            setup_type=signal["setup_type"],
             win=win,
             max_favorable_excursion=max_favorable,
             max_adverse_excursion=max_adverse,
             hour_of_day=entry_time.hour,
             day_of_week=entry_time.weekday(),
-            divergence_strength=signal.get('divergence_strength')
+            divergence_strength=signal.get("divergence_strength"),
         )
 
     def run_backtest(
         self,
-        symbol: str = 'NQ',
-        start_date: str = '2024-01-01',
-        end_date: str = '2024-11-15',
+        symbol: str = "NQ",
+        start_date: str = "2024-01-01",
+        end_date: str = "2024-11-15",
         initial_capital: float = 10000,
         contracts: int = 1,
-        interval: str = '5m'
+        interval: str = "5m",
     ) -> BacktestResults:
         """
         Run backtest on historical data
@@ -398,7 +381,7 @@ class BacktestEngine:
                 divergence_success_rate=0.0,
                 best_hour_of_day=0,
                 worst_hour_of_day=0,
-                best_day_of_week=0
+                best_day_of_week=0,
             )
 
         # Initialize account
@@ -410,21 +393,23 @@ class BacktestEngine:
 
         for i in range(lookback, len(candles)):
             # Get window of data
-            window = candles.iloc[i-lookback:i]
+            window = candles.iloc[i - lookback : i]
 
             # Detect FVGs
             fvg_list = self.ict_analyzer.fvg_detector.detect_fvgs(window)
 
             # Convert to dict format for SignalGenerator
             fvgs = {
-                'bullish': [
-                    {'lower': fvg.lower, 'upper': fvg.upper, 'size': fvg.size}
-                    for fvg in fvg_list if fvg.type == 'bullish'
+                "bullish": [
+                    {"lower": fvg.lower, "upper": fvg.upper, "size": fvg.size}
+                    for fvg in fvg_list
+                    if fvg.type == "bullish"
                 ],
-                'bearish': [
-                    {'lower': fvg.lower, 'upper': fvg.upper, 'size': fvg.size}
-                    for fvg in fvg_list if fvg.type == 'bearish'
-                ]
+                "bearish": [
+                    {"lower": fvg.lower, "upper": fvg.upper, "size": fvg.size}
+                    for fvg in fvg_list
+                    if fvg.type == "bearish"
+                ],
             }
 
             # Detect divergences
@@ -433,16 +418,13 @@ class BacktestEngine:
             # Calculate indicators
             indicators_df = TechnicalIndicators.calculate_all(window)
             current_indicators = {
-                'rsi': indicators_df['rsi'].iloc[-1] if 'rsi' in indicators_df else 50,
-                'macd': indicators_df['macd'].iloc[-1] if 'macd' in indicators_df else 0,
+                "rsi": indicators_df["rsi"].iloc[-1] if "rsi" in indicators_df else 50,
+                "macd": indicators_df["macd"].iloc[-1] if "macd" in indicators_df else 0,
             }
 
             # Generate signal
             signal = self.signal_generator.generate_signal(
-                fvgs=fvgs,
-                divergences=divergences,
-                price=candles.iloc[i]['close'],
-                indicators=current_indicators
+                fvgs=fvgs, divergences=divergences, price=candles.iloc[i]["close"], indicators=current_indicators
             )
 
             # Execute trade if signal and account allows
@@ -451,23 +433,22 @@ class BacktestEngine:
                 trades.append(trade)
                 account.update(trade)
 
-                logger.debug(f"Trade executed: {trade.setup_type} {trade.direction} @ {trade.entry_price:.2f}, P&L: ${trade.pnl:.2f}")
+                logger.debug(
+                    f"Trade executed: {trade.setup_type} {trade.direction} @ {trade.entry_price:.2f}, P&L: ${trade.pnl:.2f}"
+                )
 
         # Calculate results
         results = self._calculate_results(trades, account, initial_capital)
 
-        logger.info(f"Backtest complete: {results.total_trades} trades, "
-                   f"Win rate: {results.win_rate:.1f}%, "
-                   f"Total P&L: ${results.total_pnl:.2f}")
+        logger.info(
+            f"Backtest complete: {results.total_trades} trades, "
+            f"Win rate: {results.win_rate:.1f}%, "
+            f"Total P&L: ${results.total_pnl:.2f}"
+        )
 
         return results
 
-    def _calculate_results(
-        self,
-        trades: List[Trade],
-        account: Account,
-        initial_capital: float
-    ) -> BacktestResults:
+    def _calculate_results(self, trades: List[Trade], account: Account, initial_capital: float) -> BacktestResults:
         """Calculate comprehensive backtest results"""
 
         if not trades:
@@ -494,7 +475,7 @@ class BacktestEngine:
                 divergence_success_rate=0.0,
                 best_hour_of_day=0,
                 worst_hour_of_day=0,
-                best_day_of_week=0
+                best_day_of_week=0,
             )
 
         # Basic metrics
@@ -522,7 +503,7 @@ class BacktestEngine:
         # Trade metrics
         average_trade_duration = np.mean([t.duration_minutes for t in trades])
         average_trade_pnl = total_pnl / total_trades
-        expectancy = (win_rate/100 * average_winner) + ((1 - win_rate/100) * average_loser)
+        expectancy = (win_rate / 100 * average_winner) + ((1 - win_rate / 100) * average_loser)
 
         # Sharpe ratio (simplified)
         returns = [t.pnl_percent for t in trades]
@@ -530,14 +511,20 @@ class BacktestEngine:
 
         # Sortino ratio (only negative deviations)
         negative_returns = [r for r in returns if r < 0]
-        sortino_ratio = (np.mean(returns) / np.std(negative_returns)) * np.sqrt(252) if negative_returns and np.std(negative_returns) > 0 else 0
+        sortino_ratio = (
+            (np.mean(returns) / np.std(negative_returns)) * np.sqrt(252)
+            if negative_returns and np.std(negative_returns) > 0
+            else 0
+        )
 
         # Strategy-specific metrics
-        fvg_trades = [t for t in trades if 'FVG' in t.setup_type]
+        fvg_trades = [t for t in trades if "FVG" in t.setup_type]
         fvg_success_rate = (sum(1 for t in fvg_trades if t.win) / len(fvg_trades) * 100) if fvg_trades else 0
 
-        divergence_trades = [t for t in trades if 'DIVERGENCE' in t.setup_type]
-        divergence_success_rate = (sum(1 for t in divergence_trades if t.win) / len(divergence_trades) * 100) if divergence_trades else 0
+        divergence_trades = [t for t in trades if "DIVERGENCE" in t.setup_type]
+        divergence_success_rate = (
+            (sum(1 for t in divergence_trades if t.win) / len(divergence_trades) * 100) if divergence_trades else 0
+        )
 
         # Best/worst hours
         hour_performance = {}
@@ -566,18 +553,20 @@ class BacktestEngine:
             setup_trades = [t for t in trades if t.setup_type == setup_type]
             setup_wins = sum(1 for t in setup_trades if t.win)
             setup_performance[setup_type] = {
-                'total': len(setup_trades),
-                'wins': setup_wins,
-                'win_rate': (setup_wins / len(setup_trades)) * 100,
-                'total_pnl': sum(t.pnl for t in setup_trades),
-                'avg_pnl': np.mean([t.pnl for t in setup_trades])
+                "total": len(setup_trades),
+                "wins": setup_wins,
+                "win_rate": (setup_wins / len(setup_trades)) * 100,
+                "total_pnl": sum(t.pnl for t in setup_trades),
+                "avg_pnl": np.mean([t.pnl for t in setup_trades]),
             }
 
         # Create equity curve DataFrame
-        equity_curve = pd.DataFrame({
-            'timestamp': account.timestamps,
-            'balance': account.equity_curve[1:]  # Skip initial balance
-        })
+        equity_curve = pd.DataFrame(
+            {
+                "timestamp": account.timestamps,
+                "balance": account.equity_curve[1:],  # Skip initial balance
+            }
+        )
 
         return BacktestResults(
             total_trades=total_trades,
@@ -605,5 +594,5 @@ class BacktestEngine:
             best_day_of_week=best_day_of_week,
             performance_by_setup=setup_performance,
             trades=trades,
-            equity_curve=equity_curve
+            equity_curve=equity_curve,
         )

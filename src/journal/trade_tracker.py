@@ -9,20 +9,22 @@ Track and analyze trading performance:
 - Continuous improvement insights
 """
 
-from dataclasses import dataclass, asdict
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
 from collections import defaultdict
-import pandas as pd
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
 from loguru import logger
 
-from src.state.position_manager import Position, PositionSide
+from src.state.position_manager import Position
 
 
 @dataclass
 class PerformanceStats:
     """Comprehensive performance statistics"""
+
     # Basic metrics
     total_trades: int
     winning_trades: int
@@ -63,6 +65,7 @@ class PerformanceStats:
 @dataclass
 class SetupAnalysis:
     """Analysis of specific setup type"""
+
     setup_type: str
     total_trades: int
     win_rate: float
@@ -76,6 +79,7 @@ class SetupAnalysis:
 @dataclass
 class SessionAnalysis:
     """Analysis of trading session"""
+
     session: str
     total_trades: int
     win_rate: float
@@ -112,10 +116,7 @@ class TradeJournal:
             return
 
         self.trades.append(position)
-        logger.info(
-            f"Trade logged: {position.symbol} {position.side.value} "
-            f"P&L: ${position.realized_pnl:+.2f}"
-        )
+        logger.info(f"Trade logged: {position.symbol} {position.side.value} P&L: ${position.realized_pnl:+.2f}")
 
     def load_trades(self, positions: List[Position]) -> None:
         """
@@ -128,10 +129,7 @@ class TradeJournal:
         logger.info(f"Loaded {len(self.trades)} trades")
 
     def analyze_performance(
-        self,
-        days: Optional[int] = None,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None
+        self, days: Optional[int] = None, start_date: Optional[date] = None, end_date: Optional[date] = None
     ) -> PerformanceStats:
         """
         Calculate comprehensive performance statistics
@@ -172,7 +170,7 @@ class TradeJournal:
 
         # Ratios
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
-        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else float('inf') if gross_profit > 0 else 0
+        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else float("inf") if gross_profit > 0 else 0
 
         # Average R:R achieved
         rr_ratios = []
@@ -217,20 +215,17 @@ class TradeJournal:
             max_drawdown=max_dd,
             max_drawdown_pct=max_dd_pct,
             sharpe_ratio=sharpe,
-            consecutive_wins=consecutive['current_wins'],
-            consecutive_losses=consecutive['current_losses'],
-            max_consecutive_wins=consecutive['max_wins'],
-            max_consecutive_losses=consecutive['max_losses'],
+            consecutive_wins=consecutive["current_wins"],
+            consecutive_losses=consecutive["current_losses"],
+            max_consecutive_wins=consecutive["max_wins"],
+            max_consecutive_losses=consecutive["max_losses"],
             best_setup=best_setup,
             worst_setup=worst_setup,
             best_session=best_session,
-            worst_session=worst_session
+            worst_session=worst_session,
         )
 
-    def analyze_by_setup(
-        self,
-        days: Optional[int] = None
-    ) -> List[SetupAnalysis]:
+    def analyze_by_setup(self, days: Optional[int] = None) -> List[SetupAnalysis]:
         """
         Analyze performance by setup type
 
@@ -258,27 +253,26 @@ class TradeJournal:
 
             gross_profit = sum(wins) if wins else 0
             gross_loss = abs(sum(losses)) if losses else 0
-            profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else float('inf') if gross_profit > 0 else 0
+            profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else float("inf") if gross_profit > 0 else 0
 
-            analyses.append(SetupAnalysis(
-                setup_type=setup,
-                total_trades=total_trades,
-                win_rate=win_rate,
-                profit_factor=profit_factor,
-                total_pnl=sum(pnls),
-                average_pnl=np.mean(pnls),
-                best_trade=max(pnls),
-                worst_trade=min(pnls)
-            ))
+            analyses.append(
+                SetupAnalysis(
+                    setup_type=setup,
+                    total_trades=total_trades,
+                    win_rate=win_rate,
+                    profit_factor=profit_factor,
+                    total_pnl=sum(pnls),
+                    average_pnl=np.mean(pnls),
+                    best_trade=max(pnls),
+                    worst_trade=min(pnls),
+                )
+            )
 
         # Sort by profit factor
         analyses.sort(key=lambda x: x.profit_factor, reverse=True)
         return analyses
 
-    def analyze_by_session(
-        self,
-        days: Optional[int] = None
-    ) -> List[SessionAnalysis]:
+    def analyze_by_session(self, days: Optional[int] = None) -> List[SessionAnalysis]:
         """
         Analyze performance by trading session
 
@@ -303,22 +297,21 @@ class TradeJournal:
             total_trades = len(session_trades)
             win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0
 
-            analyses.append(SessionAnalysis(
-                session=session,
-                total_trades=total_trades,
-                win_rate=win_rate,
-                total_pnl=sum(pnls),
-                average_pnl=np.mean(pnls)
-            ))
+            analyses.append(
+                SessionAnalysis(
+                    session=session,
+                    total_trades=total_trades,
+                    win_rate=win_rate,
+                    total_pnl=sum(pnls),
+                    average_pnl=np.mean(pnls),
+                )
+            )
 
         # Sort by total P&L
         analyses.sort(key=lambda x: x.total_pnl, reverse=True)
         return analyses
 
-    def get_equity_curve(
-        self,
-        starting_balance: float = 10000
-    ) -> pd.DataFrame:
+    def get_equity_curve(self, starting_balance: float = 10000) -> pd.DataFrame:
         """
         Generate equity curve
 
@@ -329,7 +322,7 @@ class TradeJournal:
             DataFrame with timestamp and balance columns
         """
         if not self.trades:
-            return pd.DataFrame(columns=['timestamp', 'balance'])
+            return pd.DataFrame(columns=["timestamp", "balance"])
 
         # Sort trades by exit time
         sorted_trades = sorted(self.trades, key=lambda t: t.exit_timestamp)
@@ -339,11 +332,7 @@ class TradeJournal:
 
         for trade in sorted_trades:
             balance += trade.realized_pnl
-            equity_data.append({
-                'timestamp': trade.exit_timestamp,
-                'balance': balance,
-                'pnl': trade.realized_pnl
-            })
+            equity_data.append({"timestamp": trade.exit_timestamp, "balance": balance, "pnl": trade.realized_pnl})
 
         return pd.DataFrame(equity_data)
 
@@ -361,79 +350,67 @@ class TradeJournal:
         setup_analysis = self.analyze_by_setup(days=days)
 
         insights = {
-            'summary': {
-                'period_days': days,
-                'total_trades': stats.total_trades,
-                'win_rate': f"{stats.win_rate:.1f}%",
-                'profit_factor': f"{stats.profit_factor:.2f}",
-                'total_pnl': f"${stats.total_pnl:+,.2f}",
-                'expectancy': f"${stats.expectancy:+.2f}"
+            "summary": {
+                "period_days": days,
+                "total_trades": stats.total_trades,
+                "win_rate": f"{stats.win_rate:.1f}%",
+                "profit_factor": f"{stats.profit_factor:.2f}",
+                "total_pnl": f"${stats.total_pnl:+,.2f}",
+                "expectancy": f"${stats.expectancy:+.2f}",
             },
-            'warnings': [],
-            'recommendations': [],
-            'strengths': []
+            "warnings": [],
+            "recommendations": [],
+            "strengths": [],
         }
 
         # Warnings
         if stats.consecutive_losses >= 3:
-            insights['warnings'].append(
+            insights["warnings"].append(
                 f"⚠️ {stats.consecutive_losses} consecutive losses. Take a break and review recent trades."
             )
 
         if stats.win_rate < 40:
-            insights['warnings'].append(
-                f"⚠️ Low win rate ({stats.win_rate:.1f}%). Review trade selection criteria."
-            )
+            insights["warnings"].append(f"⚠️ Low win rate ({stats.win_rate:.1f}%). Review trade selection criteria.")
 
         if stats.profit_factor < 1.5:
-            insights['warnings'].append(
+            insights["warnings"].append(
                 f"⚠️ Low profit factor ({stats.profit_factor:.2f}). Winners not big enough or losers too large."
             )
 
         if stats.average_rr < 1.0:
-            insights['warnings'].append(
+            insights["warnings"].append(
                 f"⚠️ Average R:R ({stats.average_rr:.2f}) below 1:1. Cutting winners too early or letting losers run?"
             )
 
         # Recommendations
         if stats.best_setup:
-            insights['recommendations'].append(
-                f"✅ Focus on '{stats.best_setup}' setup - your best performer"
-            )
+            insights["recommendations"].append(f"✅ Focus on '{stats.best_setup}' setup - your best performer")
 
         if stats.worst_setup and stats.worst_setup != "Unknown":
-            insights['recommendations'].append(
-                f"❌ Avoid or refine '{stats.worst_setup}' setup - underperforming"
-            )
+            insights["recommendations"].append(f"❌ Avoid or refine '{stats.worst_setup}' setup - underperforming")
 
         if stats.worst_session and stats.worst_session != "Unknown":
-            insights['recommendations'].append(
+            insights["recommendations"].append(
                 f"⏰ Consider avoiding '{stats.worst_session}' session - negative results"
             )
 
         # Strengths
         if stats.win_rate > 50:
-            insights['strengths'].append(
-                f"🎯 Strong win rate: {stats.win_rate:.1f}%"
-            )
+            insights["strengths"].append(f"🎯 Strong win rate: {stats.win_rate:.1f}%")
 
         if stats.profit_factor > 2.0:
-            insights['strengths'].append(
-                f"💰 Excellent profit factor: {stats.profit_factor:.2f}"
-            )
+            insights["strengths"].append(f"💰 Excellent profit factor: {stats.profit_factor:.2f}")
 
         if stats.average_rr > 1.5:
-            insights['strengths'].append(
-                f"📈 Good risk/reward management: {stats.average_rr:.2f}:1"
-            )
+            insights["strengths"].append(f"📈 Good risk/reward management: {stats.average_rr:.2f}:1")
 
-        insights['setup_rankings'] = [
+        insights["setup_rankings"] = [
             {
-                'setup': s.setup_type,
-                'trades': s.total_trades,
-                'win_rate': f"{s.win_rate:.1f}%",
-                'pf': f"{s.profit_factor:.2f}",
-                'pnl': f"${s.total_pnl:+,.2f}"
+                "setup": s.setup_type,
+                "trades": s.total_trades,
+                "win_rate": f"{s.win_rate:.1f}%",
+                "pf": f"{s.profit_factor:.2f}",
+                "pnl": f"${s.total_pnl:+,.2f}",
             }
             for s in setup_analysis[:5]  # Top 5
         ]
@@ -441,10 +418,7 @@ class TradeJournal:
         return insights
 
     def _filter_trades_by_date(
-        self,
-        days: Optional[int] = None,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None
+        self, days: Optional[int] = None, start_date: Optional[date] = None, end_date: Optional[date] = None
     ) -> List[Position]:
         """Filter trades by date range"""
         trades = self.trades
@@ -517,10 +491,10 @@ class TradeJournal:
                 max_losses = max(max_losses, current_losses)
 
         return {
-            'current_wins': current_wins,
-            'current_losses': current_losses,
-            'max_wins': max_wins,
-            'max_losses': max_losses
+            "current_wins": current_wins,
+            "current_losses": current_losses,
+            "max_wins": max_wins,
+            "max_losses": max_losses,
         }
 
     def _find_best_worst_setups(self, trades: List[Position]) -> Tuple[Optional[str], Optional[str]]:
@@ -539,7 +513,7 @@ class TradeJournal:
         for setup, pnls in by_setup.items():
             wins = sum(p for p in pnls if p > 0)
             losses = abs(sum(p for p in pnls if p < 0))
-            pf = (wins / losses) if losses > 0 else float('inf') if wins > 0 else 0
+            pf = (wins / losses) if losses > 0 else float("inf") if wins > 0 else 0
             setup_pfs[setup] = pf
 
         best = max(setup_pfs.items(), key=lambda x: x[1])[0] if setup_pfs else None
@@ -585,5 +559,5 @@ class TradeJournal:
             average_rr=0,
             expectancy=0,
             max_drawdown=0,
-            max_drawdown_pct=0
+            max_drawdown_pct=0,
         )

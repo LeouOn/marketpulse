@@ -1,4 +1,5 @@
 """Tests for the Fed Chair gamification module."""
+
 from __future__ import annotations
 
 from src.warsh.gamification import (
@@ -8,7 +9,6 @@ from src.warsh.gamification import (
     rate_fed_chair,
 )
 from src.warsh.tools import ToolName
-
 
 # Hawkish configuration: minimal RMP, aggressive QT, large MBS sales,
 # forward guidance ON, strict bank regulation, low SRF.
@@ -60,9 +60,7 @@ def test_market_prediction_returns_all_assets():
     result = get_market_prediction(HAWKISH_CONFIG)
     assert set(result.keys()) == expected
     for asset, direction in result.items():
-        assert direction in ("bullish", "bearish", "neutral"), (
-            f"{asset} direction {direction!r} not valid"
-        )
+        assert direction in ("bullish", "bearish", "neutral"), f"{asset} direction {direction!r} not valid"
 
 
 def test_hawkish_score_extremes():

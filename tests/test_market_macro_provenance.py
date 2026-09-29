@@ -223,9 +223,7 @@ async def test_yahoo_outage_omits_mock_unless_opted_in(yahoo_fake, monkeypatch):
 def test_breadth_honors_an_explicit_mock_source():
     from src.api.routers.market import _annotate_breadth
 
-    flagged = _annotate_breadth(
-        {"source": "mock", "nyse_advancing": 1, "nyse_declining": 0, "nyse_unchanged": 0}
-    )
+    flagged = _annotate_breadth({"source": "mock", "nyse_advancing": 1, "nyse_declining": 0, "nyse_unchanged": 0})
     assert flagged["source"] == "mock"
     assert flagged["classification"] == "mock"
 

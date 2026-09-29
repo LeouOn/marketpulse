@@ -1,6 +1,6 @@
 """Yield curve API smoke tests using FastAPI TestClient with monkeypatched history."""
-from datetime import date
-from datetime import timedelta
+
+from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -26,12 +26,15 @@ def _mock_snap(d: date, s2s10s: float = 10.0) -> SnapshotData:
 @pytest.fixture
 def client():
     from src.api.main import app
+
     return TestClient(app)
 
 
 def test_current_endpoint_returns_latest(client):
-    with patch("src.api.routers.yield_curve._get_history") as mock_h, \
-         patch("src.api.routers.yield_curve._compute_staleness", return_value=(False, 0)):
+    with (
+        patch("src.api.routers.yield_curve._get_history") as mock_h,
+        patch("src.api.routers.yield_curve._compute_staleness", return_value=(False, 0)),
+    ):
         h = MagicMock()
         h.get_history.return_value = [_mock_snap(date(2026, 6, 23))]
         mock_h.return_value = (h, MagicMock())

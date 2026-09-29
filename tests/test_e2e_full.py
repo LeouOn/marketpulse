@@ -8,23 +8,27 @@ Prints per-component trace with pass/fail.
 """
 
 import asyncio
-import json
-import sys
-import time
-from typing import Any
 
 # ASCII-safe print
 import builtins as _bi
+import sys
+import time
+
 _orig_print = _bi.print
+
+
 def _safe_print(*a, **kw):
     text = " ".join(str(x) for x in a)
     try:
         _orig_print(text, **kw)
     except UnicodeEncodeError:
         _orig_print(text.encode("ascii", errors="replace").decode("ascii"), **kw)
+
+
 _bi.print = _safe_print  # type: ignore
 
 PASS, FAIL, total = 0, 0, 0
+
 
 def _hdr(msg: str):
     global total
@@ -32,10 +36,12 @@ def _hdr(msg: str):
     print(f"\n[{total}] {msg}")
     print("-" * 50)
 
+
 def _ok(msg: str = ""):
     global PASS
     PASS += 1
     print(f"  [PASS] {msg}")
+
 
 def _no(msg: str):
     global FAIL
@@ -50,6 +56,7 @@ async def main():
     # -- 1. Config --------------------------------------------------------
     _hdr("Config Layer")
     from src.core.config import get_settings
+
     s = get_settings()
     assert s.llm.deepseek.model_pro == "deepseek-v4-pro"
     assert s.llm.model_routing.primary_provider == "deepseek"
@@ -58,14 +65,17 @@ async def main():
     # -- 2. DeepSeek API --------------------------------------------------
     _hdr("DeepSeek Connectivity")
     from src.llm.deepseek_client import DeepSeekClient
+
     async with DeepSeekClient(s) as c:
         healthy = await c.check_health()
         assert healthy, "DeepSeek health check failed"
-        _ok(f"Healthy")
+        _ok("Healthy")
 
         resp = await c.generate_completion(
             messages=[{"role": "user", "content": "Say 'hello' in one word."}],
-            model=s.llm.deepseek.model_flash, max_tokens=10, temperature=0,
+            model=s.llm.deepseek.model_flash,
+            max_tokens=10,
+            temperature=0,
         )
         assert resp and "choices" in resp
         msg = resp["choices"][0]["message"]
@@ -76,6 +86,7 @@ async def main():
     # -- 3. ModelRouter ---------------------------------------------------
     _hdr("ModelRouter")
     from src.llm.model_router import ModelRouter
+
     async with ModelRouter(s) as router:
         health = await router.check_all()
         assert health.get("deepseek"), "DeepSeek unhealthy"
@@ -93,6 +104,7 @@ async def main():
     # -- 4. ToolRegistry --------------------------------------------------
     _hdr("ToolRegistry")
     from src.llm.tools import ToolRegistry
+
     reg = ToolRegistry()
     names = reg.get_tool_names()
     assert len(names) == 10, f"Expected 10 tools, got {len(names)}"
@@ -114,6 +126,7 @@ async def main():
     # -- 5. EmbeddingRAG --------------------------------------------------
     _hdr("EmbeddingRAG + KnowledgeGraph")
     from src.llm.embedding_rag import EmbeddingRAG
+
     rag = EmbeddingRAG()
     chunks = rag.retrieve_context("overnight liquidation cascade", top_k=5)
     assert len(chunks) >= 3
@@ -126,6 +139,7 @@ async def main():
     # -- 6. Knowledge Graph -----------------------------------------------
     _hdr("KnowledgeGraph")
     from src.llm.knowledge_graph import KnowledgeGraph
+
     kg = KnowledgeGraph()
     assert kg.graph.number_of_nodes() > 50
     assert kg.graph.number_of_edges() > 40
@@ -138,8 +152,12 @@ async def main():
     # -- 7. All 6 Agents --------------------------------------------------
     _hdr("Agent Fleet (6 agents)")
     from src.llm.agents import (
-        DataAgent, TechnicalAgent, MacroAgent,
-        RiskAgent, HypothesisAgent, CritiqueAgent,
+        CritiqueAgent,
+        DataAgent,
+        HypothesisAgent,
+        MacroAgent,
+        RiskAgent,
+        TechnicalAgent,
     )
 
     agents = [
@@ -160,6 +178,7 @@ async def main():
     # -- 8. Orchestrator (quick test) -------------------------------------
     _hdr("Orchestrator (5-agent pipeline)")
     from src.llm.agents.orchestrator import MarketAnalysisOrchestrator
+
     orch = MarketAnalysisOrchestrator(s)
     async with orch:
         result = await orch.analyze(
@@ -197,7 +216,9 @@ async def main():
     events = []
     async with orch:
         async for ev in orch.analyze_streaming(
-            query="Quick check", symbols=["SPY"], include_breadth=False,
+            query="Quick check",
+            symbols=["SPY"],
+            include_breadth=False,
         ):
             events.append(ev.phase)
 
@@ -209,7 +230,10 @@ async def main():
 
     # -- 10. Feedback Loop ------------------------------------------------
     _hdr("Feedback Loop")
-    import pathlib, json as _json, hashlib, uuid
+    import hashlib
+    import json as _json
+    import pathlib
+    import uuid
 
     fb_dir = pathlib.Path("trading_knowledge/feedback")
     fb_dir.mkdir(parents=True, exist_ok=True)
@@ -217,8 +241,11 @@ async def main():
     # Submit feedback
     aid = str(uuid.uuid4())
     fb = {
-        "analysis_id": aid, "rating": 4, "outcome": "accurate",
-        "notes": "E2E test feedback", "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "analysis_id": aid,
+        "rating": 4,
+        "outcome": "accurate",
+        "notes": "E2E test feedback",
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     safe_id = hashlib.md5(aid.encode()).hexdigest()[:12]
     fpath = fb_dir / f"{safe_id}_test.json"

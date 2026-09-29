@@ -34,7 +34,7 @@ class AgentResult:
     """Structured result from an agent execution."""
 
     agent_name: str
-    content: str                           # Final text response
+    content: str  # Final text response
     tool_calls_made: list[str] = field(default_factory=list)  # Names of tools invoked
     raw_response: dict[str, Any] | None = None  # Raw API response
     success: bool = True
@@ -139,8 +139,7 @@ class MarketAgent:
             # data, so a tool-less client is only a failure for agents that do.
             expects_tools = bool(self._tools)
             logger.warning(
-                f"{self.AGENT_NAME}: client {client_name} "
-                f"lacks generate_with_tools -- no tools can be called"
+                f"{self.AGENT_NAME}: client {client_name} lacks generate_with_tools -- no tools can be called"
             )
             response = await client.generate_completion(
                 messages=messages,
@@ -149,10 +148,14 @@ class MarketAgent:
                 temperature=self.TEMPERATURE,
             )
             error = (
-                f"{client_name} does not support tool calling "
-                f"(no generate_with_tools), so {self.AGENT_NAME} could not fetch "
-                f"any data -- its answer is unverified model knowledge"
-            ) if expects_tools else None
+                (
+                    f"{client_name} does not support tool calling "
+                    f"(no generate_with_tools), so {self.AGENT_NAME} could not fetch "
+                    f"any data -- its answer is unverified model knowledge"
+                )
+                if expects_tools
+                else None
+            )
             if response and "choices" in response:
                 msg = response["choices"][0]["message"]
                 content = strip_think(msg.get("content") or "")
@@ -169,9 +172,7 @@ class MarketAgent:
                 agent_name=self.AGENT_NAME,
                 content="",
                 success=False,
-                error=f"{error}; also got no response from the model"
-                if expects_tools
-                else "No response from model",
+                error=f"{error}; also got no response from the model" if expects_tools else "No response from model",
             )
 
         # Function-calling loop
@@ -228,6 +229,7 @@ class MarketAgent:
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
 
 def _fmt(obj: Any) -> str:
     """Compact formatting for context injection."""

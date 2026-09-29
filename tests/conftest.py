@@ -98,8 +98,7 @@ def pytest_sessionfinish(session, exitstatus):
         current = res.stdout.strip()
         if current != _INITIAL_TRACKED_STATUS:
             msg = (
-                f"\n[DIRTY TREE GUARD] Tracked files were modified during the test session!\n"
-                f"Status diff:\n{current}\n"
+                f"\n[DIRTY TREE GUARD] Tracked files were modified during the test session!\nStatus diff:\n{current}\n"
             )
             warnings.warn(msg, UserWarning, stacklevel=2)
             sys.stderr.write(msg)

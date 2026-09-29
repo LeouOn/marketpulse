@@ -151,9 +151,7 @@ def test_chat_endpoint_includes_cached_market_data():
 
     captured_messages = []
 
-    get_router = _capture_client(
-        captured_messages, reply="SPY is at $450.25, up 0.48%"
-    )
+    get_router = _capture_client(captured_messages, reply="SPY is at $450.25, up 0.48%")
 
     with (
         patch("src.api.routers.deps.collector", mock_collector),

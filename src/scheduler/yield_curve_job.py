@@ -57,9 +57,7 @@ def _asof_value(df: pd.DataFrame, d: date) -> float | None:
     return float(df.loc[mask, "close"].iloc[-1])
 
 
-def _delta_fields(
-    dates: list[date], spread_by_date: dict[date, float | None], i: int
-) -> dict[str, float | None]:
+def _delta_fields(dates: list[date], spread_by_date: dict[date, float | None], i: int) -> dict[str, float | None]:
     """2s10s deltas + 90d z-score for ``dates[i]`` from the in-window series."""
     d = dates[i]
     s_now = spread_by_date.get(d)
@@ -72,9 +70,7 @@ def _delta_fields(
         return None if s_prev is None else s_now - s_prev
 
     window = [
-        spread_by_date.get(dates[j])
-        for j in range(max(0, i - 90), i + 1)
-        if spread_by_date.get(dates[j]) is not None
+        spread_by_date.get(dates[j]) for j in range(max(0, i - 90), i + 1) if spread_by_date.get(dates[j]) is not None
     ]
     zscore = None
     if s_now is not None and len(window) >= 30:
@@ -157,19 +153,13 @@ async def run_yield_curve_pipeline(
         #    with its own date so skipping such days cannot shift the rest.
         dated_curves: list[tuple[date, dict[str, float]]] = []
         for d in dates:
-            curve = {
-                tenor: v
-                for tenor, df in fetched.items()
-                if (v := _asof_value(df, d)) is not None
-            }
+            curve = {tenor: v for tenor, df in fetched.items() if (v := _asof_value(df, d)) is not None}
             if curve:
                 dated_curves.append((d, curve))
         dates = [d for d, _ in dated_curves]
         curves = [c for _, c in dated_curves]
 
-        spread_by_date = {
-            d: compute_spreads(c).get("2s10s") for d, c in zip(dates, curves, strict=True)
-        }
+        spread_by_date = {d: compute_spreads(c).get("2s10s") for d, c in zip(dates, curves, strict=True)}
 
         saved = 0
         latest_snap: SnapshotData | None = None
@@ -183,14 +173,12 @@ async def run_yield_curve_pipeline(
                 shape=classify_shape(curve).value,
                 shape_trend=classify_trend(curve, baseline),
                 recession_prob_nyfed=(
-                    nyfed_recession_prob(spreads["3m10y"])
-                    if spreads.get("3m10y") is not None
-                    else None
+                    nyfed_recession_prob(spreads["3m10y"]) if spreads.get("3m10y") is not None else None
                 ),
             )
-            snap.spread_2s10s_delta_5d, snap.spread_2s10s_delta_30d, snap.zscore_2s10s_90d = (
-                _delta_fields(dates, spread_by_date, i).values()
-            )
+            snap.spread_2s10s_delta_5d, snap.spread_2s10s_delta_30d, snap.zscore_2s10s_90d = _delta_fields(
+                dates, spread_by_date, i
+            ).values()
             history.save_snapshot(snap)
             saved += 1
             latest_snap = snap
@@ -207,9 +195,7 @@ async def run_yield_curve_pipeline(
             try:
                 from src.yield_curve.alerts import YieldCurveAlerts
 
-                await YieldCurveAlerts(session, cfg).evaluate(
-                    latest_snap, history.get_history(days=90)
-                )
+                await YieldCurveAlerts(session, cfg).evaluate(latest_snap, history.get_history(days=90))
             except Exception as exc:
                 logger.error(f"yield_curve: alert evaluation failed: {exc}")
 

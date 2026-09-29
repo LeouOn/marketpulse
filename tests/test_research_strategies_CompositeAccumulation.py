@@ -7,12 +7,11 @@ import pandas as pd
 import pytest
 
 from src.research.strategies import (
-    InvalidParamsError,
     _REGISTRY,
+    InvalidParamsError,
     get_strategy,
 )
 from src.research.strategies.CompositeAccumulation import CompositeAccumulation
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -96,16 +95,18 @@ class TestCompositeAccumulationSignals:
         # In a declining market the SMA trend is bearish (close < SMA) and RSI
         # is very low — both drive the composite HIGH (bearish = accumulate more).
         # So we test with a config where only sma_trend_weight matters.
-        s2 = CompositeAccumulation(params={
-            "fgi_weight": 0.0,
-            "rsi_weight": 0.0,
-            "mayer_weight": 0.0,
-            "sma_trend_weight": 1.0,
-            "sma_period": 50,
-            "aggressive_frac": 0.9,
-            "conservative_frac": 0.3,
-            "rsi_period": 14,
-        })
+        s2 = CompositeAccumulation(
+            params={
+                "fgi_weight": 0.0,
+                "rsi_weight": 0.0,
+                "mayer_weight": 0.0,
+                "sma_trend_weight": 1.0,
+                "sma_period": 50,
+                "aggressive_frac": 0.9,
+                "conservative_frac": 0.3,
+                "rsi_period": 14,
+            }
+        )
         sig2 = s2.generate_signals(df)
         late_mean = sig2.iloc[-30:].mean()
         # close < SMA → score 1.0 → target = aggressive_frac = 0.9 (high)
@@ -124,10 +125,12 @@ class TestCompositeAccumulationSignals:
 class TestCompositeAccumulationValidation:
     def test_validate_rejects_inverted_aggressive_conservative(self):
         with pytest.raises(InvalidParamsError, match="aggressive_frac"):
-            CompositeAccumulation(params={
-                "aggressive_frac": 0.2,
-                "conservative_frac": 0.8,
-            })
+            CompositeAccumulation(
+                params={
+                    "aggressive_frac": 0.2,
+                    "conservative_frac": 0.8,
+                }
+            )
 
     def test_validate_rejects_negative_weights(self):
         with pytest.raises(InvalidParamsError, match="fgi_weight"):

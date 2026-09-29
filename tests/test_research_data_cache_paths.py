@@ -23,7 +23,6 @@ import pytest
 
 from src.research.data import _paths
 
-
 # These tests check the real cache-path constants (isolating via chdir), so opt out of conftest's redirect.
 pytestmark = pytest.mark.real_data_paths
 
@@ -79,9 +78,7 @@ class TestSeedCopy:
         assert cache.is_file()
         assert cache.read_text() == "ts,close\n2024-01-01,1\n"
         # The tracked seed is untouched.
-        assert (tmp_path / "data" / "btc" / "daily.csv").read_text() == (
-            "ts,close\n2024-01-01,1\n"
-        )
+        assert (tmp_path / "data" / "btc" / "daily.csv").read_text() == ("ts,close\n2024-01-01,1\n")
 
     def test_seed_file_noop_when_no_seed_exists(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
@@ -111,16 +108,11 @@ def _daily_seed_csv() -> str:
     # One row, dated today, so load_daily's staleness auto-refresh does
     # not attempt a network fetch.
     today = pd.Timestamp.now().strftime("%Y-%m-%d")
-    return (
-        "ts,open,high,low,close,volume,source\n"
-        f"{today},100.0,101.0,99.0,100.5,10.0,local\n"
-    )
+    return f"ts,open,high,low,close,volume,source\n{today},100.0,101.0,99.0,100.5,10.0,local\n"
 
 
 class TestBtcPipelineCache:
-    def test_load_daily_reads_seed_into_cache_without_touching_it(
-        self, monkeypatch, tmp_path
-    ):
+    def test_load_daily_reads_seed_into_cache_without_touching_it(self, monkeypatch, tmp_path):
         import src.research.data as data_mod
 
         monkeypatch.chdir(tmp_path)
@@ -165,9 +157,7 @@ class TestProviderCacheDefaults:
         seed = tmp_path / "data" / "macro" / "DGS10.parquet"
         seed.parent.mkdir(parents=True, exist_ok=True)
         seed.write_bytes(_parquet_bytes())
-        monkeypatch.setattr(
-            "src.research.data.fred.get_fred_api_key", lambda: "test-key"
-        )
+        monkeypatch.setattr("src.research.data.fred.get_fred_api_key", lambda: "test-key")
 
         from src.research.data.fred import FredProvider
 
@@ -183,9 +173,7 @@ class TestProviderCacheDefaults:
         monkeypatch.chdir(tmp_path)
         tmp_path.joinpath("data", "macro").mkdir(parents=True)
         tmp_path.joinpath("data", "macro", "DGS10.parquet").write_bytes(_parquet_bytes())
-        monkeypatch.setattr(
-            "src.research.data.fred.get_fred_api_key", lambda: "test-key"
-        )
+        monkeypatch.setattr("src.research.data.fred.get_fred_api_key", lambda: "test-key")
 
         from src.research.data.fred import FredProvider
 
@@ -212,9 +200,7 @@ class TestProviderCacheDefaults:
         seed = tmp_path / "data" / "eia_cache" / "PET.RWTC.D.parquet"
         seed.parent.mkdir(parents=True, exist_ok=True)
         seed.write_bytes(_parquet_bytes())
-        monkeypatch.setattr(
-            "src.research.data.eia.get_eia_api_key", lambda: "test-key"
-        )
+        monkeypatch.setattr("src.research.data.eia.get_eia_api_key", lambda: "test-key")
 
         from src.research.data.eia import EiaProvider
 

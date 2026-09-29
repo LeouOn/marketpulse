@@ -101,6 +101,7 @@ async def test_analyze_marks_failure_when_no_data_was_fetched(monkeypatch):
             )
 
     monkeypatch.setattr(orch_mod, "DataAgent", _NoToolDataAgent)
+
     async def _draft(self, result):
         return "draft from nothing"
 
@@ -138,6 +139,7 @@ async def test_analyze_marks_success_when_data_was_fetched(monkeypatch):
             )
 
     monkeypatch.setattr(orch_mod, "DataAgent", _WorkingDataAgent)
+
     async def _draft(self, result):
         return "draft"
 

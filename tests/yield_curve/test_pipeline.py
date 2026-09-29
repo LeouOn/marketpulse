@@ -8,9 +8,7 @@ network and no real DATABASE_URL are needed.
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import date, timedelta
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -41,8 +39,14 @@ def session():
 # Yield levels (percent) per tenor: an upward-sloping curve with a mild
 # daily drift so deltas / z-scores are defined.
 _LEVELS = {
-    "3mo": 3.00, "1y": 3.20, "2y": 3.40, "5y": 3.80,
-    "7y": 3.95, "10y": 4.05, "20y": 4.25, "30y": 4.35,
+    "3mo": 3.00,
+    "1y": 3.20,
+    "2y": 3.40,
+    "5y": 3.80,
+    "7y": 3.95,
+    "10y": 4.05,
+    "20y": 4.25,
+    "30y": 4.35,
 }
 
 
@@ -61,24 +65,24 @@ class FakeCurveFetcher:
         days = pd.bdate_range(start, end)
         for t in tenors:
             base = _LEVELS.get(t, 4.0)
-            out[t] = pd.DataFrame({
-                "ts": days,
-                "open": [base + 0.001 * i for i in range(len(days))],
-                "high": [base + 0.001 * i for i in range(len(days))],
-                "low": [base + 0.001 * i for i in range(len(days))],
-                "close": [base + 0.001 * i for i in range(len(days))],
-                "volume": [float("nan")] * len(days),
-                "source": ["fred"] * len(days),
-            })
+            out[t] = pd.DataFrame(
+                {
+                    "ts": days,
+                    "open": [base + 0.001 * i for i in range(len(days))],
+                    "high": [base + 0.001 * i for i in range(len(days))],
+                    "low": [base + 0.001 * i for i in range(len(days))],
+                    "close": [base + 0.001 * i for i in range(len(days))],
+                    "volume": [float("nan")] * len(days),
+                    "source": ["fred"] * len(days),
+                }
+            )
         return out
 
 
 class TestPipelineRun:
     def test_successful_run_persists_today_snapshot(self, session, tmp_path):
         store = PipelineStatusStore(tmp_path / "status.json")
-        res = asyncio.run(run_yield_curve_pipeline(
-            session=session, fetcher=FakeCurveFetcher(), status_store=store
-        ))
+        res = asyncio.run(run_yield_curve_pipeline(session=session, fetcher=FakeCurveFetcher(), status_store=store))
         today = date.today()
         snap = YieldCurveHistory(session).get_snapshot(today)
         assert snap is not None, res
@@ -100,9 +104,9 @@ class TestPipelineRun:
 
     def test_fred_failure_is_recorded_and_surfaced(self, session, tmp_path):
         store = PipelineStatusStore(tmp_path / "status.json")
-        res = asyncio.run(run_yield_curve_pipeline(
-            session=session, fetcher=FakeCurveFetcher(fail=True), status_store=store
-        ))
+        res = asyncio.run(
+            run_yield_curve_pipeline(session=session, fetcher=FakeCurveFetcher(fail=True), status_store=store)
+        )
         assert res["saved"] == 0
         assert res["error"]
         status = store.load()
@@ -114,12 +118,14 @@ class TestPipelineRun:
 class TestBackfill:
     def test_backfill_populates_business_days_with_deltas(self, session, tmp_path):
         store = PipelineStatusStore(tmp_path / "status.json")
-        res = asyncio.run(run_yield_curve_pipeline(
-            session=session,
-            fetcher=FakeCurveFetcher(),
-            status_store=store,
-            backfill_days=10,
-        ))
+        res = asyncio.run(
+            run_yield_curve_pipeline(
+                session=session,
+                fetcher=FakeCurveFetcher(),
+                status_store=store,
+                backfill_days=10,
+            )
+        )
         # backfill_days is *calendar* days back: [today-10d, today] business days.
         days = pd.bdate_range(date.today() - timedelta(days=10), date.today())
         assert res["saved"] == len(days)
@@ -147,16 +153,23 @@ class TestBackfill:
                 out = {}
                 for t in tenors:
                     close = [_LEVELS.get(t, 4.0) + 0.001 * (d.toordinal() - ref) for d in idx.date]
-                    out[t] = pd.DataFrame({
-                        "ts": idx, "open": close, "high": close, "low": close,
-                        "close": close, "volume": [float("nan")] * len(idx), "source": ["fred"] * len(idx),
-                    })
+                    out[t] = pd.DataFrame(
+                        {
+                            "ts": idx,
+                            "open": close,
+                            "high": close,
+                            "low": close,
+                            "close": close,
+                            "volume": [float("nan")] * len(idx),
+                            "source": ["fred"] * len(idx),
+                        }
+                    )
                 return out
 
         store = PipelineStatusStore(tmp_path / "status.json")
-        res = asyncio.run(run_yield_curve_pipeline(
-            session=session, fetcher=LateStartFetcher(), status_store=store, backfill_days=10
-        ))
+        res = asyncio.run(
+            run_yield_curve_pipeline(session=session, fetcher=LateStartFetcher(), status_store=store, backfill_days=10)
+        )
 
         expected_days = days[2:]
         assert res["saved"] == len(expected_days), res
@@ -172,13 +185,13 @@ class TestBackfill:
     def test_ensure_populated_noop_when_data_exists(self, session, tmp_path):
         store = PipelineStatusStore(tmp_path / "status.json")
         fetcher = FakeCurveFetcher()
-        asyncio.run(ensure_yield_curve_populated(
-            session=session, fetcher=fetcher, status_store=store, backfill_days=10
-        ))
+        asyncio.run(
+            ensure_yield_curve_populated(session=session, fetcher=fetcher, status_store=store, backfill_days=10)
+        )
         assert fetcher.calls, "empty DB must trigger a backfill"
         fetcher2 = FakeCurveFetcher()
-        ran = asyncio.run(ensure_yield_curve_populated(
-            session=session, fetcher=fetcher2, status_store=store, backfill_days=10
-        ))
+        ran = asyncio.run(
+            ensure_yield_curve_populated(session=session, fetcher=fetcher2, status_store=store, backfill_days=10)
+        )
         assert ran is False
         assert fetcher2.calls == [], "populated DB must not re-fetch"

@@ -100,9 +100,7 @@ def simulate_gbm(
     drift = (mu - 0.5 * sigma * sigma) * dt
     diffusion = sigma * np.sqrt(dt) * z
     log_rets = drift + diffusion
-    log_paths = np.concatenate(
-        [np.zeros((n_paths, 1)), np.cumsum(log_rets, axis=1)], axis=1
-    )
+    log_paths = np.concatenate([np.zeros((n_paths, 1)), np.cumsum(log_rets, axis=1)], axis=1)
     paths = s0 * np.exp(log_paths)
 
     terminal = paths[:, -1]
@@ -239,10 +237,7 @@ def simulate_regime_switching(
         high_mask = ~low_mask
 
     mu = np.array([float(rets[low_mask].mean()), float(rets[high_mask].mean())])
-    sigma = np.array(
-        [max(float(rets[low_mask].std(ddof=0)), 1e-6),
-         max(float(rets[high_mask].std(ddof=0)), 1e-6)]
-    )
+    sigma = np.array([max(float(rets[low_mask].std(ddof=0)), 1e-6), max(float(rets[high_mask].std(ddof=0)), 1e-6)])
 
     # Estimate transition probabilities by counting consecutive states
     # First, label each historical bar as state 0 (low) or 1 (high)
@@ -265,9 +260,7 @@ def simulate_regime_switching(
     paths[:, 0] = starting_value
 
     # Initial state: sample from the empirical distribution
-    init_probs = np.array(
-        [low_mask.sum() / len(low_mask), high_mask.sum() / len(low_mask)]
-    )
+    init_probs = np.array([low_mask.sum() / len(low_mask), high_mask.sum() / len(low_mask)])
     init_probs = init_probs / init_probs.sum()
     current_states = rng.choice(2, size=n_paths, p=init_probs)
 
@@ -336,12 +329,8 @@ def simulate_strategy(
 
     n_steps = n_steps or len(returns)
     method_fn = {
-        "block_bootstrap": lambda: simulate_block_bootstrap(
-            returns, n_paths=n_paths, n_steps=n_steps, seed=seed
-        ),
-        "regime_switching": lambda: simulate_regime_switching(
-            returns, n_paths=n_paths, n_steps=n_steps, seed=seed
-        ),
+        "block_bootstrap": lambda: simulate_block_bootstrap(returns, n_paths=n_paths, n_steps=n_steps, seed=seed),
+        "regime_switching": lambda: simulate_regime_switching(returns, n_paths=n_paths, n_steps=n_steps, seed=seed),
     }.get(method)
     if method_fn is None:
         raise ValueError(f"Unknown method '{method}' for strategy simulation")

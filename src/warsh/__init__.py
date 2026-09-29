@@ -8,14 +8,15 @@ Extended with:
 - events: X-factor and black swan market shocks
 - gamification: Fed Chair rating system + scenario matching
 """
-from src.warsh.tools import FedTool, ToolName, get_all_tools
-from src.warsh.simulator import CurveSimulator, SimulationResult
-from src.warsh.events import MarketEvent, roll_event, apply_event_to_curve, get_all_events
+
+from src.warsh.events import MarketEvent, apply_event_to_curve, get_all_events, roll_event
 from src.warsh.gamification import (
-    rate_fed_chair,
     calculate_scenario_match,
     get_market_prediction,
+    rate_fed_chair,
 )
+from src.warsh.simulator import CurveSimulator, SimulationResult
+from src.warsh.tools import FedTool, ToolName, get_all_tools
 
 __all__ = [
     "FedTool",

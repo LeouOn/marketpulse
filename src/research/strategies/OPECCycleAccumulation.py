@@ -57,9 +57,7 @@ class OPECCycleAccumulation(CycleAccumulation):
     """
 
     name: ClassVar[str] = "OPECCycleAccumulation"
-    description: ClassVar[str] = (
-        "Oil accumulation driven by inventory cycles (EIA + spot trend)"
-    )
+    description: ClassVar[str] = "Oil accumulation driven by inventory cycles (EIA + spot trend)"
     default_params: ClassVar[dict[str, Any]] = {
         "draw_threshold": -1.0,
         "build_threshold": 1.0,
@@ -89,9 +87,7 @@ class OPECCycleAccumulation(CycleAccumulation):
             f"Wire the EIA feed in a future task to enable phase logic."
         )
 
-    def _cycle_phase(
-        self, timestamp: pd.Timestamp, factor_df: pd.DataFrame
-    ) -> float:
+    def _cycle_phase(self, timestamp: pd.Timestamp, factor_df: pd.DataFrame) -> float:
         """Return the oil accumulation intensity at ``timestamp``.
 
         Implements the v1 phase logic.  All fallback paths return the

@@ -527,9 +527,7 @@ class LLMManager:
         self.settings = get_settings()
         self._router = None
 
-    async def analyze_market(
-        self, internals_data: dict[str, Any], analysis_type: str = "quick"
-    ) -> str | None:
+    async def analyze_market(self, internals_data: dict[str, Any], analysis_type: str = "quick") -> str | None:
         """Analyze market using ModelRouter for provider selection.
 
         Args:
@@ -552,26 +550,16 @@ class LLMManager:
 
                 if analysis_type == "quick":
                     if hasattr(client, "analyze_market"):
-                        result = await client.analyze_market(
-                            internals_data, model=model_id, max_tokens=300
-                        )
+                        result = await client.analyze_market(internals_data, model=model_id, max_tokens=300)
                     else:
-                        result = await self._fallback_analyze(
-                            client, model_id, internals_data, "quick"
-                        )
+                        result = await self._fallback_analyze(client, model_id, internals_data, "quick")
                 elif analysis_type == "deep":
                     if hasattr(client, "deep_analysis"):
-                        result = await client.deep_analysis(
-                            internals_data, model=model_id, max_tokens=800
-                        )
+                        result = await client.deep_analysis(internals_data, model=model_id, max_tokens=800)
                     else:
-                        result = await self._fallback_analyze(
-                            client, model_id, internals_data, "deep"
-                        )
+                        result = await self._fallback_analyze(client, model_id, internals_data, "deep")
                 else:
-                    result = await self._fallback_analyze(
-                        client, model_id, internals_data, analysis_type
-                    )
+                    result = await self._fallback_analyze(client, model_id, internals_data, analysis_type)
 
                 if result:
                     return f"🤖 {provider_name}:\n{result}"

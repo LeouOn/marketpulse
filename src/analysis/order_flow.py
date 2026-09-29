@@ -9,17 +9,19 @@ Implements real-time order flow analysis including:
 - Imbalance Detection
 """
 
-import pandas as pd
-import numpy as np
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Literal, Tuple
 from datetime import datetime
+from typing import List, Literal, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 from loguru import logger
 
 
 @dataclass
 class VolumeBar:
     """Volume bar with buy/sell breakdown"""
+
     timestamp: datetime
     buy_volume: float
     sell_volume: float
@@ -28,10 +30,10 @@ class VolumeBar:
     delta_percent: float  # delta / total_volume * 100
 
     @classmethod
-    def from_trades(cls, timestamp: datetime, trades: List[dict]) -> 'VolumeBar':
+    def from_trades(cls, timestamp: datetime, trades: List[dict]) -> "VolumeBar":
         """Create VolumeBar from list of trades"""
-        buy_vol = sum(t['volume'] for t in trades if t['side'] == 'buy')
-        sell_vol = sum(t['volume'] for t in trades if t['side'] == 'sell')
+        buy_vol = sum(t["volume"] for t in trades if t["side"] == "buy")
+        sell_vol = sum(t["volume"] for t in trades if t["side"] == "sell")
         total_vol = buy_vol + sell_vol
 
         return cls(
@@ -40,13 +42,14 @@ class VolumeBar:
             sell_volume=sell_vol,
             total_volume=total_vol,
             delta=buy_vol - sell_vol,
-            delta_percent=(buy_vol - sell_vol) / total_vol * 100 if total_vol > 0 else 0
+            delta_percent=(buy_vol - sell_vol) / total_vol * 100 if total_vol > 0 else 0,
         )
 
 
 @dataclass
 class VolumeProfileLevel:
     """Single price level in volume profile"""
+
     price: float
     volume: float
     buy_volume: float
@@ -57,6 +60,7 @@ class VolumeProfileLevel:
 @dataclass
 class VolumeProfile:
     """Complete volume profile for a period"""
+
     levels: List[VolumeProfileLevel]
     poc: float  # Point of Control (highest volume)
     vah: float  # Value Area High (70% volume)
@@ -67,6 +71,7 @@ class VolumeProfile:
 @dataclass
 class DeltaDivergence:
     """Delta divergence signal"""
+
     type: Literal["bullish", "bearish"]
     timestamp: datetime
     price_at_signal: float
@@ -77,6 +82,7 @@ class DeltaDivergence:
 @dataclass
 class Imbalance:
     """Order flow imbalance"""
+
     type: Literal["buy", "sell"]
     price: float
     timestamp: datetime
@@ -160,10 +166,7 @@ class VolumeDeltaAnalyzer:
     """Analyze volume delta for divergences and patterns"""
 
     def detect_delta_divergence(
-        self,
-        price: pd.Series,
-        cvd: pd.Series,
-        lookback: int = 20
+        self, price: pd.Series, cvd: pd.Series, lookback: int = 20
     ) -> Optional[DeltaDivergence]:
         """
         Detect bullish/bearish divergence between price and CVD
@@ -205,11 +208,11 @@ class VolumeDeltaAnalyzer:
                 strength = min(100, strength * 10)
 
                 return DeltaDivergence(
-                    type='bullish',
+                    type="bullish",
                     timestamp=price.index[-1],
                     price_at_signal=price.iloc[-1],
                     delta_at_signal=cvd.iloc[-1],
-                    strength=strength
+                    strength=strength,
                 )
 
         # Check for bearish divergence (price higher high, CVD lower high)
@@ -219,11 +222,11 @@ class VolumeDeltaAnalyzer:
                 strength = min(100, strength * 10)
 
                 return DeltaDivergence(
-                    type='bearish',
+                    type="bearish",
                     timestamp=price.index[-1],
                     price_at_signal=price.iloc[-1],
                     delta_at_signal=cvd.iloc[-1],
-                    strength=strength
+                    strength=strength,
                 )
 
         return None
@@ -232,7 +235,7 @@ class VolumeDeltaAnalyzer:
         """Find local minimums in series"""
         minimums = []
         for i in range(window, len(series) - window):
-            if series.iloc[i] == series.iloc[i-window:i+window+1].min():
+            if series.iloc[i] == series.iloc[i - window : i + window + 1].min():
                 minimums.append(series.iloc[i])
         return minimums
 
@@ -240,7 +243,7 @@ class VolumeDeltaAnalyzer:
         """Find local maximums in series"""
         maximums = []
         for i in range(window, len(series) - window):
-            if series.iloc[i] == series.iloc[i-window:i+window+1].max():
+            if series.iloc[i] == series.iloc[i - window : i + window + 1].max():
                 maximums.append(series.iloc[i])
         return maximums
 
@@ -257,11 +260,7 @@ class VolumeProfileBuilder:
         """
         self.price_tick = price_tick
 
-    def build_profile(
-        self,
-        candles: pd.DataFrame,
-        value_area_pct: float = 70.0
-    ) -> VolumeProfile:
+    def build_profile(self, candles: pd.DataFrame, value_area_pct: float = 70.0) -> VolumeProfile:
         """
         Build volume profile from candlestick data
 
@@ -273,17 +272,11 @@ class VolumeProfileBuilder:
             VolumeProfile object
         """
         if candles.empty:
-            return VolumeProfile(
-                levels=[],
-                poc=0.0,
-                vah=0.0,
-                val=0.0,
-                total_volume=0.0
-            )
+            return VolumeProfile(levels=[], poc=0.0, vah=0.0, val=0.0, total_volume=0.0)
 
         # Create price levels
-        min_price = candles['low'].min()
-        max_price = candles['high'].max()
+        min_price = candles["low"].min()
+        max_price = candles["high"].max()
 
         # Round to tick size
         min_price = np.floor(min_price / self.price_tick) * self.price_tick
@@ -295,54 +288,52 @@ class VolumeProfileBuilder:
         volume_at_price = {}
 
         for price in price_levels:
-            volume_at_price[price] = {
-                'total': 0.0,
-                'buy': 0.0,
-                'sell': 0.0
-            }
+            volume_at_price[price] = {"total": 0.0, "buy": 0.0, "sell": 0.0}
 
         # Distribute volume across price range
         for _idx, candle in candles.iterrows():
             # Simple distribution: spread volume evenly across candle range
-            candle_range = candle['high'] - candle['low']
+            candle_range = candle["high"] - candle["low"]
             if candle_range == 0:
                 candle_range = self.price_tick
 
-            volume_per_tick = candle['volume'] / (candle_range / self.price_tick)
+            volume_per_tick = candle["volume"] / (candle_range / self.price_tick)
 
             # Add volume to each price level in candle
             for price in price_levels:
-                if candle['low'] <= price <= candle['high']:
-                    volume_at_price[price]['total'] += volume_per_tick
+                if candle["low"] <= price <= candle["high"]:
+                    volume_at_price[price]["total"] += volume_per_tick
 
                     # Estimate buy/sell (simplified - bullish candle = more buying at top)
-                    if candle['close'] > candle['open']:  # Bullish
-                        if price > (candle['low'] + candle_range / 2):
-                            volume_at_price[price]['buy'] += volume_per_tick * 0.6
-                            volume_at_price[price]['sell'] += volume_per_tick * 0.4
+                    if candle["close"] > candle["open"]:  # Bullish
+                        if price > (candle["low"] + candle_range / 2):
+                            volume_at_price[price]["buy"] += volume_per_tick * 0.6
+                            volume_at_price[price]["sell"] += volume_per_tick * 0.4
                         else:
-                            volume_at_price[price]['buy'] += volume_per_tick * 0.4
-                            volume_at_price[price]['sell'] += volume_per_tick * 0.6
+                            volume_at_price[price]["buy"] += volume_per_tick * 0.4
+                            volume_at_price[price]["sell"] += volume_per_tick * 0.6
                     else:  # Bearish
-                        if price < (candle['low'] + candle_range / 2):
-                            volume_at_price[price]['sell'] += volume_per_tick * 0.6
-                            volume_at_price[price]['buy'] += volume_per_tick * 0.4
+                        if price < (candle["low"] + candle_range / 2):
+                            volume_at_price[price]["sell"] += volume_per_tick * 0.6
+                            volume_at_price[price]["buy"] += volume_per_tick * 0.4
                         else:
-                            volume_at_price[price]['sell'] += volume_per_tick * 0.4
-                            volume_at_price[price]['buy'] += volume_per_tick * 0.6
+                            volume_at_price[price]["sell"] += volume_per_tick * 0.4
+                            volume_at_price[price]["buy"] += volume_per_tick * 0.6
 
         # Create VolumeProfileLevel objects
         levels = []
         for price in sorted(volume_at_price.keys()):
             vol_data = volume_at_price[price]
-            if vol_data['total'] > 0:
-                levels.append(VolumeProfileLevel(
-                    price=price,
-                    volume=vol_data['total'],
-                    buy_volume=vol_data['buy'],
-                    sell_volume=vol_data['sell'],
-                    delta=vol_data['buy'] - vol_data['sell']
-                ))
+            if vol_data["total"] > 0:
+                levels.append(
+                    VolumeProfileLevel(
+                        price=price,
+                        volume=vol_data["total"],
+                        buy_volume=vol_data["buy"],
+                        sell_volume=vol_data["sell"],
+                        delta=vol_data["buy"] - vol_data["sell"],
+                    )
+                )
 
         # Find POC (Point of Control - highest volume)
         if levels:
@@ -375,13 +366,7 @@ class VolumeProfileBuilder:
             vah = max_price
             val = min_price
 
-        return VolumeProfile(
-            levels=levels,
-            poc=poc,
-            vah=vah,
-            val=val,
-            total_volume=total_vol
-        )
+        return VolumeProfile(levels=levels, poc=poc, vah=vah, val=val, total_volume=total_vol)
 
 
 class ImbalanceDetector:
@@ -397,10 +382,7 @@ class ImbalanceDetector:
         self.imbalance_ratio = imbalance_ratio
 
     def detect_imbalances(
-        self,
-        volume_bars: List[VolumeBar],
-        candles: Optional[pd.DataFrame] = None,
-        lookback: int = 5
+        self, volume_bars: List[VolumeBar], candles: Optional[pd.DataFrame] = None, lookback: int = 5
     ) -> List[Imbalance]:
         """
         Detect order flow imbalances
@@ -421,7 +403,7 @@ class ImbalanceDetector:
             return imbalances
 
         for i in range(len(volume_bars) - lookback + 1):
-            window = volume_bars[i:i+lookback]
+            window = volume_bars[i : i + lookback]
 
             total_buy = sum(bar.buy_volume for bar in window)
             total_sell = sum(bar.sell_volume for bar in window)
@@ -430,9 +412,9 @@ class ImbalanceDetector:
             if candles is not None and not candles.empty:
                 ts = window[-1].timestamp
                 if ts in candles.index:
-                    price = float(candles.loc[ts, 'close'])
+                    price = float(candles.loc[ts, "close"])
                 elif len(candles) > i + lookback - 1:
-                    price = float(candles['close'].iloc[i + lookback - 1])
+                    price = float(candles["close"].iloc[i + lookback - 1])
 
             # Check for buy imbalance
             if total_buy > 0 and total_sell > 0:
@@ -441,13 +423,11 @@ class ImbalanceDetector:
                 if buy_ratio >= self.imbalance_ratio:
                     strength = min(100, (buy_ratio / self.imbalance_ratio) * 50)
 
-                    imbalances.append(Imbalance(
-                        type='buy',
-                        price=price,
-                        timestamp=window[-1].timestamp,
-                        ratio=buy_ratio,
-                        strength=strength
-                    ))
+                    imbalances.append(
+                        Imbalance(
+                            type="buy", price=price, timestamp=window[-1].timestamp, ratio=buy_ratio, strength=strength
+                        )
+                    )
 
             # Check for sell imbalance
             if total_sell > 0 and total_buy > 0:
@@ -456,13 +436,15 @@ class ImbalanceDetector:
                 if sell_ratio >= self.imbalance_ratio:
                     strength = min(100, (sell_ratio / self.imbalance_ratio) * 50)
 
-                    imbalances.append(Imbalance(
-                        type='sell',
-                        price=price,
-                        timestamp=window[-1].timestamp,
-                        ratio=sell_ratio,
-                        strength=strength
-                    ))
+                    imbalances.append(
+                        Imbalance(
+                            type="sell",
+                            price=price,
+                            timestamp=window[-1].timestamp,
+                            ratio=sell_ratio,
+                            strength=strength,
+                        )
+                    )
 
         return imbalances
 
@@ -471,10 +453,7 @@ class AbsorptionDetector:
     """Detect absorption (large volume with little price movement)"""
 
     def detect_absorption(
-        self,
-        candles: pd.DataFrame,
-        volume_threshold_multiplier: float = 2.0,
-        price_change_threshold: float = 0.5
+        self, candles: pd.DataFrame, volume_threshold_multiplier: float = 2.0, price_change_threshold: float = 0.5
     ) -> List[Tuple[datetime, str]]:
         """
         Detect absorption events
@@ -495,19 +474,19 @@ class AbsorptionDetector:
         if len(candles) < 20:
             return absorption_events
 
-        avg_volume = candles['volume'].rolling(20).mean()
+        avg_volume = candles["volume"].rolling(20).mean()
 
         for idx, candle in candles.iterrows():
             if pd.isna(avg_volume.loc[idx]):
                 continue
 
-            volume_ratio = candle['volume'] / avg_volume.loc[idx]
-            price_change_pct = abs(candle['close'] - candle['open']) / candle['open'] * 100
+            volume_ratio = candle["volume"] / avg_volume.loc[idx]
+            price_change_pct = abs(candle["close"] - candle["open"]) / candle["open"] * 100
 
             # High volume but small price change = absorption
             if volume_ratio >= volume_threshold_multiplier and price_change_pct <= price_change_threshold:
                 # Determine if buying or selling absorption
-                absorption_type = 'buy_absorption' if candle['close'] > candle['open'] else 'sell_absorption'
+                absorption_type = "buy_absorption" if candle["close"] > candle["open"] else "sell_absorption"
 
                 absorption_events.append((idx, absorption_type))
                 logger.debug(f"Absorption detected at {idx}: {absorption_type}")

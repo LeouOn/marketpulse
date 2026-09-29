@@ -18,10 +18,12 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.analysis.risk_manager import RiskManager, RiskLevel
-from src.state.position_manager import PositionManager, Position, PositionSide, PositionStatus
 from datetime import datetime
+
 import pytest
+
+from src.analysis.risk_manager import RiskLevel, RiskManager
+from src.state.position_manager import Position, PositionManager, PositionSide, PositionStatus
 
 
 class TestRiskManager:
@@ -30,11 +32,7 @@ class TestRiskManager:
     def setup_method(self):
         """Setup before each test"""
         self.risk_manager = RiskManager(
-            account_size=10000,
-            max_daily_loss=500,
-            max_position_risk=250,
-            min_risk_reward=1.5,
-            max_consecutive_losses=3
+            account_size=10000, max_daily_loss=500, max_position_risk=250, min_risk_reward=1.5, max_consecutive_losses=3
         )
 
     def test_initialization(self):
@@ -54,7 +52,7 @@ class TestRiskManager:
             take_profit=15870,
             direction="long",
             contracts=2,
-            point_value=2.0
+            point_value=2.0,
         )
 
         assert validation.approved is True
@@ -71,7 +69,7 @@ class TestRiskManager:
             take_profit=15900,
             direction="long",
             contracts=4,
-            point_value=2.0
+            point_value=2.0,
         )
 
         assert validation.approved is False
@@ -87,7 +85,7 @@ class TestRiskManager:
             take_profit=15860,  # 10 points reward (1:1)
             direction="long",
             contracts=2,
-            point_value=2.0
+            point_value=2.0,
         )
 
         assert validation.approved is False
@@ -103,7 +101,7 @@ class TestRiskManager:
             take_profit=15870,
             direction="long",
             contracts=1,
-            point_value=2.0
+            point_value=2.0,
         )
 
         assert validation.approved is False
@@ -115,12 +113,7 @@ class TestRiskManager:
         self.risk_manager.current_daily_pnl = -500
 
         validation = self.risk_manager.validate_trade(
-            symbol="MNQ",
-            entry_price=15850,
-            stop_loss=15840,
-            take_profit=15870,
-            direction="long",
-            contracts=1
+            symbol="MNQ", entry_price=15850, stop_loss=15840, take_profit=15870, direction="long", contracts=1
         )
 
         assert validation.approved is False
@@ -135,12 +128,7 @@ class TestRiskManager:
         assert self.risk_manager.consecutive_losses == 3
 
         validation = self.risk_manager.validate_trade(
-            symbol="MNQ",
-            entry_price=15850,
-            stop_loss=15840,
-            take_profit=15870,
-            direction="long",
-            contracts=1
+            symbol="MNQ", entry_price=15850, stop_loss=15840, take_profit=15870, direction="long", contracts=1
         )
 
         assert validation.approved is False
@@ -163,7 +151,7 @@ class TestRiskManager:
             stop_loss=15840,  # 10 points = $20 risk per contract
             direction="long",
             risk_amount=100,
-            point_value=2.0
+            point_value=2.0,
         )
 
         # $100 risk / $20 per contract = 5 contracts, but capped at 4
@@ -176,7 +164,7 @@ class TestRiskManager:
             stop_loss=15800,  # 50 points = $100 risk per contract
             direction="long",
             risk_amount=10,  # Only $10 risk = 0.1 contracts
-            point_value=2.0
+            point_value=2.0,
         )
 
         assert contracts == 1  # Minimum
@@ -185,21 +173,11 @@ class TestRiskManager:
         """Test portfolio heat (total at-risk) limit"""
         # Add some open positions
         self.risk_manager.add_open_position(
-            symbol="MNQ",
-            entry_price=15850,
-            stop_loss=15840,
-            contracts=2,
-            direction="long",
-            point_value=2.0
+            symbol="MNQ", entry_price=15850, stop_loss=15840, contracts=2, direction="long", point_value=2.0
         )
 
         self.risk_manager.add_open_position(
-            symbol="ES",
-            entry_price=5100,
-            stop_loss=5095,
-            contracts=1,
-            direction="long",
-            point_value=5.0
+            symbol="ES", entry_price=5100, stop_loss=5095, contracts=1, direction="long", point_value=5.0
         )
 
         # Total heat = (10 * 2 * 2) + (5 * 1 * 5) = 40 + 25 = 65
@@ -215,7 +193,7 @@ class TestRiskManager:
             take_profit=15870,
             direction="long",
             contracts=1,
-            point_value=2.0
+            point_value=2.0,
         )
 
         # Should still be approved (65 + 20 = 85 is below new limit)
@@ -229,7 +207,7 @@ class TestRiskManager:
             take_profit=15900,
             direction="long",
             contracts=1,
-            point_value=2.0
+            point_value=2.0,
         )
 
         # 65 + 40 = 105 > 70, should reject
@@ -240,24 +218,14 @@ class TestRiskManager:
         # Add max positions (3)
         for i in range(3):
             self.risk_manager.add_open_position(
-                symbol=f"SYM{i}",
-                entry_price=100,
-                stop_loss=95,
-                contracts=1,
-                direction="long",
-                point_value=1.0
+                symbol=f"SYM{i}", entry_price=100, stop_loss=95, contracts=1, direction="long", point_value=1.0
             )
 
         assert len(self.risk_manager.open_positions) == 3
 
         # Try to open 4th position
         validation = self.risk_manager.validate_trade(
-            symbol="MNQ",
-            entry_price=15850,
-            stop_loss=15840,
-            take_profit=15870,
-            direction="long",
-            contracts=1
+            symbol="MNQ", entry_price=15850, stop_loss=15840, take_profit=15870, direction="long", contracts=1
         )
 
         assert validation.approved is False
@@ -283,20 +251,16 @@ class TestRiskManager:
         """Test risk summary generation"""
         self.risk_manager.record_trade_result(-100)
         self.risk_manager.add_open_position(
-            symbol="MNQ",
-            entry_price=15850,
-            stop_loss=15840,
-            contracts=2,
-            direction="long"
+            symbol="MNQ", entry_price=15850, stop_loss=15840, contracts=2, direction="long"
         )
 
         summary = self.risk_manager.get_risk_summary()
 
-        assert summary['account_size'] == 10000
-        assert summary['daily_pnl'] == -100
-        assert summary['open_positions'] == 1
-        assert summary['portfolio_heat'] > 0
-        assert summary['can_trade'] is True  # Still within limits
+        assert summary["account_size"] == 10000
+        assert summary["daily_pnl"] == -100
+        assert summary["open_positions"] == 1
+        assert summary["portfolio_heat"] > 0
+        assert summary["can_trade"] is True  # Still within limits
 
     def test_reset_daily_stats(self):
         """Test daily statistics reset"""
@@ -318,9 +282,7 @@ class TestPositionManager:
     def setup_manager(self, tmp_path):
         """Setup before each test using a temporary state file"""
         test_state_file = str(tmp_path / "test_positions.json")
-        self.position_manager = PositionManager(
-            state_file=test_state_file
-        )
+        self.position_manager = PositionManager(state_file=test_state_file)
 
     def test_add_position(self):
         """Test adding a position"""
@@ -333,7 +295,7 @@ class TestPositionManager:
             take_profit=15870,
             contracts=2,
             entry_timestamp=datetime.now(),
-            status=PositionStatus.OPEN
+            status=PositionStatus.OPEN,
         )
 
         self.position_manager.add_position(position)
@@ -353,7 +315,7 @@ class TestPositionManager:
             contracts=2,
             entry_timestamp=datetime.now(),
             status=PositionStatus.OPEN,
-            point_value=2.0
+            point_value=2.0,
         )
 
         self.position_manager.add_position(position)
@@ -361,7 +323,7 @@ class TestPositionManager:
         # Close position
         closed = self.position_manager.close_position(
             position_id="test-456",
-            exit_price=15870  # Hit target
+            exit_price=15870,  # Hit target
         )
 
         assert closed is not None
@@ -381,7 +343,7 @@ class TestPositionManager:
             contracts=2,
             entry_timestamp=datetime.now(),
             status=PositionStatus.OPEN,
-            point_value=2.0
+            point_value=2.0,
         )
 
         # Price moved up 10 points
@@ -403,7 +365,7 @@ class TestPositionManager:
             take_profit=15870,
             contracts=1,
             entry_timestamp=datetime.now(),
-            status=PositionStatus.OPEN
+            status=PositionStatus.OPEN,
         )
 
         assert position.is_stopped_out(15830) is True
@@ -420,7 +382,7 @@ class TestPositionManager:
             take_profit=15870,
             contracts=1,
             entry_timestamp=datetime.now(),
-            status=PositionStatus.OPEN
+            status=PositionStatus.OPEN,
         )
 
         assert position.is_target_hit(15875) is True
@@ -438,7 +400,7 @@ class TestPositionManager:
             contracts=2,
             entry_timestamp=datetime.now(),
             status=PositionStatus.OPEN,
-            point_value=2.0
+            point_value=2.0,
         )
 
         pos2 = Position(
@@ -451,7 +413,7 @@ class TestPositionManager:
             contracts=1,
             entry_timestamp=datetime.now(),
             status=PositionStatus.OPEN,
-            point_value=5.0
+            point_value=5.0,
         )
 
         self.position_manager.add_position(pos1)
@@ -476,14 +438,11 @@ class TestPositionManager:
             contracts=2,
             entry_timestamp=datetime.now(),
             status=PositionStatus.OPEN,
-            point_value=2.0
+            point_value=2.0,
         )
 
         self.position_manager.add_position(position)
-        self.position_manager.close_position(
-            position_id="daily-test",
-            exit_price=15870
-        )
+        self.position_manager.close_position(position_id="daily-test", exit_price=15870)
 
         daily_pnl = self.position_manager.get_daily_pnl()
         assert daily_pnl == 80.0  # 20 points * $2 * 2 contracts
@@ -502,13 +461,13 @@ class TestPositionManager:
                 contracts=1,
                 entry_timestamp=datetime.now(),
                 status=PositionStatus.OPEN,
-                point_value=2.0
+                point_value=2.0,
             )
 
             self.position_manager.add_position(position)
             self.position_manager.close_position(
                 position_id=f"loss-{i}",
-                exit_price=15840  # Stopped out
+                exit_price=15840,  # Stopped out
             )
 
         consecutive = self.position_manager.get_consecutive_losses()
@@ -522,12 +481,14 @@ def run_tests():
     print("=" * 70)
 
     # Run pytest
-    pytest.main([
-        __file__,
-        "-v",
-        "--tb=short",
-        "-x"  # Stop on first failure
-    ])
+    pytest.main(
+        [
+            __file__,
+            "-v",
+            "--tb=short",
+            "-x",  # Stop on first failure
+        ]
+    )
 
 
 if __name__ == "__main__":
