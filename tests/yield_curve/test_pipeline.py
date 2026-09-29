@@ -129,6 +129,46 @@ class TestBackfill:
         assert latest.spread_2s10s_delta_5d is not None, "deltas need backfilled history"
         assert latest.shape_trend
 
+    def test_leading_days_without_data_do_not_shift_later_snapshots(self, session, tmp_path):
+        """Regression: `curves` skipped empty days but `dates` did not, so zip() paired each
+        date with a *later* date's curve and saved every snapshot under the wrong date.
+
+        FRED has no observation before the window's first published day (e.g. a leading
+        holiday), so the first business days of a backfill legitimately have no curve.
+        """
+        today = date.today()
+        days = [d.date() for d in pd.bdate_range(today - timedelta(days=10), today)]
+        first_obs = days[2]  # two leading business days with no data yet
+        ref = first_obs.toordinal()
+
+        class LateStartFetcher:
+            def fetch_tenors(self, tenors, start, end):
+                idx = pd.bdate_range(first_obs, end)
+                out = {}
+                for t in tenors:
+                    close = [_LEVELS.get(t, 4.0) + 0.001 * (d.toordinal() - ref) for d in idx.date]
+                    out[t] = pd.DataFrame({
+                        "ts": idx, "open": close, "high": close, "low": close,
+                        "close": close, "volume": [float("nan")] * len(idx), "source": ["fred"] * len(idx),
+                    })
+                return out
+
+        store = PipelineStatusStore(tmp_path / "status.json")
+        res = asyncio.run(run_yield_curve_pipeline(
+            session=session, fetcher=LateStartFetcher(), status_store=store, backfill_days=10
+        ))
+
+        expected_days = days[2:]
+        assert res["saved"] == len(expected_days), res
+        saved_dates = sorted(row.date for row in session.query(YieldCurveSnapshot).all())
+        assert saved_dates == expected_days, "snapshots must carry the date their curve belongs to"
+        history = YieldCurveHistory(session)
+        for d in expected_days:
+            snap = history.get_snapshot(d)
+            assert snap is not None
+            assert snap.curve["2y"] == pytest.approx(_LEVELS["2y"] + 0.001 * (d.toordinal() - ref)), d
+        assert history.get_snapshot(days[0]) is None and history.get_snapshot(days[1]) is None
+
     def test_ensure_populated_noop_when_data_exists(self, session, tmp_path):
         store = PipelineStatusStore(tmp_path / "status.json")
         fetcher = FakeCurveFetcher()

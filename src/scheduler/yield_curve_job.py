@@ -152,8 +152,10 @@ async def run_yield_curve_pipeline(
             store.record_run(ok=False, error=msg)
             return {"saved": 0, "error": msg}
 
-        # 2. Per-day curve / spreads / shape over the window.
-        curves: list[dict[str, float]] = []
+        # 2. Per-day curve / spreads / shape over the window. A day before the first
+        #    observation (e.g. a leading holiday) has no curve; keep each curve paired
+        #    with its own date so skipping such days cannot shift the rest.
+        dated_curves: list[tuple[date, dict[str, float]]] = []
         for d in dates:
             curve = {
                 tenor: v
@@ -161,15 +163,17 @@ async def run_yield_curve_pipeline(
                 if (v := _asof_value(df, d)) is not None
             }
             if curve:
-                curves.append(curve)
+                dated_curves.append((d, curve))
+        dates = [d for d, _ in dated_curves]
+        curves = [c for _, c in dated_curves]
 
         spread_by_date = {
-            d: compute_spreads(c).get("2s10s") for d, c in zip(dates, curves, strict=False)
+            d: compute_spreads(c).get("2s10s") for d, c in zip(dates, curves, strict=True)
         }
 
         saved = 0
         latest_snap: SnapshotData | None = None
-        for i, (d, curve) in enumerate(zip(dates, curves, strict=False)):
+        for i, (d, curve) in enumerate(zip(dates, curves, strict=True)):
             spreads = compute_spreads(curve)
             baseline = curves[i - 5] if i >= 5 else curve
             snap = SnapshotData(
