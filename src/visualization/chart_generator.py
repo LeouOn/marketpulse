@@ -620,7 +620,7 @@ class ChartGenerator:
                 cmid=0,
                 colorbar=dict(title="Change %")
             ),
-            text=[f"{n}<br>{v:+.2f}%" for n, v in zip(names, values)],
+            text=[f"{n}<br>{v:+.2f}%" for n, v in zip(names, values, strict=True)],
             textposition="middle center",
             hovertemplate='<b>%{label}</b><br>Change: %{color:+.2f}%<extra></extra>'
         ))

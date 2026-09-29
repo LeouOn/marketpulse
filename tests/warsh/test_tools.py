@@ -62,7 +62,7 @@ def test_zero_deployment_has_zero_effect():
     tools = get_all_tools()
     qt = next(t for t in tools if t.name == ToolName.QT_PACE)
     effects = apply_tool_effect(qt, 0)
-    for tenor, value in effects.items():
+    for _tenor, value in effects.items():
         assert value == pytest.approx(0, abs=0.01)
 
 

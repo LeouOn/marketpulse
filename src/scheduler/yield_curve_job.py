@@ -164,12 +164,12 @@ async def run_yield_curve_pipeline(
                 curves.append(curve)
 
         spread_by_date = {
-            d: compute_spreads(c).get("2s10s") for d, c in zip(dates, curves)
+            d: compute_spreads(c).get("2s10s") for d, c in zip(dates, curves, strict=False)
         }
 
         saved = 0
         latest_snap: SnapshotData | None = None
-        for i, (d, curve) in enumerate(zip(dates, curves)):
+        for i, (d, curve) in enumerate(zip(dates, curves, strict=False)):
             spreads = compute_spreads(curve)
             baseline = curves[i - 5] if i >= 5 else curve
             snap = SnapshotData(

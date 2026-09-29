@@ -112,7 +112,7 @@ class Loan(ABC):
         self.params = merged
         self.validate_params(self.params)
 
-    def validate_params(self, params: dict[str, Any]) -> None:
+    def validate_params(self, params: dict[str, Any]) -> None:  # noqa: B027  # optional hook
         """Check *params* for invalid values; raise :class:`InvalidParamsError`.
 
         The default implementation is a no-op so subclasses only need to

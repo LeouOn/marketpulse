@@ -269,7 +269,7 @@ class BlackScholesCalculator:
         # Initial guess using Brenner-Subrahmanyam approximation
         sigma = np.sqrt(2 * np.pi / T) * (market_price / S)
 
-        for i in range(max_iterations):
+        for _i in range(max_iterations):
             if option_type == "call":
                 price = BlackScholesCalculator.calculate_call_price(S, K, T, r, sigma, q)
             else:

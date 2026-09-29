@@ -384,7 +384,7 @@ class AlertManager:
 
         task_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for (channel, _), result in zip(target_notifiers.items(), task_results):
+        for (channel, _), result in zip(target_notifiers.items(), task_results, strict=True):
             if isinstance(result, Exception):
                 logger.error(f"Alert send error on {channel.value}: {result}")
                 results[channel] = False

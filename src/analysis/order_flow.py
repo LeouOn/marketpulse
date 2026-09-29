@@ -302,7 +302,7 @@ class VolumeProfileBuilder:
             }
 
         # Distribute volume across price range
-        for idx, candle in candles.iterrows():
+        for _idx, candle in candles.iterrows():
             # Simple distribution: spread volume evenly across candle range
             candle_range = candle['high'] - candle['low']
             if candle_range == 0:

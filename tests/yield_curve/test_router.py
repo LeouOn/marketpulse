@@ -27,7 +27,7 @@ def client():
 
 def _stub_rows(n=2):
     rows = []
-    for i in range(n):
+    for _i in range(n):
         rows.append(SimpleNamespace(
             date=date(2026, 9, 25),
             curve={"2y": 3.4, "10y": 4.05},

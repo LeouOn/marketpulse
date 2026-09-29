@@ -452,12 +452,6 @@ class StrategyBuilder:
 
             strategies = []
 
-            # Example covered call (ATM)
-            atm_strike_call = min(
-                [c['strike'] for c in chain['calls']],
-                key=lambda x: abs(x - stock_price)
-            )
-
             # Example bull call spread (OTM)
             otm_calls = [c['strike'] for c in chain['calls'] if c['strike'] > stock_price]
             if len(otm_calls) >= 2:

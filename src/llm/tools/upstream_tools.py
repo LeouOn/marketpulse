@@ -450,7 +450,6 @@ async def analyze_order_flow(symbol: str, ohlcv_json: str) -> dict[str, Any]:
         # Simple order flow heuristics
         closes = df["close"].values
         volumes = df["volume"].values
-        price_changes = closes[1:] - closes[:-1]
 
         # CVD proxy: cumulative (close - open) * volume
         cv_delta = ((df["close"] - df["open"]) * df["volume"]).sum()

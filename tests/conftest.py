@@ -101,7 +101,7 @@ def pytest_sessionfinish(session, exitstatus):
                 f"\n[DIRTY TREE GUARD] Tracked files were modified during the test session!\n"
                 f"Status diff:\n{current}\n"
             )
-            warnings.warn(msg, UserWarning)
+            warnings.warn(msg, UserWarning, stacklevel=2)
             sys.stderr.write(msg)
     except Exception:
         pass
