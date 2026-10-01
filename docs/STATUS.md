@@ -160,7 +160,7 @@ curl -s -X POST localhost:8000/api/ai/query -H 'Content-Type: application/json' 
 
 ```bash
 env -i HOME="$HOME" PATH="$PATH" .venv/bin/python -m pytest tests -q
-# → 1088 passed, 32 skipped
+# → 1113 passed, 35 skipped (same on GitHub CI, Python 3.11 and 3.12)
 uvx ruff@0.16.9 check src tests          # All checks passed!
 uvx ruff@0.16.9 format --check src tests # 267 files already formatted
 ```
