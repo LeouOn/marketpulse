@@ -75,7 +75,9 @@ done
   (0.284 vs `RISK_ON` 0.237: real yields +47bp in 21 days, breakevens flat).
   **The "probabilities" are compressed stress scores, not calibrated probabilities** — the ordering and the dominant regime are
   meaningful, the magnitudes are not (a single fully-fired regime cannot show more than ~40%). `RISK_ON` is only "no stress
-  detected". Verify: `RUN_LIVE_TESTS=1 pytest tests/test_research_macro_regimes.py -k "backrun or tape"`.
+  detected". The API therefore also returns the raw stress `scores` (0-1, absolute) next to `probs`, with a `score_scale` note, on
+  `/api/research/regimes` and `/api/research/{asset}/regime`; the dashboard bars draw the score and show the relative weight on hover.
+  Verify: `RUN_LIVE_TESTS=1 pytest tests/test_research_macro_regimes.py -k "backrun or tape"`.
   The factor cache no longer rewrites a tracked file (it lives under `data/cache/macro`).
 
 ## Treasury yield curve — ✅

@@ -35,7 +35,8 @@ Genuine dead code (deleted, nothing to follow up): `llm/tools/upstream_tools.py`
 - Enabling the `UP`/`SIM`/`TCH`/`E`/`W` rules later is possible, but treat `UP` autofixes as unsafe here: that family removed a needed `typing` import earlier (`4829f23`, fixed in `ec8d4bc`).
 
 ## 5. Regime model — observed while fixing REAL_YIELD_SHOCK (2026-09-29), not changed
-- **Scores, not probabilities.** `classify` softmaxes stress scores in [0, 1], which compresses everything (one fully fired regime tops out near 40%).
+- **Scores, not probabilities — DONE 2026-10-01** (raw `scores` + a `score_scale` note are now in both regime endpoints and the dashboard bars; the softmax `probs` are unchanged and documented as relative).
+  Original finding: `classify` softmaxes stress scores in [0, 1], which compresses everything (one fully fired regime tops out near 40%).
   I tested sharpening with a temperature: the acceptance results do not change, but calm periods then read as an emphatic `RISK_ON` (`RISK_ON` is only the residual
   "no stress detected"), so I did not apply it. A better fix is to expose the raw scores (`compute_logits`) in the API and label the softmax output as relative.
 - **`RECESSION` is dominant on ~20% of all days since 1990.** NBER-dated recessions cover roughly 8% of that span (about 36 of ~440 months). The Sahm flag forces the score to 1.0
