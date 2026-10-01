@@ -1,6 +1,6 @@
 # MarketPulse agent task pack
 
-Eighteen self-contained tasks for parallel agents. Each task file is a complete prompt.
+Nineteen self-contained tasks for parallel agents. Each task file is a complete prompt.
 Baseline: `main` @ `35e5556` — `pytest tests -q` = **919 passed, 20 failed, 6 errors, 20 skipped**
 (the failures are stale legacy tests, owned by T2a/T2b/T2c/T3a/T3b below).
 
@@ -67,6 +67,7 @@ assignment; `config/credentials.yaml` is read relative to the working directory.
 | T9 | [Hermetic tests / CI parity](T9-hermetic-tests.md) | `tests/conftest.py`, other tests that dirty the tree or depend on local config | — |
 | T10a | [Manual lint fixes: `src/api`](T10a-lint-fixes-api.md) | `src/api/**` (37 bugbear / unused-variable findings) | — |
 | T10b | [Manual lint fixes: rest of repo](T10b-lint-fixes-rest.md) | `src/**` except `src/api`, and `tests/` (28 findings) | — |
+| T12 | [`RECESSION` label vs NBER dates](T12-recession-label-vs-nber.md) | `scripts/recession_label_study.py` (new), `docs/regime-recession-study.md` (new), the `RECESSION` leg in `src/research/macro/regimes.py`, the Sahm computation in `factors.py`, their tests | — (branch from `main`) |
 | T10 | [CI green + mechanical pass](T10-ci-green.md) — integrator | `.github/workflows/ci.yml`, `pyproject.toml`, `tests/test_app_boots.py`, whole-repo autofix + formatting | **T10a, T10b** (T1–T9 already merged) |
 | T11 | [Docs + status map](T11-docs-accuracy.md) | `README.md`, `USAGE.md`, root `*.md`, `tasks`, `docs/STATUS.md` (new) | **T0, T3b, T4, T5, T6, T7a, T10** |
 
