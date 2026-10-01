@@ -549,3 +549,120 @@ class TestFactorColumnsContract:
         assert list(FACTOR_COLUMNS) == self.EXPECTED
         assert len(FACTOR_COLUMNS) == 12
         assert len(set(FACTOR_COLUMNS)) == 12  # no dups
+
+
+# ---------------------------------------------------------------------------
+# Sahm rule: match FRED's published definition (SAHMCURRENT)
+# ---------------------------------------------------------------------------
+
+
+def _bare_provider(tmp_path: Path) -> MacroFactorProvider:
+    return MacroFactorProvider(fred=StubFred({}), yahoo=StubYahoo({}), cache_dir=tmp_path)
+
+
+def _monthly(values: list[float]) -> pd.Series:
+    return pd.Series(values, index=pd.date_range("2020-01-01", periods=len(values), freq="MS"), dtype=float)
+
+
+class TestSahmMatchesPublishedDefinition:
+    """The look-back is the PREVIOUS 12 months (current month excluded), value rounded to 0.01."""
+
+    def test_the_low_exactly_twelve_months_back_still_counts(self, tmp_path: Path):
+        # 3-month averages: month 2 = 3.5 (the low), then 3.667, 3.833, and 4.0 from month 5 on.
+        # At month 14 the previous 12 averages are months 2..13, which still contain the 3.5 low,
+        # so the indicator is 4.0 - 3.5 = 0.50 and the flag is ON. A window of "this month plus
+        # 11 prior" has already dropped month 2 (low = 3.667 -> 0.33) and wrongly says OFF.
+        sahm = _bare_provider(tmp_path)._compute_sahm(_monthly([3.5] * 3 + [4.0] * 21))
+
+        assert bool(sahm.loc["2021-03-01"]) is True  # month 14
+        assert bool(sahm.loc["2021-04-01"]) is False  # the low has now aged out of the 12 months
+
+    def test_a_mathematical_tie_at_exactly_half_a_point_is_on(self, tmp_path: Path):
+        # 3.6 for 14 months then 4.1: the indicator is exactly 0.50 but float arithmetic gives
+        # 0.49999999999999956. FRED publishes 0.50 and the flag is "indicator >= 0.50".
+        sahm = _bare_provider(tmp_path)._compute_sahm(_monthly([3.6] * 14 + [4.1] * 3))
+
+        assert bool(sahm.iloc[-1]) is True
+
+    def test_just_under_the_threshold_stays_off(self, tmp_path: Path):
+        sahm = _bare_provider(tmp_path)._compute_sahm(_monthly([3.6] * 14 + [4.09] * 3))
+
+        assert bool(sahm.iloc[-1]) is False
+
+    def test_not_enough_history_is_never_flagged(self, tmp_path: Path):
+        sahm = _bare_provider(tmp_path)._compute_sahm(_monthly([3.5, 3.6, 3.7, 9.0, 9.0]))
+
+        assert not sahm.any()
+
+
+@_SKIP_LIVE
+@pytest.mark.live
+def test_sahm_flag_agrees_with_fred_sahmcurrent_since_1990(tmp_path: Path):
+    """The point of the alignment: our flag is the published one. Checked month by month."""
+    import requests
+
+    from src.core.keys import require_macro_key
+
+    key = require_macro_key("FRED_API_KEY")
+
+    def fetch(series_id: str) -> pd.Series:
+        response = requests.get(
+            "https://api.stlouisfed.org/fred/series/observations",
+            params={"series_id": series_id, "api_key": key, "file_type": "json", "observation_start": "1985-01-01"},
+            timeout=40,
+        )
+        response.raise_for_status()
+        rows = {
+            pd.Timestamp(o["date"]): float(o["value"]) for o in response.json()["observations"] if o["value"] != "."
+        }
+        return pd.Series(rows).sort_index()
+
+    ours = _bare_provider(tmp_path)._compute_sahm(fetch("UNRATE"))["1990":]
+    published = fetch("SAHMCURRENT")["1990":] >= 0.5
+    mismatches = (ours.reindex(published.index).fillna(False).astype(bool) != published).sum()
+
+    # 0 on 2026-09-30 data (440 months); allow one month for an upstream revision.
+    assert mismatches <= 1, f"{mismatches} months disagree with SAHMCURRENT"
+
+
+# ---------------------------------------------------------------------------
+# Cache schema: a changed derived-column definition must not be served from an old cache
+# ---------------------------------------------------------------------------
+
+
+class TestFactorCacheSchema:
+    def _prime(self, tmp_path: Path) -> Path:
+        provider = MacroFactorProvider(
+            fred=StubFred(_full_fred_response()), yahoo=StubYahoo(_full_yahoo_response()), cache_dir=tmp_path
+        )
+        provider.load_factors(date(2020, 1, 1), date(2020, 1, 31))
+        return tmp_path / "factors.parquet"
+
+    def test_a_cache_the_provider_writes_is_stamped_with_the_schema(self, tmp_path: Path):
+        from src.research.macro.factors import _FACTOR_SCHEMA
+
+        assert pd.read_parquet(self._prime(tmp_path)).attrs.get("factor_schema") == _FACTOR_SCHEMA
+
+    def test_an_unstamped_cache_is_a_miss_and_gets_rebuilt(self, tmp_path: Path):
+        # What every cache written before the Sahm change looks like: same data, no stamp.
+        path = self._prime(tmp_path)
+        old = pd.read_parquet(path)
+        old.attrs.clear()
+        old.to_parquet(path, index=True)
+
+        fred = StubFred(_full_fred_response())
+        MacroFactorProvider(fred=fred, yahoo=StubYahoo(_full_yahoo_response()), cache_dir=tmp_path).load_factors(
+            date(2020, 1, 10), date(2020, 1, 20)
+        )
+
+        assert fred.calls, "an unstamped cache must be refetched, not served"
+        assert pd.read_parquet(path).attrs.get("factor_schema") is not None  # ...and re-stamped
+
+    def test_a_stamped_current_cache_is_still_served_without_fetching(self, tmp_path: Path):
+        self._prime(tmp_path)
+        fred = StubFred({})
+        MacroFactorProvider(fred=fred, yahoo=StubYahoo({}), cache_dir=tmp_path).load_factors(
+            date(2020, 1, 10), date(2020, 1, 20)
+        )
+
+        assert fred.calls == []

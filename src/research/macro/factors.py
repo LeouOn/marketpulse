@@ -144,6 +144,14 @@ OIL_BACK_TICKER: str = "CLZ27.NYM"
 #: Cache filename (under ``cache_dir``).
 _CACHE_FILENAME: str = "factors.parquet"
 
+#: Version of what the cached frame CONTAINS. The frame stores derived columns
+#: (``sahm_recession``, ``cpi_yoy``) already computed, and a covering cache is
+#: served as-is, so changing how a derived column is computed would keep serving
+#: the old values until the cache happened to be refetched. Bump this whenever a
+#: derived definition changes; a cache with a different (or no) stamp is a miss.
+#: 2 = Sahm look-back excludes the current month and is rounded to 0.01.
+_FACTOR_SCHEMA: int = 2
+
 
 # ---------------------------------------------------------------------------
 # MacroFactorProvider
@@ -251,22 +259,31 @@ class MacroFactorProvider:
     def _compute_sahm(self, unemployment: pd.Series) -> pd.Series:
         """Sahm recession rule.
 
-        Formula::
+        Formula (FRED's published ``SAHMCURRENT`` definition)::
 
-            ma_3mo         = unemployment.rolling(3).mean()
-            rolling_12mo_min = ma_3mo.rolling(12).min()
-            sahm_value     = max(0, ma_3mo - rolling_12mo_min)
-            recession_flag = sahm_value >= 0.5
+            ma_3mo           = unemployment.rolling(3).mean()
+            prior_12mo_min   = ma_3mo.shift(1).rolling(12).min()   # the PREVIOUS 12 months
+            sahm_value       = round(max(0, ma_3mo - prior_12mo_min), 2)
+            recession_flag   = sahm_value >= 0.5
+
+        The look-back excludes the current month. Including it (a window of
+        this month plus 11 prior ones) drops the oldest of the 12 months and
+        fires on a strict subset of the published rule: 5-7 flag months since
+        1990 disagreed with FRED, all of them FRED-on / ours-off (for example
+        2024-07). The value is rounded to two decimals because that is how FRED
+        publishes it and the flag is "indicator >= 0.50"; without rounding,
+        float noise at an exact 0.50 tie flips a few months.
+        Against ``SAHMCURRENT`` this matches on all 440 months 1990-2026.
 
         Returns a ``bool`` Series (True = recession), indexed the same
         as ``unemployment``. Cells with insufficient history for the
-        12-month min are NaN (boolean-NaN).
+        12-month min compare as False.
 
-        Reference: https://fred.stlouisfed.org/series/SAHMREALTIME
+        Reference: https://fred.stlouisfed.org/series/SAHMCURRENT
         """
         ma_3mo = unemployment.rolling(3).mean()
-        rolling_12mo_min = ma_3mo.rolling(12).min()
-        sahm_value = (ma_3mo - rolling_12mo_min).clip(lower=0.0)
+        prior_12mo_min = ma_3mo.shift(1).rolling(12).min()
+        sahm_value = (ma_3mo - prior_12mo_min).clip(lower=0.0).round(2)
         return (sahm_value >= 0.5).rename("sahm_recession")
 
     def _compute_cpi_yoy(self, cpi_level: pd.Series) -> pd.Series:
@@ -410,6 +427,9 @@ class MacroFactorProvider:
             return None
         try:
             df = pd.read_parquet(path)
+            if df.attrs.get("factor_schema") != _FACTOR_SCHEMA:
+                logger.info(f"factors: cache {path} predates schema {_FACTOR_SCHEMA}; refetching")
+                return None
         except Exception as exc:
             logger.warning(f"factors: corrupt cache file {path}: {exc}; deleting and refetching")
             try:
@@ -430,7 +450,9 @@ class MacroFactorProvider:
         if df.empty:
             return
         tmp = path.with_suffix(path.suffix + ".tmp")
-        df.to_parquet(tmp, index=True)
+        stamped = df.copy()
+        stamped.attrs["factor_schema"] = _FACTOR_SCHEMA
+        stamped.to_parquet(tmp, index=True)
         tmp.replace(path)
 
     @staticmethod
