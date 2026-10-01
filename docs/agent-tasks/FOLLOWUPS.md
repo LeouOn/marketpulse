@@ -39,6 +39,9 @@ Genuine dead code (deleted, nothing to follow up): `llm/tools/upstream_tools.py`
   Original finding: `classify` softmaxes stress scores in [0, 1], which compresses everything (one fully fired regime tops out near 40%).
   I tested sharpening with a temperature: the acceptance results do not change, but calm periods then read as an emphatic `RISK_ON` (`RISK_ON` is only the residual
   "no stress detected"), so I did not apply it. A better fix is to expose the raw scores (`compute_logits`) in the API and label the softmax output as relative.
-- **`RECESSION` is dominant on ~20% of all days since 1990.** NBER-dated recessions cover roughly 8% of that span (about 36 of ~440 months). The Sahm flag forces the score to 1.0
-  and stays on for months after each trigger, so the label probably over-runs. Worth measuring against NBER dates before trusting the tape for gating.
+- **`RECESSION` vs NBER — measured 2026-10-01, rule unchanged.** See `docs/regime-recession-study.md` and `scripts/recession_label_study.py`.
+  From 1990-01-01 through the last USRECD print (2026-09-29) the label is dominant on 20.57% of days and NBER recession days are 8.16% (36 of 440 months).
+  Daily precision 0.327, recall 0.826, F1 0.469. Of 1,857 false-positive days, 1,585 are the Sahm flag (1,523 of them the tail after a trough) and 272 are the IPMAN fallback in 2019–early 2020.
+  The tail tracks unemployment, which kept rising for months after the 1990, 2001, and 2008 troughs. The code's Sahm window is one month shorter than published `SAHMCURRENT` and is on for a subset of those months, so aligning it would add flagged months.
+  Left unchanged: cutting the tail to match NBER dates would be fitting the dating committee, and the 2019 fallback is too small and too single-episode to retune.
 - The OIL/HOUSING `/data` NaN bug in `docs/STATUS.md` (use `json_utils.to_builtin`) is still open.
