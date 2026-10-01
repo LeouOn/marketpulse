@@ -526,3 +526,47 @@ class TestAsyncContract:
         import inspect
 
         assert inspect.iscoroutinefunction(MacroRegimeModel.classify)
+
+
+# ===========================================================================
+# Raw rules stress scores ride along on the classification
+# ===========================================================================
+
+
+class TestScores:
+    async def test_scores_are_the_rules_logits_at_the_as_of_row(self, rules_classifier, factor_df):
+        result = await MacroRegimeModel(rules=rules_classifier).classify(factor_df)
+
+        assert result.scores is not None
+        assert set(result.scores) == set(Regime)
+        expected = rules_classifier.compute_logits(factor_df).iloc[-1].fillna(0.0)
+        for regime, value in result.scores.items():
+            assert 0.0 <= value <= 1.0
+            assert value == pytest.approx(float(expected[regime.value]))
+
+    async def test_scores_respect_the_requested_timestamp(self, rules_classifier, factor_df):
+        asof = factor_df.index[-400]
+        result = await MacroRegimeModel(rules=rules_classifier).classify(factor_df, timestamp=asof)
+
+        expected = rules_classifier.compute_logits(factor_df).loc[asof].fillna(0.0)
+        assert result.scores is not None
+        assert result.scores[Regime.RISK_ON] == pytest.approx(float(expected["RISK_ON"]))
+
+    async def test_an_ensemble_blends_probs_but_keeps_the_rules_scores(self, rules_classifier, factor_df):
+        rules_only = await MacroRegimeModel(rules=rules_classifier).classify(factor_df)
+        blended = await MacroRegimeModel(rules=rules_classifier, judge=_mock_judge()).classify(
+            factor_df, alpha=0.7, use_llm=True, asset_config=_make_asset_config()
+        )
+
+        assert blended.source == "ensemble"
+        assert blended.scores == rules_only.scores
+
+    async def test_a_rules_stand_in_without_compute_logits_yields_no_scores(self, factor_df):
+        class _ProbsOnly:
+            def classify(self, df):
+                probs = pd.DataFrame(0.2, index=df.index, columns=[r.value for r in Regime])
+                return probs
+
+        result = await MacroRegimeModel(rules=_ProbsOnly()).classify(factor_df)
+        assert result.scores is None
+        assert result.regime in Regime

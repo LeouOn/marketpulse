@@ -515,3 +515,27 @@ def test_asset_regime_endpoint_rejects_malformed_date(client):
     r = client.get("/api/research/BTC/regime?date=oops")
     assert r.status_code == 400
     assert "date" in r.json()["detail"]
+
+
+def test_regimes_endpoint_exposes_raw_scores_next_to_probabilities(client, monkeypatch):
+    _patch_macro_provider(monkeypatch, _FakeMacroProvider())
+
+    body = client.get("/api/research/regimes?start=2024-01-01&end=2024-01-31").json()
+
+    assert "relative" in body["data"]["score_scale"]
+    for rec in body["data"]["regimes"]:
+        assert set(rec["scores"]) == _REGIME_NAMES
+        assert all(0.0 <= v <= 1.0 for v in rec["scores"].values())
+        # The long-standing probability keys are untouched (additive change).
+        assert sum(rec[name] for name in _REGIME_NAMES) == pytest.approx(1.0)
+
+
+def test_asset_regime_endpoint_exposes_raw_scores_next_to_probabilities(client, monkeypatch):
+    _patch_macro_provider(monkeypatch, _FakeMacroProvider())
+
+    data = client.get("/api/research/BTC/regime").json()["data"]
+
+    assert set(data["scores"]) == _REGIME_NAMES
+    assert all(0.0 <= v <= 1.0 for v in data["scores"].values())
+    assert "relative" in data["score_scale"]
+    assert set(data["probs"]) == _REGIME_NAMES  # unchanged

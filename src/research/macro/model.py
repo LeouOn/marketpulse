@@ -55,7 +55,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 from loguru import logger
@@ -101,6 +101,12 @@ class RegimeClassification:
     timestamp : datetime | None
         When the classification was made / the as-of point in the
         factor frame.  ``None`` means "use the last row of factor_df".
+    scores : dict[Regime, float] | None
+        The rules classifier's raw per-regime stress scores in ``[0, 1]`` at
+        the as-of row -- the absolute strength that ``probs`` (a softmax of
+        these) compresses.  Always the RULES scores, even for an ensemble
+        (the LLM blend changes ``probs``, never these).  ``None`` if the
+        rules component cannot produce them.
     """
 
     regime: Regime
@@ -109,6 +115,7 @@ class RegimeClassification:
     narrative: str | None
     source: str
     timestamp: datetime | None = None
+    scores: dict[Regime, float] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +265,8 @@ class MacroRegimeModel:
         # Argmax for the single-regime label.
         regime = Regime(max(final_probs, key=final_probs.get))
 
+        scores = self._rules_scores(factor_df, used_idx)
+
         return RegimeClassification(
             regime=regime,
             probs=final_probs,
@@ -268,7 +277,24 @@ class MacroRegimeModel:
             # the last row at-or-before ``timestamp`` (or the final row when
             # no timestamp was requested). Never None for a successful call.
             timestamp=used_idx,
+            scores=scores,
         )
+
+    def _rules_scores(self, factor_df: pd.DataFrame, used_idx: Any) -> dict[Regime, float] | None:
+        """Raw rules stress scores at ``used_idx``, or ``None`` if unavailable.
+
+        Auxiliary to the classification: a rules stand-in without
+        ``compute_logits`` (or any failure computing them) must never break
+        the classification itself, so this degrades to ``None``.
+        """
+        compute = getattr(self.rules, "compute_logits", None)
+        if compute is None:
+            return None
+        try:
+            row = compute(factor_df).loc[used_idx].fillna(0.0)
+            return {Regime(str(name)): float(value) for name, value in row.items()}
+        except Exception:  # scores are best-effort, never fatal
+            return None
 
     # ------------------------------------------------------------------
     # Ensemble path

@@ -640,7 +640,12 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
 
     try:
         from src.research.macro.factors import MacroFactorProvider
-        from src.research.macro.regimes import generate_regime_tape
+        from src.research.macro.regimes import (
+            REGIME_COLUMNS,
+            SCORE_COLUMN_PREFIX,
+            SCORE_SCALE_NOTE,
+            generate_regime_tape,
+        )
     except ImportError as e:
         raise HTTPException(
             status_code=503,
@@ -663,7 +668,7 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
             detail="No macro factor data in the requested range.",
         )
 
-    tape = generate_regime_tape(factor_df, classifier=RulesBasedClassifier())
+    tape = generate_regime_tape(factor_df, classifier=RulesBasedClassifier(), include_scores=True)
     # Serialize: index -> iso date, dominant_regime column + regime probs.
     # Only rows inside the *requested* window are returned (the fetch was
     # padded for z-score history; the padding is not part of the response).
@@ -678,9 +683,13 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
         if d is not None and d < start_d:
             continue
         rec = {"date": date_str, "dominant_regime": row["dominant_regime"]}
-        for col in ("RISK_ON", "DEFLATION_SCARE", "INFLATION_ACCEL", "REAL_YIELD_SHOCK", "RECESSION"):
+        for col in REGIME_COLUMNS:
             if col in row:
                 rec[col] = float(row[col])
+        # Additive: the raw stress scores that the softmax probabilities compress.
+        rec["scores"] = {
+            col: float(row[SCORE_COLUMN_PREFIX + col]) for col in REGIME_COLUMNS if SCORE_COLUMN_PREFIX + col in row
+        }
         records.append(rec)
     if not records:
         raise HTTPException(
@@ -694,6 +703,7 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
             "count": len(records),
             "start": records[0]["date"] if records else None,
             "end": records[-1]["date"] if records else None,
+            "score_scale": SCORE_SCALE_NOTE,
         },
     }
 
@@ -806,6 +816,7 @@ async def asset_regime(asset: str, date: str | None = None):
     try:
         from src.research.macro.factors import MacroFactorProvider
         from src.research.macro.model import MacroRegimeModel
+        from src.research.macro.regimes import SCORE_SCALE_NOTE
     except ImportError as e:
         raise HTTPException(
             status_code=503,
@@ -858,6 +869,8 @@ async def asset_regime(asset: str, date: str | None = None):
             "asset": asset,
             "regime": result.regime.value,
             "probs": {r.value: float(p) for r, p in result.probs.items()},
+            "scores": {r.value: float(v) for r, v in result.scores.items()} if result.scores else None,
+            "score_scale": SCORE_SCALE_NOTE,
             "source": result.source,
             "narrative": result.narrative,
             "timestamp": str(result.timestamp) if result.timestamp else None,

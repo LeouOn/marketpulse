@@ -776,3 +776,58 @@ class TestLookbackPad:
         from src.api import research_router
 
         assert research_router._REGIME_LOOKBACK_PAD_DAYS == RulesBasedClassifier.LOOKBACK_DAYS
+
+
+# ===========================================================================
+# Raw stress scores alongside the (compressed) probabilities
+# ===========================================================================
+
+
+class TestRegimeScores:
+    def test_default_tape_shape_is_unchanged(self):
+        # The live tape test and the CLI rely on this exact shape.
+        tape = generate_regime_tape(_synthetic_factor_df(days=1500))
+        assert list(tape.columns) == [*REGIME_COLUMNS, "dominant_regime"]
+
+    def test_include_scores_appends_score_columns_and_probs_are_their_softmax(self):
+        from src.research.macro.regimes import SCORE_COLUMN_PREFIX
+
+        df = _synthetic_factor_df(days=1500)
+        base = generate_regime_tape(df)
+        tape = generate_regime_tape(df, include_scores=True)
+
+        score_cols = [f"{SCORE_COLUMN_PREFIX}{c}" for c in REGIME_COLUMNS]
+        assert list(tape.columns) == [*REGIME_COLUMNS, "dominant_regime", *score_cols]
+
+        scores = tape[score_cols].rename(columns=lambda c: c.removeprefix(SCORE_COLUMN_PREFIX))
+        assert ((scores >= 0.0) & (scores <= 1.0)).all().all()
+        # The reported probabilities ARE the softmax of the scores, nothing more...
+        np.testing.assert_allclose(
+            tape[list(REGIME_COLUMNS)].to_numpy(), RulesBasedClassifier._softmax(scores).to_numpy()
+        )
+        # ...and asking for scores changes neither the probabilities nor the label.
+        pd.testing.assert_frame_equal(tape[[*REGIME_COLUMNS, "dominant_regime"]], base)
+
+    def test_a_fully_fired_regime_cannot_show_more_than_about_40_percent(self):
+        """Why the scores are exposed: softmax of [0,1] scores compresses everything.
+
+        On Sahm-flagged days RECESSION's score is exactly 1.0 and the others sit near 0, yet
+        its probability is only ~e/(e+4).  Order and dominance are meaningful; magnitudes are not.
+        """
+        days = 2500
+        idx = pd.date_range("2010-01-01", periods=days, freq="D")
+        flag = np.zeros(days, dtype=bool)
+        flag[2000:2070] = True
+        df = _synthetic_factor_df()
+        df["sahm_recession"] = pd.Series(flag, index=idx)
+
+        tape = generate_regime_tape(df, include_scores=True)
+        window = tape.iloc[2010:2069]
+        assert (window["score_RECESSION"] == 1.0).all()
+        assert (window["dominant_regime"] == "RECESSION").all()
+        assert window["RECESSION"].max() < 0.45
+
+    def test_score_scale_note_tells_consumers_the_probs_are_relative(self):
+        from src.research.macro.regimes import SCORE_SCALE_NOTE
+
+        assert "relative" in SCORE_SCALE_NOTE and "40%" in SCORE_SCALE_NOTE

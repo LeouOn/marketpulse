@@ -136,6 +136,16 @@ class Regime(str, Enum):
 #: residual / default regime, the other four are "stress" regimes.
 REGIME_COLUMNS: tuple[str, ...] = tuple(r.value for r in Regime)
 
+#: Prefix of the raw stress-score columns ``generate_regime_tape(include_scores=True)`` adds.
+SCORE_COLUMN_PREFIX: str = "score_"
+
+#: One sentence for API consumers on what ``scores`` and ``probs`` mean (see the
+#: "Score scale" section of the module docstring).
+SCORE_SCALE_NOTE: str = (
+    "scores are per-regime stress levels in [0, 1] (absolute strength); probs are a softmax of those "
+    "scores, so they are relative weights only - one fully-fired regime cannot exceed ~40%."
+)
+
 
 # ---------------------------------------------------------------------------
 # Sigmoid helper -- vectorised logistic
@@ -529,6 +539,7 @@ class RulesBasedClassifier:
 def generate_regime_tape(
     factor_df: pd.DataFrame,
     classifier: RulesBasedClassifier | None = None,
+    include_scores: bool = False,
 ) -> pd.DataFrame:
     """Classify every timestamp + tag the dominant regime.
 
@@ -545,12 +556,27 @@ def generate_regime_tape(
         factor_df: daily-indexed macro factor frame.
         classifier: optional pre-built classifier (default: a fresh
             :class:`RulesBasedClassifier`).
+        include_scores: also append the raw per-regime stress scores as
+            ``score_<REGIME>`` columns (after ``dominant_regime``). Off by
+            default so the long-standing tape shape -- which the live tape
+            test and the CLI rely on -- is unchanged. The scores are the
+            absolute stress levels the softmax compresses; see
+            :data:`SCORE_SCALE_NOTE`.
 
     Returns:
         DataFrame with columns ``[REGIME_COLUMNS..., "dominant_regime"]``
-        indexed like ``factor_df``.
+        (plus ``score_<REGIME>`` columns when ``include_scores``) indexed
+        like ``factor_df``.
     """
     clf = classifier if classifier is not None else RulesBasedClassifier()
-    probs = clf.classify(factor_df)
+    if include_scores:
+        scores = clf.compute_logits(factor_df).fillna(0.0)
+        probs = clf._softmax(scores)
+    else:
+        scores = None
+        probs = clf.classify(factor_df)
     dominant = probs.idxmax(axis=1).rename("dominant_regime")
-    return pd.concat([probs, dominant], axis=1)
+    parts = [probs, dominant]
+    if scores is not None:
+        parts.append(scores.add_prefix(SCORE_COLUMN_PREFIX))
+    return pd.concat(parts, axis=1)
