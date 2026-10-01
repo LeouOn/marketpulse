@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { YieldCurvePanel } from './YieldCurvePanel';
+import { regimeBar } from './dashboard/regimeBar';
 
 // ---------------------------------------------------------------------------
 // Regime tone map — maps each regime to design-token color classes so we
@@ -125,6 +126,9 @@ interface CurrentRegimeResponse {
   asset: string;
   regime: string;
   probs: Record<string, number>;
+  /** Raw rules stress scores (0-1, absolute strength); `probs` is their softmax (relative only). */
+  scores?: Record<string, number> | null;
+  score_scale?: string;
   source: string;
   narrative: string;
   timestamp: string | null;
@@ -219,11 +223,21 @@ const RegimeChip: React.FC<{ regime: string | null | undefined }> = ({ regime })
 const ProbabilityBar: React.FC<{
   regime: RegimeKey;
   value: number | undefined;
-}> = ({ regime, value }) => {
+  /** Relative softmax weight, shown in the tooltip next to the stress score. */
+  weight?: number;
+  fromScores?: boolean;
+}> = ({ regime, value, weight, fromScores }) => {
   const pct = value == null ? 0 : Math.max(0, Math.min(1, value)) * 100;
   const tone = REGIME_TONE[regime];
+  const title =
+    value == null
+      ? undefined
+      : fromScores
+        ? `Stress score ${pct.toFixed(0)}%` +
+          (weight != null ? ` · relative weight ${(weight * 100).toFixed(1)}%` : '')
+        : `Relative weight ${pct.toFixed(1)}% (this response has no stress scores)`;
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3" title={title}>
       <span className="text-[12px] text-ink-secondary w-32 shrink-0">
         {REGIME_LABELS[regime] ?? regime}
       </span>
@@ -238,7 +252,7 @@ const ProbabilityBar: React.FC<{
           value == null ? 'text-ink-muted' : tone.text
         }`}
       >
-        {value == null ? '—' : `${pct.toFixed(1)}%`}
+        {value == null ? '—' : `${pct.toFixed(fromScores ? 0 : 1)}%`}
       </span>
     </div>
   );
@@ -394,16 +408,26 @@ export default function MacroDashboard() {
                 )}
               </div>
 
-              {/* 5 probability bars */}
-              <div className="space-y-2 mb-4">
-                {REGIME_ORDER.map((regime) => (
-                  <ProbabilityBar
-                    key={regime}
-                    regime={regime}
-                    value={current?.probs?.[regime]}
-                  />
-                ))}
+              {/* 5 regime bars: raw stress score when available (see regimeBar.ts) */}
+              <div className="space-y-2 mb-1">
+                {REGIME_ORDER.map((regime) => {
+                  const bar = regimeBar(current, regime);
+                  return (
+                    <ProbabilityBar
+                      key={regime}
+                      regime={regime}
+                      value={bar.value}
+                      weight={bar.weight}
+                      fromScores={bar.fromScores}
+                    />
+                  );
+                })}
               </div>
+              <p className="text-[10px] text-ink-muted mb-4" data-testid="regime-bar-caption">
+                {current?.scores
+                  ? 'Bars show each regime’s stress score (absolute, rules-based). Hover for its relative weight.'
+                  : 'Bars show relative weights; this response carries no stress scores.'}
+              </p>
 
               {/* Alpha slider */}
               <div className="bg-surface-raised border border-line rounded-[2px] p-2.5">
