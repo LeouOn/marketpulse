@@ -192,9 +192,9 @@ def align_nber(tape_index: pd.DatetimeIndex, daily: pd.Series | None, monthly: p
 
 
 def sahm_value_from_unrate(monthly_unrate: pd.Series) -> pd.Series:
-    """Same formula as MacroFactorProvider._compute_sahm, kept as a level."""
+    """Same formula as MacroFactorProvider._compute_sahm (published definition), kept as a level."""
     ma3 = monthly_unrate.rolling(3, min_periods=3).mean()
-    gap = (ma3 - ma3.rolling(12, min_periods=12).min()).clip(lower=0.0)
+    gap = (ma3 - ma3.shift(1).rolling(12, min_periods=12).min()).clip(lower=0.0).round(2)
     gap.name = "sahm_value"
     return gap
 
@@ -406,23 +406,24 @@ def compare_published_sahm(
     published: dict[str, pd.Series],
     raw_unrate: pd.Series,
 ) -> None:
-    """Compare our level with FRED, then the two plausible 12-month windows.
+    """Compare the current implementation with FRED, then the former window.
 
-    ``rolling(12).min()`` includes the current 3-month average and therefore
-    looks back 11 months. The phrase "low during the previous 12 months" can
-    instead mean the minimum of the prior 12 averages, excluding the current
-    one (``shift(1).rolling(12)``). Both are scored against SAHMCURRENT on the
-    raw monthly UNRATE, not the daily forward-fill.
+    The current code takes the low over the PREVIOUS 12 three-month averages
+    (``shift(1).rolling(12)``), rounded to 0.01 -- FRED's published definition.
+    It used to take ``rolling(12).min()``, which includes the current average and
+    so looks back only 11 months (the "former" rows below, kept so the change
+    stays measurable). Everything is scored against SAHMCURRENT on the raw
+    monthly UNRATE, not the daily forward-fill.
     """
     _section("Sahm implementation vs published FRED indicators")
     from_frame = _month_start(sahm_value_from_unrate(monthly_unrate).dropna())
     raw_m = _month_start(raw_unrate)
     ma3 = raw_m.rolling(3, min_periods=3).mean()
-    include_current = (ma3 - ma3.rolling(12, min_periods=12).min()).clip(lower=0.0)
+    include_current = (ma3 - ma3.rolling(12, min_periods=12).min()).clip(lower=0.0)  # the former implementation
     prior_12 = (ma3 - ma3.shift(1).rolling(12, min_periods=12).min()).clip(lower=0.0)
     # The frame's daily forward-fill must not have changed the monthly value.
     check = pd.concat(
-        [from_frame.rename("frame"), _month_start(include_current).rename("raw")],
+        [from_frame.rename("frame"), _month_start(prior_12.round(2)).rename("raw")],
         axis=1,
         join="inner",
     ).dropna()
@@ -434,11 +435,11 @@ def compare_published_sahm(
     realtime = published.get("SAHMREALTIME")
     if current is not None:
         fred_m = _month_start(current)
-        _flag_disagreements(from_frame, fred_m, "code window vs SAHMCURRENT")
-        _flag_disagreements(_month_start(include_current), fred_m, "raw include-current vs SAHMCURRENT")
-        _flag_disagreements(_month_start(prior_12), fred_m, "raw prior-12 excl. current vs SAHMCURRENT")
+        _flag_disagreements(from_frame, fred_m, "current code vs SAHMCURRENT")
+        _flag_disagreements(_month_start(include_current), fred_m, "former (current month included) vs SAHMCURRENT")
+        _flag_disagreements(_month_start(prior_12), fred_m, "raw prior-12, unrounded vs SAHMCURRENT")
     if realtime is not None:
-        _flag_disagreements(from_frame, _month_start(realtime), "code window vs SAHMREALTIME")
+        _flag_disagreements(from_frame, _month_start(realtime), "current code vs SAHMREALTIME")
 
 
 def overhang_versus_unemployment_peak(

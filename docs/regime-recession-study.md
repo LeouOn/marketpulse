@@ -1,8 +1,22 @@
 # RECESSION label against NBER dates
 
-Measured 2026-10-01 with `scripts/recession_label_study.py`. The classifier is unchanged.
+Measured 2026-10-01 with `scripts/recession_label_study.py`. The study itself changed nothing; afterwards the Sahm window was aligned with FRED's published definition (see the update below). The tables from "Headline" down are the baseline taken **before** that alignment.
 
 The question was whether `RECESSION` being the dominant regime on about 20% of days since 1990 is a real over-run of the NBER recession dates (about 8% of the same span, about 36 of about 440 months), and which part of the rule causes it. Both figures are real. The rule was left as it is: the extra days are the Sahm flag tracking unemployment after the NBER trough, plus one industrial-production stretch in 2019. Shortening the flag to match the NBER months would be fitting those dates.
+
+## Update: the Sahm window was aligned (2026-10-01)
+
+The study found the code's Sahm look-back one month shorter than FRED's published `SAHMCURRENT` (the current month was inside the 12-month window), so it fired on a strict subset of the published rule. `MacroFactorProvider._compute_sahm` now takes the low over the **previous** 12 three-month averages and rounds to 0.01, as FRED publishes it. Against `SAHMCURRENT` it now agrees in all 440 months since 1990 (0 flag mismatches; the former window had 7, or 5 after rounding), and a live test pins that. Because the factor frame is cached with `sahm_recession` already computed, the cache now carries a schema stamp so a cache built under the old definition is refetched instead of served.
+
+| | before | after |
+|---|---:|---:|
+| Sahm flag on (share of days) | 18.37% | 19.97% |
+| `RECESSION` dominant | 20.57% | 22.17% |
+| precision / recall / F1 vs NBER | 0.327 / 0.826 / 0.469 | 0.314 / 0.853 / 0.459 |
+| onset lag vs NBER start (1990 / 2001 / 2008 / 2020) | +61 / +91 / +31 / 0 days | +61 / +61 / +31 / 0 days |
+| days still on after the NBER end | 580 / 304 / 335 / 304 | 580 / 365 / 335 / 335 |
+
+Recall and onset improve, precision slips: the aligned rule turns on earlier (2001 by 30 days) and also stays on one month longer in two tails, which is what the published indicator does. All 8 live acceptance episodes still pass. Against `SAHMREALTIME` (unemployment as first published) 7 months differ at the 0.01 flag; that is revision of the unemployment series, not the definition.
 
 ## How it was measured
 
@@ -101,13 +115,13 @@ There is no third component. A `RECESSION` score has to clear 0.5 before it can 
 
 ## Sahm against the published FRED rule
 
-The code computes, on monthly `UNRATE`,
+Until the 2026-10-01 alignment the code computed, on monthly `UNRATE`,
 
 ```
 3-month average − minimum of that average over a 12-observation window that includes the current month
 ```
 
-and flags a month at ≥ 0.50. That is `MacroFactorProvider._compute_sahm`. The value rebuilt from the daily forward-filled frame matches the value rebuilt from raw monthly `UNRATE` within 0.07pp (max absolute gap 0.0667), and the two produce the same flag disagreements against FRED.
+and flagged a month at ≥ 0.50 (`MacroFactorProvider._compute_sahm`). The value rebuilt from the daily forward-filled frame matches the value rebuilt from raw monthly `UNRATE` within 0.07pp (max absolute gap 0.0667), and the two produce the same flag disagreements against FRED.
 
 `SAHMCURRENT` is the same rule on the current vintage, with the minimum taken over the previous 12 averages excluding the current month. Rounded to FRED's published 0.01, that version's flag matches `SAHMCURRENT` in every month since 1990 (correlation 0.9988). The largest level gap is September 2021, where the code's non-negative clip is 0 and FRED prints −0.40. Negatives are below the 0.50 flag and do not move it.
 
@@ -121,7 +135,7 @@ The code's shorter window, rounded the same way, differs from `SAHMCURRENT` in 5
 | 2024-07 | 0.47 | 0.50 |
 | 2024-09 | 0.43 | 0.53 |
 
-March 2021 is the cliff: the previous-12 window still contains the pre-COVID low (FRED 2.40), and the code's window, which includes the current month, has already let that low roll off (0). Every month the code flags, `SAHMCURRENT` flags too. Moving to the published window would add flagged months, including July and September 2024, and the share of days labeled `RECESSION` would go up.
+March 2021 is the cliff: the previous-12 window still contains the pre-COVID low (FRED 2.40), and the code's window, which includes the current month, has already let that low roll off (0). Every month the code flags, `SAHMCURRENT` flags too. Moving to the published window would add flagged months, including July and September 2024, and the share of days labeled `RECESSION` would go up. (Done: see the update above for the measured effect.)
 
 `SAHMREALTIME` uses the unemployment rate as it was first printed. Ten months since 1990 disagree at the 0.01 flag, some in each direction (the code, on current vintage, turns on in October 1990 and February–March 2008 while the real-time indicator is still under 0.50). That gap is the vintage, which the comparison was supposed to show.
 
@@ -134,10 +148,10 @@ About 1,523 of the 1,857 false-positive days are one uninterrupted Sahm spell af
 That split is the rule working as written:
 
 - The post-trough Sahm spell follows the labor market. Unemployment peaked 15, 19, and 4 months after the 1990, 2001, and 2008 troughs. The label stays a statement about unemployment.
-- The published Sahm window is one month longer than the code, and the code is the quieter of the two. Adopting the published window adds months.
+- The published Sahm window was one month longer than the code, and the code was the quieter of the two. It has since been aligned (update above); that added flagged months, as predicted, and did not cause the 20%.
 - The IPMAN fallback is a weak match to NBER dates, and it is what turned the label on for March 2020, the month before Sahm. It accounts for 272 of 13,421 days, about two percentage points of the 20.57%. A higher `_TH_REC_ISM` aimed at 2019 and March 2020 would be fit to those two episodes. The real-yield change was kept only where a neighbourhood of thresholds passed, with negative controls, and the acceptance episodes held. This fallback fails that test: the stretch it would remove is one slowdown, and the day-share would still be about 18%.
 
-`regimes.py` and `factors.py` are unchanged.
+`regimes.py` is unchanged. `factors.py` changed after the study: the Sahm alignment and the cache schema stamp.
 
 ## Checks
 

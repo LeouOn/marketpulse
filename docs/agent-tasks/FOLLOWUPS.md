@@ -39,9 +39,10 @@ Genuine dead code (deleted, nothing to follow up): `llm/tools/upstream_tools.py`
   Original finding: `classify` softmaxes stress scores in [0, 1], which compresses everything (one fully fired regime tops out near 40%).
   I tested sharpening with a temperature: the acceptance results do not change, but calm periods then read as an emphatic `RISK_ON` (`RISK_ON` is only the residual
   "no stress detected"), so I did not apply it. A better fix is to expose the raw scores (`compute_logits`) in the API and label the softmax output as relative.
-- **`RECESSION` vs NBER — measured 2026-10-01, rule unchanged.** See `docs/regime-recession-study.md` and `scripts/recession_label_study.py`.
+- **`RECESSION` vs NBER — measured 2026-10-01; Sahm window then aligned with FRED (done).** See `docs/regime-recession-study.md` and `scripts/recession_label_study.py`.
   From 1990-01-01 through the last USRECD print (2026-09-29) the label is dominant on 20.57% of days and NBER recession days are 8.16% (36 of 440 months).
   Daily precision 0.327, recall 0.826, F1 0.469. Of 1,857 false-positive days, 1,585 are the Sahm flag (1,523 of them the tail after a trough) and 272 are the IPMAN fallback in 2019–early 2020.
-  The tail tracks unemployment, which kept rising for months after the 1990, 2001, and 2008 troughs. The code's Sahm window is one month shorter than published `SAHMCURRENT` and is on for a subset of those months, so aligning it would add flagged months.
+  The tail tracks unemployment, which kept rising for months after the 1990, 2001, and 2008 troughs. The code's Sahm window was one month shorter than published `SAHMCURRENT` and fired on a subset of its months; it is now aligned (previous 12 months, rounded to 0.01; 0 mismatches vs `SAHMCURRENT` over 440 months), which moved the label to 22.17% of days (recall 0.826 → 0.853, precision 0.327 → 0.314). The factor cache is now schema-stamped so a changed derived column is refetched.
   Left unchanged: cutting the tail to match NBER dates would be fitting the dating committee, and the 2019 fallback is too small and too single-episode to retune.
+  **Still open:** the IPMAN fallback is a weak early-warning (the real ISM is not on FRED); a regional Fed survey (Philadelphia / Empire State) could replace it. And `RECESSION` is a lagging, concurrent labor-market state, so do not read it as a leading indicator.
 - The OIL/HOUSING `/data` NaN bug in `docs/STATUS.md` (use `json_utils.to_builtin`) is still open.
