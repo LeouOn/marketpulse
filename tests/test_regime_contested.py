@@ -101,6 +101,37 @@ def test_constant_is_the_documented_default():
 
 
 # ---------------------------------------------------------------------------
+# Non-numeric score robustness (cycle 4)
+# ---------------------------------------------------------------------------
+
+
+def test_none_score_yields_null_margin_not_contested():
+    out = regime_contest({"RISK_ON": None, "REAL_YIELD_SHOCK": 0.3})
+    assert out == {"margin": None, "contested": False, "runner_up": None}
+
+
+def test_non_numeric_string_score_yields_null_margin_not_contested():
+    out = regime_contest({"RISK_ON": "abc", "REAL_YIELD_SHOCK": 0.3, "RECESSION": 0.1})
+    assert out == {"margin": None, "contested": False, "runner_up": None}
+
+
+def test_bool_score_is_rejected_like_non_numeric():
+    # bool is numeric in Python (float(True) == 1.0), but a regime score of
+    # True is a data bug, not a maximum-stress reading.
+    out = regime_contest({"RISK_ON": True, "REAL_YIELD_SHOCK": 0.2})
+    assert out == {"margin": None, "contested": False, "runner_up": None}
+
+
+def test_plain_ints_and_numpy_floats_still_work():
+    import numpy as np
+
+    out = regime_contest({"RISK_ON": 1, "REAL_YIELD_SHOCK": np.float64(0.5)})
+    assert out["margin"] == pytest.approx(0.5)
+    assert out["contested"] is False
+    assert out["runner_up"] == "REAL_YIELD_SHOCK"
+
+
+# ---------------------------------------------------------------------------
 # Endpoint behaviour (fake provider, same seam as test_research_router.py)
 # ---------------------------------------------------------------------------
 

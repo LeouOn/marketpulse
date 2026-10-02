@@ -143,14 +143,23 @@ def regime_contest(scores: Mapping[str, float] | None) -> dict[str, float | str 
     * ``runner_up`` is the second-ranked regime's name.
 
     When the signal cannot be computed -- no scores, fewer than two
-    regimes, or any non-finite (NaN/inf) score -- ``margin`` is ``None``
-    and ``contested`` is ``False``: absence must not read as a contest.
-    Ties break deterministically by regime name (alphabetical).
+    regimes, or any non-numeric (``None``, ``"abc"``, ``bool``) or
+    non-finite (NaN/inf) score -- ``margin`` is ``None`` and ``contested``
+    is ``False``: absence must not read as a contest.  Ties break
+    deterministically by regime name (alphabetical).
     """
     empty = {"margin": None, "contested": False, "runner_up": None}
     if not scores or len(scores) < 2:
         return empty
-    items = [(name, float(value)) for name, value in scores.items()]
+    if any(isinstance(value, bool) for value in scores.values()):
+        # bool is numeric in Python (float(True) == 1.0), but a regime score
+        # of True is a data bug, not a maximum-stress reading.
+        return empty
+    try:
+        items = [(name, float(value)) for name, value in scores.items()]
+    except (TypeError, ValueError):
+        # None / "abc" / any other non-numeric cell: no contest signal.
+        return empty
     if any(not math.isfinite(value) for _, value in items):
         return empty
     ranked = sorted(items, key=lambda kv: (-kv[1], kv[0]))

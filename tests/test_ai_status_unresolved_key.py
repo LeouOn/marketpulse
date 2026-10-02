@@ -166,3 +166,42 @@ def test_usable_provider_key_allows_mid_string_your_():
 @pytest.mark.parametrize("bad_key", ["your_key_here", UNRESOLVED_TOKEN, "  ", ""])
 def test_usable_provider_key_rejects_placeholder_keys(bad_key):
     assert _usable_provider_key(bad_key) is False
+
+
+# ---------------------------------------------------------------------------
+# get_ai_status error routing: ValueError vs any other exception
+# ---------------------------------------------------------------------------
+
+
+def test_status_returns_500_with_detail_for_unexpected_analyst_errors(status_client, monkeypatch):
+    """Non-ValueError failures from get_analyst() are crashes: logged + HTTP 500
+    with detail=str(e) -- NOT swallowed into a 200/false status payload."""
+    from src.api import ai_endpoints
+
+    def _boom():
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(ai_endpoints, "get_analyst", _boom)
+
+    response = status_client.get("/api/ai/status")
+
+    assert response.status_code == 500
+    assert "boom" in response.json()["detail"]
+
+
+def test_status_value_error_from_get_analyst_still_reports_not_configured(status_client, monkeypatch):
+    """ValueError stays on the 'status fact' path: 200 + false + message,
+    even when it comes straight from get_analyst()."""
+    from src.api import ai_endpoints
+
+    def _missing_key():
+        raise ValueError("minimax API key required (set MINIMAX_API_KEY) -- unresolved placeholder")
+
+    monkeypatch.setattr(ai_endpoints, "get_analyst", _missing_key)
+
+    response = status_client.get("/api/ai/status")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["provider_api_configured"] is False
+    assert "MINIMAX_API_KEY" in data["message"]

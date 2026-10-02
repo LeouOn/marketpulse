@@ -11,6 +11,7 @@ import aiohttp
 from loguru import logger
 
 from ..core.config import get_settings
+from .minimax_client import _bad_tool_args_note
 
 # ---------------------------------------------------------------------------
 # Tool / function-calling type aliases
@@ -235,13 +236,33 @@ class DeepSeekClient:
             working_messages.append(message)
 
             # Execute each tool call and collect results.
-            for tc in tool_calls:
+            for i, tc in enumerate(tool_calls):
                 fn = tc.get("function", {})
                 tool_name = fn.get("name", "unknown")
-                try:
-                    tool_args = json.loads(fn.get("arguments", "{}"))
-                except json.JSONDecodeError:
+
+                # Providers differ: ``arguments`` is normally a JSON string, but
+                # some return an already-parsed dict (or null/garbage). Dict is
+                # used as-is; a string goes through json.loads; anything else
+                # degrades to {} and an error note is fed back to the model so
+                # it can resend valid arguments (json.loads would otherwise
+                # raise TypeError, which only JSONDecodeError is caught for).
+                raw_args = fn.get("arguments")
+                args_error: str | None = None
+                if isinstance(raw_args, dict):
+                    tool_args = raw_args
+                elif isinstance(raw_args, str):
+                    try:
+                        parsed = json.loads(raw_args)
+                    except json.JSONDecodeError:
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        tool_args = parsed
+                    else:
+                        tool_args = {}
+                        args_error = _bad_tool_args_note(raw_args)
+                else:
                     tool_args = {}
+                    args_error = _bad_tool_args_note(raw_args)
 
                 logger.info(
                     f"DeepSeek tool call turn={turn + 1} "
@@ -253,10 +274,18 @@ class DeepSeekClient:
                 except Exception as exc:
                     result = {"error": str(exc)}
 
+                if args_error:
+                    # Keep the handler's own fields, but make sure the model sees
+                    # why its arguments were replaced with {} (if the handler
+                    # reported its own error, that one wins the "error" key).
+                    result = {"error": args_error, **result}
+
                 working_messages.append(
                     {
                         "role": "tool",
-                        "tool_call_id": tc.get("id", f"call_{turn}"),
+                        # Fallback ids must stay unique when several id-less
+                        # calls arrive in one turn: key on turn AND index.
+                        "tool_call_id": tc.get("id") or f"call_{turn}_{i}",
                         "content": json.dumps(result, default=str),
                     }
                 )

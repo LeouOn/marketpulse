@@ -701,16 +701,21 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
             status_code=503,
             detail="No macro factor data in the requested range.",
         )
-    return {
-        "success": True,
-        "data": {
-            "regimes": records,
-            "count": len(records),
-            "start": records[0]["date"] if records else None,
-            "end": records[-1]["date"] if records else None,
-            "score_scale": SCORE_SCALE_NOTE,
-        },
-    }
+    # to_builtin: a non-finite score/prob (e.g. an inf logit, or the NaN the
+    # softmax makes of it) serializes as null instead of raising -> HTTP 200.
+    # Finite values and keys are passed through unchanged.
+    return to_builtin(
+        {
+            "success": True,
+            "data": {
+                "regimes": records,
+                "count": len(records),
+                "start": records[0]["date"] if records else None,
+                "end": records[-1]["date"] if records else None,
+                "score_scale": SCORE_SCALE_NOTE,
+            },
+        }
+    )
 
 
 def pd_timestamp_to_date(ts: Any) -> Any:
@@ -886,21 +891,25 @@ async def asset_regime(asset: str, date: str | None = None):
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     scores_payload = {r.value: float(v) for r, v in result.scores.items()} if result.scores else None
-    return {
-        "success": True,
-        "data": {
-            "asset": asset,
-            "regime": result.regime.value,
-            "probs": {r.value: float(p) for r, p in result.probs.items()},
-            "scores": scores_payload,
-            "score_scale": SCORE_SCALE_NOTE,
-            # Additive: near-tie signal so clients can flag a flippable label.
-            **regime_contest(scores_payload),
-            "source": result.source,
-            "narrative": result.narrative,
-            "timestamp": str(result.timestamp) if result.timestamp else None,
-        },
-    }
+    # to_builtin: a non-finite score/prob serializes as null instead of
+    # raising -> HTTP 200. Finite values and keys are passed through unchanged.
+    return to_builtin(
+        {
+            "success": True,
+            "data": {
+                "asset": asset,
+                "regime": result.regime.value,
+                "probs": {r.value: float(p) for r, p in result.probs.items()},
+                "scores": scores_payload,
+                "score_scale": SCORE_SCALE_NOTE,
+                # Additive: near-tie signal so clients can flag a flippable label.
+                **regime_contest(scores_payload),
+                "source": result.source,
+                "narrative": result.narrative,
+                "timestamp": str(result.timestamp) if result.timestamp else None,
+            },
+        }
+    )
 
 
 @router.post("/chat/{asset}")

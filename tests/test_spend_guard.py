@@ -16,6 +16,20 @@ consults the ``.env`` file either.
 
 Every assertion here is booleanized before ``assert`` so a failure can never
 print a real key value.
+
+Known limits of this guard (documented for reviewers; none are silent
+un-guards):
+
+* Running pytest with ``-p no:conftest`` bypasses the guard entirely --
+  ``tests/conftest.py`` is what blanks the keys at import time.
+* The per-node ``live_credentials`` marker alone does not lift the
+  import-time guard: the blanking happens at conftest import, before any
+  marker is consulted; the marker only matters to the fixture that decides
+  whether real keys are restored for that node.
+* Under ``pytest-xdist`` the worker processes may not see the
+  ``--live-credentials`` argv opt-in (each worker has its own argv), so an
+  opt-in can silently not propagate -- that direction only *adds* guarding
+  (workers stay guarded); it never silently un-guards.
 """
 
 from __future__ import annotations
