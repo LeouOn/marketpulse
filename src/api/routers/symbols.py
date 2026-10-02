@@ -10,6 +10,23 @@ from .deps import MarketResponse, error_response, settings, success_response
 router = APIRouter(prefix="/api/market/symbols", tags=["symbols"])
 
 
+def _classify_asset_type(yahoo_sym: str) -> str:
+    """Bucket a macro symbol by its Yahoo suffix (shared by list and search).
+
+    Search previously hard-coded ``"other"`` for macro matches, so the same
+    symbol showed a different ``asset_type`` depending on the endpoint.
+    """
+    if yahoo_sym.endswith("-USD"):
+        return "crypto"
+    if yahoo_sym.startswith("^"):
+        return "index"
+    if yahoo_sym.endswith("=X"):
+        return "forex"
+    if yahoo_sym.endswith("=F"):
+        return "futures"
+    return "etf"
+
+
 @router.get("", response_model=MarketResponse)
 async def list_symbols():
     """Return list of all tracked symbols"""
@@ -30,23 +47,11 @@ async def list_symbols():
             )
 
         for name, yahoo_sym in client.macro_symbols.items():
-            asset_type = "other"
-            if yahoo_sym.endswith("-USD"):
-                asset_type = "crypto"
-            elif yahoo_sym.startswith("^"):
-                asset_type = "index"
-            elif yahoo_sym.endswith("=X"):
-                asset_type = "forex"
-            elif yahoo_sym.endswith("=F"):
-                asset_type = "futures"
-            else:
-                asset_type = "etf"
-
             symbols.append(
                 {
                     "symbol": name,
                     "name": name,
-                    "asset_type": asset_type,
+                    "asset_type": _classify_asset_type(yahoo_sym),
                     "yahoo_symbol": yahoo_sym,
                 }
             )
@@ -65,7 +70,11 @@ async def search_symbols(q: str = Query(..., min_length=1)):
         from src.api.yahoo_client import YahooFinanceClient
 
         client = YahooFinanceClient(settings)
-        query = q.upper()
+        # A whitespace-only query used to fall through as a substring that
+        # matches nothing, silently returning an empty result.
+        query = q.strip().upper()
+        if not query:
+            return error_response("query must contain at least one non-whitespace character")
         matches = []
 
         for sym in client.market_symbols:
@@ -85,7 +94,7 @@ async def search_symbols(q: str = Query(..., min_length=1)):
                     {
                         "symbol": name,
                         "name": name,
-                        "asset_type": "other",
+                        "asset_type": _classify_asset_type(yahoo_sym),
                         "yahoo_symbol": yahoo_sym,
                     }
                 )
@@ -139,14 +148,16 @@ async def get_symbol_stats(symbol: str):
         if range_data is None:
             return error_response(f"Could not fetch stats for {symbol}")
 
+        # A partial range dict (missing keys) used to surface as a cryptic
+        # KeyError ('high_52w'); missing stats degrade to null.
         return success_response(
             {
                 "symbol": symbol,
-                "high_52w": range_data["high_52w"],
-                "low_52w": range_data["low_52w"],
-                "pct_from_high": range_data["pct_from_high"],
-                "pct_from_low": range_data["pct_from_low"],
-                "current_price": range_data["current_price"],
+                "high_52w": range_data.get("high_52w"),
+                "low_52w": range_data.get("low_52w"),
+                "pct_from_high": range_data.get("pct_from_high"),
+                "pct_from_low": range_data.get("pct_from_low"),
+                "current_price": range_data.get("current_price"),
             }
         )
 

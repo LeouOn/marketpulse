@@ -6,10 +6,53 @@ Wraps BacktestEngine.run_backtest() for strategy validation.
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import datetime
 from typing import Any
 
 from loguru import logger
+
+# The metric fields the tool reports, in report order.
+_METRIC_FIELDS = (
+    "total_trades",
+    "winning_trades",
+    "losing_trades",
+    "win_rate",
+    "total_pnl",
+    "total_pnl_percent",
+    "profit_factor",
+    "max_drawdown",
+    "max_drawdown_percent",
+    "sharpe_ratio",
+    "average_winner",
+    "average_loser",
+    "expectancy",
+    "fvg_success_rate",
+    "divergence_success_rate",
+)
+
+
+def _metric(result: Any, name: str) -> Any:
+    """One backtest metric as a JSON-clean value.
+
+    The engine computes over pandas frames, so scalars can come back as numpy
+    types (not JSON-serialisable) or as NaN/inf (e.g. sharpe with zero
+    variance, profit_factor with no losers); a missing field (engine version
+    skew) degrades to None instead of failing the whole tool.
+    """
+    value = getattr(result, name, None)
+    if value is None:
+        return None
+    if hasattr(value, "item"):  # numpy scalar -> native Python scalar
+        value = value.item()
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(value, 2) if math.isfinite(value) else None
+
 
 # ---------------------------------------------------------------------------
 # Tool: run_backtest
@@ -81,23 +124,7 @@ async def run_backtest(
             "period": f"{start_date} to {end_date}",
             "interval": interval,
             "initial_capital": initial_capital,
-            "metrics": {
-                "total_trades": result.total_trades,
-                "winning_trades": result.winning_trades,
-                "losing_trades": result.losing_trades,
-                "win_rate": round(result.win_rate, 2),
-                "total_pnl": round(result.total_pnl, 2),
-                "total_pnl_percent": round(result.total_pnl_percent, 2),
-                "profit_factor": round(result.profit_factor, 2),
-                "max_drawdown": round(result.max_drawdown, 2),
-                "max_drawdown_percent": round(result.max_drawdown_percent, 2),
-                "sharpe_ratio": round(result.sharpe_ratio, 2),
-                "average_winner": round(result.average_winner, 2),
-                "average_loser": round(result.average_loser, 2),
-                "expectancy": round(result.expectancy, 2),
-                "fvg_success_rate": round(result.fvg_success_rate, 2),
-                "divergence_success_rate": round(result.divergence_success_rate, 2),
-            },
+            "metrics": {name: _metric(result, name) for name in _METRIC_FIELDS},
             "timestamp": datetime.now().isoformat(),
         }
     except Exception as e:

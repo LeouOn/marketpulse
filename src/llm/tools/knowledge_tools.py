@@ -44,29 +44,39 @@ SEARCH_TRADING_KNOWLEDGE_DEF: dict[str, Any] = {
 async def search_trading_knowledge(query: str, max_results: int = 3) -> dict[str, Any]:
     """Search the trading knowledge base."""
     try:
+        # An empty query or a non-positive limit used to be forwarded to the
+        # retriever and silently read as "no knowledge found".
+        cleaned = (query or "").strip()
+        if not cleaned:
+            return {"error": "query must be a non-empty string"}
+        if max_results < 1:
+            return {"error": f"max_results must be >= 1, got {max_results}"}
+
         from src.llm.trading_knowledge_rag import get_trading_rag
 
         rag = get_trading_rag()
-        chunks = rag.retrieve_context(query, max_results=max_results)
+        chunks = rag.retrieve_context(cleaned, max_results=max_results)
 
         if not chunks:
-            return {"query": query, "results": [], "count": 0}
+            return {"query": cleaned, "results": [], "count": 0}
 
         results = []
         for chunk in chunks:
-            content = chunk.get("content", str(chunk))
+            content = chunk.get("content")
+            if not isinstance(content, str):  # covers missing AND present-but-None
+                content = str(chunk)
             # Truncate long content for LLM context
             if len(content) > 500:
                 content = content[:500] + "..."
             results.append(
                 {
-                    "title": chunk.get("title", chunk.get("file", "")),
-                    "type": chunk.get("type", "unknown"),
+                    "title": chunk.get("title") or chunk.get("file") or "",
+                    "type": chunk.get("type") or "unknown",
                     "content": content,
                 }
             )
 
-        return {"query": query, "results": results, "count": len(results)}
+        return {"query": cleaned, "results": results, "count": len(results)}
 
     except Exception as e:
         logger.error(f"search_trading_knowledge error: {e}")
@@ -103,19 +113,22 @@ GET_GLOSSARY_TERM_DEF: dict[str, Any] = {
 async def get_glossary_term(term: str) -> dict[str, Any]:
     """Look up a glossary term."""
     try:
+        # Trim so a padded term ("  FVG  ") still resolves against the glossary.
+        cleaned = (term or "").strip()
+
         from src.llm.trading_knowledge_rag import get_trading_rag
 
         rag = get_trading_rag()
-        definition = rag.get_glossary_term(term)
+        definition = rag.get_glossary_term(cleaned)
 
         if definition:
-            return {"term": term, "definition": definition, "found": True}
+            return {"term": cleaned, "definition": definition, "found": True}
         else:
             return {
-                "term": term,
+                "term": cleaned,
                 "definition": None,
                 "found": False,
-                "hint": f"No definition found for '{term}'. Try search_trading_knowledge instead.",
+                "hint": f"No definition found for '{cleaned}'. Try search_trading_knowledge instead.",
             }
 
     except Exception as e:

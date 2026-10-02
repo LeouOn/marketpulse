@@ -2,6 +2,9 @@
 Context-aware prompts that incorporate trading knowledge and hypotheses
 """
 
+import json
+import re
+
 TRADING_ANALYST_BASE = """You are an expert quantitative trading analyst specializing in futures and crypto derivatives. Your expertise includes:
 
 - Market microstructure and order flow analysis
@@ -137,13 +140,13 @@ DATA TO VALIDATE:
 {DATA_TO_VALIDATE}
 
 Return validation results in this JSON format:
-{{
+{
   "is_valid": boolean,
   "confidence": 0-100,
   "issues": ["list of issues found"],
   "recommendations": ["suggestions for improvement"],
   "summary": "brief summary of data quality"
-}}
+}
 """
 
 TRADE_REVIEW_PROMPT = """Review the following trade setup and provide objective analysis:
@@ -184,9 +187,8 @@ def build_enhanced_prompt(base_prompt: str, context_chunks: list, query: str = "
     """
     # Build context injection
     if context_chunks:
-        context_text = "\n\n".join(
-            [f"**Relevant Knowledge:**\n{chunk.get('content', chunk)}" for chunk in context_chunks]
-        )
+        parts = [chunk.get("content", chunk) if isinstance(chunk, dict) else chunk for chunk in context_chunks]
+        context_text = "\n\n".join(f"**Relevant Knowledge:**\n{part}" for part in parts)
         context_injection = f"RELEVANT CONTEXT:\n{context_text}\n"
     else:
         context_injection = ""
@@ -194,32 +196,36 @@ def build_enhanced_prompt(base_prompt: str, context_chunks: list, query: str = "
     # Build hypothesis injection
     hypothesis_injection = ""
     if "hypothesis" in query.lower() or "test" in query.lower():
-        hypothesis_docs = [chunk for chunk in context_chunks if chunk.get("type", "").endswith("_hypothesis")]
+        hypothesis_docs = [
+            chunk
+            for chunk in context_chunks
+            if isinstance(chunk, dict) and chunk.get("type", "").endswith("_hypothesis")
+        ]
         if hypothesis_docs:
-            hypothesis_text = "\n\n".join([doc["content"] for doc in hypothesis_docs])
+            hypothesis_text = "\n\n".join(doc.get("content", "") for doc in hypothesis_docs)
             hypothesis_injection = f"ACTIVE HYPOTHESIS:\n{hypothesis_text}\n"
 
     # Build data injection
-    import json
-
-    data_summary = json.dumps(market_data, indent=2) if market_data else ""
+    data_summary = json.dumps(market_data, indent=2, default=str) if market_data else ""
     data_injection = f"MARKET DATA:\n{data_summary}\n" if market_data else ""
 
-    # Replace placeholders in base prompt
-    enhanced_prompt = (
-        base_prompt.replace("{CONTEXT_INJECTION}", context_injection)
-        .replace("{HYPOTHESIS_INJECTION}", hypothesis_injection)
-        .replace("{DATA_INJECTION}", data_injection)
-        .replace("{HYPOTHESIS_TEXT}", query)
-        .replace("{DATA_SUMMARY}", data_injection)
-        .replace("{MARKET_DATA}", data_summary if market_data else "No market data provided")
-        .replace("{CHART_DATA}", data_summary if market_data else "No chart data provided")
-        .replace("{DATA_TO_VALIDATE}", data_summary if market_data else "No data to validate")
-        .replace("{TRADE_CONTEXT}", query)
-        .replace("{MARKET_CONDITIONS}", data_summary if market_data else "No market conditions provided")
-    )
-
-    return enhanced_prompt
+    # Replace placeholders in ONE pass so tokens that arrive inside injected
+    # values (query text, knowledge chunks, JSON data) are never re-expanded
+    # by a later replacement step.
+    replacements = {
+        "{CONTEXT_INJECTION}": context_injection,
+        "{HYPOTHESIS_INJECTION}": hypothesis_injection,
+        "{DATA_INJECTION}": data_injection,
+        "{HYPOTHESIS_TEXT}": query,
+        "{DATA_SUMMARY}": data_injection,
+        "{MARKET_DATA}": data_summary if market_data else "No market data provided",
+        "{CHART_DATA}": data_summary if market_data else "No chart data provided",
+        "{DATA_TO_VALIDATE}": data_summary if market_data else "No data to validate",
+        "{TRADE_CONTEXT}": query,
+        "{MARKET_CONDITIONS}": data_summary if market_data else "No market conditions provided",
+    }
+    pattern = re.compile("|".join(re.escape(token) for token in replacements))
+    return pattern.sub(lambda match: replacements[match.group(0)], base_prompt)
 
 
 def get_system_prompt(prompt_type: str = "trading_analyst") -> str:

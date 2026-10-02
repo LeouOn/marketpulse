@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 from loguru import logger
 
+from ..json_utils import to_builtin
 from .deps import MarketResponse, error_response, settings, success_response
 
 router = APIRouter(prefix="/api/market/screeners", tags=["screeners"])
@@ -24,9 +25,10 @@ async def get_screener_data(screener_type: str):
         if cache:
             cached = await cache.get(f"screener:{screener_type}")
             if cached:
-                return success_response({"screener_type": screener_type, "results": cached})
+                # Stale cache entries may predate NaN/numpy sanitization.
+                return success_response({"screener_type": screener_type, "results": to_builtin(cached)})
 
-        results = client.get_screener_data(screener_type)
+        results = to_builtin(client.get_screener_data(screener_type))
 
         if cache and results:
             await cache.set(f"screener:{screener_type}", results, 300)
@@ -53,7 +55,7 @@ async def get_screener_history(screener_type: str):
         cache = await client._get_cache()
         latest = None
         if cache:
-            latest = await cache.get(f"screener:{screener_type}")
+            latest = to_builtin(await cache.get(f"screener:{screener_type}"))
 
         return success_response(
             {

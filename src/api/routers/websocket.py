@@ -2,12 +2,30 @@
 
 import asyncio
 import contextlib
+import math
 from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from . import deps
+
+
+def _json_safe(value):
+    """Replace non-finite floats with None so send_json emits strict JSON.
+
+    Market internals and agent payloads can carry NaN/inf (missing prints,
+    zero-variance ratios); ``json.dumps`` would otherwise emit bare
+    NaN/Infinity tokens, which browsers' JSON.parse reject.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
 
 router = APIRouter(tags=["websocket"])
 
@@ -37,7 +55,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_json(
                         {
                             "type": "market_update",
-                            "data": internals,
+                            "data": _json_safe(internals),
                             "timestamp": datetime.now().isoformat(),
                             "message_id": message_count,
                         }
@@ -99,6 +117,11 @@ async def websocket_test_endpoint(websocket: WebSocket):
                 break
             except Exception as e:
                 logger.error(f"Error in test WebSocket: {e}")
+                # Close explicitly: returning without a close frame leaves the
+                # connection teardown to the server's implicit behaviour,
+                # which is not deterministic across ASGI servers/tests.
+                with contextlib.suppress(Exception):
+                    await websocket.close()
                 break
 
     except WebSocketDisconnect:
@@ -135,6 +158,16 @@ async def stream_analysis_endpoint(websocket: WebSocket):
     try:
         # Wait for the analysis request
         data = await websocket.receive_json()
+
+        if not isinstance(data, dict):
+            await websocket.send_json(
+                {
+                    "phase": "error",
+                    "content": "Invalid request format: expected a JSON object with a 'query' field.",
+                }
+            )
+            return
+
         query = data.get("query", "")
         symbols = data.get("symbols", ["SPY"])
         include_breadth = data.get("include_breadth", True)
@@ -175,7 +208,7 @@ async def stream_analysis_endpoint(websocket: WebSocket):
                         "agent_name": event.agent_name,
                         "content": event.content,
                         "tools_used": event.tools_used,
-                        "data": event.data,
+                        "data": _json_safe(event.data),
                     }
                 )
 
