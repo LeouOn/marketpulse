@@ -45,7 +45,10 @@ async def test_data_source(request: dict[str, Any]):
 
         valid_symbols = []
         for symbol, data in internals.items():
-            if isinstance(data, dict) and data.get("price", 0) > 0:
+            # ``price`` can be None from a failed per-symbol fetch: treat it
+            # like any other invalid symbol instead of raising TypeError.
+            price = data.get("price") if isinstance(data, dict) else None
+            if price is not None and price > 0:
                 valid_symbols.append(symbol)
                 analysis["market_data"][symbol] = {
                     "price": data["price"],

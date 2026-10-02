@@ -157,6 +157,34 @@ GET_OHLCV_DEF: dict[str, Any] = {
 }
 
 
+def _resample_hourly_to_4h(df: pd.DataFrame) -> pd.DataFrame:
+    """Fold 1h bars into 4h candles (yfinance has no native "4h" interval).
+
+    Convention: fixed 4-hour windows, left-closed and left-labelled
+    (``resample("4h", label="left", closed="left")``), anchored to midnight
+    in the index's own timezone (UTC midnight for UTC/naive frames). Within a
+    window: open=first, high=max, low=min, close=last over the non-NA values,
+    volume=sum (an all-NA volume sums to 0). All-NA windows (gaps with no bars
+    at all) are dropped, and the trailing window the data ends inside is
+    dropped when it holds fewer than 4 bars. Caveat: for session-based assets
+    (equities) a window may legitimately span fewer than four 1h session bars
+    mid-range; those are kept -- "incomplete" here means the final,
+    still-forming window.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("4h candles need a DatetimeIndex of 1h bars")
+    if len(df) < 4:
+        raise ValueError(f"Need at least 4 x 1h bars to build 4h candles, got {len(df)}")
+
+    grouped = df.resample("4h", label="left", closed="left")
+    sizes = grouped.size()
+    candles = grouped.agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
+    candles = candles.dropna(subset=["open", "high", "low", "close"], how="all")
+    if len(sizes) and sizes.iloc[-1] < 4:
+        candles = candles.iloc[:-1]  # the trailing window is still forming
+    return candles
+
+
 async def get_ohlcv(
     symbol: str,
     period: str = "1mo",
@@ -169,9 +197,14 @@ async def get_ohlcv(
         # Strip $ prefix if present (breadth symbols use $SPY format)
         clean_symbol = symbol.lstrip("$")
 
+        # yfinance has no native 4h bars: fetch 1h and fold them into 4h
+        # candles (see _resample_hourly_to_4h for the convention). Every other
+        # interval goes to the client unchanged.
+        fetch_interval = "1h" if interval == "4h" else interval
+
         client = YahooFinanceClient()
         # get_bars is synchronous -- run in thread to avoid blocking
-        df: pd.DataFrame | None = await asyncio.to_thread(client.get_bars, clean_symbol, period, interval)
+        df: pd.DataFrame | None = await asyncio.to_thread(client.get_bars, clean_symbol, period, fetch_interval)
 
         if df is None or df.empty:
             return {
@@ -188,6 +221,17 @@ async def get_ohlcv(
             df.columns = [c[0].lower() for c in df.columns]
         else:
             df.columns = [c.lower() for c in df.columns]
+
+        if interval == "4h":
+            df = _resample_hourly_to_4h(df)
+            if df.empty:
+                return {
+                    "error": (
+                        f"No complete 4h candles could be built for {clean_symbol} "
+                        f"({period}/4h) from the available 1h bars. Try a longer "
+                        f"period like '1mo'."
+                    )
+                }
 
         # Build a compact candle list for the LLM context. Non-finite / missing
         # cells serialize as null instead of crashing (int(nan) raises) or

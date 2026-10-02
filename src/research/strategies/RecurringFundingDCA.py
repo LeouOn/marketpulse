@@ -8,6 +8,7 @@ and a scaling model like ``FixedDollar(amount_usd=500)`` for income-based DCA.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
@@ -47,8 +48,19 @@ class RecurringFundingDCA(Strategy):
     default_params: ClassVar[dict[str, Any]] = {"every_n_bars": 30}
 
     def validate_params(self, params: dict[str, Any]) -> None:
-        if params.get("every_n_bars", 1) <= 0:
-            raise InvalidParamsError(f"every_n_bars must be > 0, got {params['every_n_bars']}")
+        value = params.get("every_n_bars", 1)
+        # Must be a real positive integer. A None/str/list used to raise a raw
+        # TypeError from the comparison, NaN/inf passed validation and crashed
+        # generate_signals, and 2.5 was silently truncated to 2.
+        is_positive_integer = (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+            and value > 0
+            and int(value) == value
+        )
+        if not is_positive_integer:
+            raise InvalidParamsError(f"every_n_bars must be > 0 and a whole number, got {value!r}")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         every = max(1, int(self.params["every_n_bars"]))

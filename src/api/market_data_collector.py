@@ -208,15 +208,23 @@ class MarketDataCollector:
 
         data = None
 
-        if symbol in self.symbols["stocks"] and self.alpaca:
-            data = await self.alpaca.get_bars(symbol, timeframe, limit=100)
+        # A failing source must degrade to None (the Optional return contract),
+        # never raise out of a data-fetch helper.
+        try:
+            if symbol in self.symbols["stocks"] and self.alpaca:
+                data = await self.alpaca.get_bars(symbol, timeframe, limit=100)
 
-        if symbol == "NQ=F" and self.rithmic:
-            rithmic_symbol = "NQ" if symbol == "NQ=F" else symbol
-            data = await self.rithmic.get_ohlc(rithmic_symbol, timeframe, limit=100)
+            if symbol == "NQ=F" and self.rithmic:
+                rithmic_symbol = "NQ" if symbol == "NQ=F" else symbol
+                data = await self.rithmic.get_ohlc(rithmic_symbol, timeframe, limit=100)
 
-        if ("-USD" in symbol or "-USD" in symbol) and self.coinbase:
-            data = await self.coinbase.get_candles(symbol, granularity=60, limit=100)
+            if "-USD" in symbol and self.coinbase:
+                # CoinbaseClient.get_candles takes (symbol, granularity, start,
+                # end) -- it has no limit kwarg, so passing one always failed.
+                data = await self.coinbase.get_candles(symbol, granularity=60)
+        except Exception as e:
+            logger.error(f"OHLC fetch failed for {symbol}: {e}")
+            data = None
 
         if data and self.cache:
             await self.cache.set_ohlc(symbol, timeframe, data)
@@ -225,10 +233,19 @@ class MarketDataCollector:
 
     async def health_check(self) -> dict[str, Any]:
         """Check health of all data sources"""
+
+        async def _ok(client) -> bool:
+            # One broken source must not crash the whole health report.
+            try:
+                return client is not None and await client.is_available()
+            except Exception as e:
+                logger.warning(f"Health check failed for {type(client).__name__}: {e}")
+                return False
+
         return {
-            "alpaca": self.alpaca is not None and await self.alpaca.is_available(),
-            "rithmic": self.rithmic is not None and await self.rithmic.is_available(),
-            "coinbase": self.coinbase is not None and await self.coinbase.is_available(),
+            "alpaca": await _ok(self.alpaca),
+            "rithmic": await _ok(self.rithmic),
+            "coinbase": await _ok(self.coinbase),
             "cache": self.cache is not None and self.cache.is_connected,
         }
 

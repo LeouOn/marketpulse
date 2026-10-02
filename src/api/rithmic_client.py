@@ -11,6 +11,22 @@ from loguru import logger
 from ..core.config import get_settings
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Coerce to float; JSON nulls / non-numeric strings fall back to default."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    """Coerce to int; JSON nulls / non-numeric strings fall back to default."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class RithmicClient:
     """Rithmic API client for futures market data"""
 
@@ -87,10 +103,10 @@ class RithmicClient:
         if data:
             return {
                 "symbol": symbol,
-                "bid": float(data.get("bid", 0)),
-                "ask": float(data.get("ask", 0)),
-                "last": float(data.get("last", 0)),
-                "volume": int(data.get("volume", 0)),
+                "bid": _safe_float(data.get("bid", 0)),
+                "ask": _safe_float(data.get("ask", 0)),
+                "last": _safe_float(data.get("last", 0)),
+                "volume": _safe_int(data.get("volume", 0)),
                 "timestamp": data.get("timestamp", datetime.now().isoformat()),
             }
         return None
@@ -116,17 +132,25 @@ class RithmicClient:
 
         data = await self._get("/bars", params)
         if data and "bars" in data:
-            return [
-                {
-                    "timestamp": bar["t"],
-                    "open": float(bar["o"]),
-                    "high": float(bar["h"]),
-                    "low": float(bar["l"]),
-                    "close": float(bar["c"]),
-                    "volume": int(bar["v"]),
-                }
-                for bar in data["bars"]
-            ]
+            bars = []
+            required = ("t", "o", "h", "l", "c", "v")
+            for bar in data["bars"]:
+                # A malformed bar (non-dict, missing or null fields) is skipped,
+                # not fabricated into zeros and not fatal.
+                if not isinstance(bar, dict) or any(bar.get(k) is None for k in required):
+                    logger.debug(f"Rithmic bar missing fields, skipped: {bar!r}")
+                    continue
+                bars.append(
+                    {
+                        "timestamp": bar["t"],
+                        "open": _safe_float(bar["o"]),
+                        "high": _safe_float(bar["h"]),
+                        "low": _safe_float(bar["l"]),
+                        "close": _safe_float(bar["c"]),
+                        "volume": _safe_int(bar["v"]),
+                    }
+                )
+            return bars
         return None
 
     async def get_futures_data(self, symbols: list[str]) -> dict[str, Any]:
