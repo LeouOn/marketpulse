@@ -34,6 +34,7 @@ from src.analysis.divergence_detector import scan_for_divergences
 from src.analysis.ict_concepts import ICTAnalyzer
 from src.analysis.risk_manager import RiskManager
 from src.analysis.technical_indicators import TechnicalIndicators, identify_trends
+from src.core.keys import _usable
 
 console = Console()
 
@@ -69,6 +70,45 @@ class ProviderSpec:
 _OPENROUTER_DEFAULT_MODEL = "openai/gpt-4o-mini"
 
 
+def _select_provider(settings) -> ProviderSpec:
+    """Map the configured provider name to its connection details.
+
+    No key validation happens here: this is the reporting path (e.g.
+    ``/api/ai/status``), which must be able to name the provider even when the
+    key is missing or an unresolved placeholder.
+    """
+    llm = settings.llm
+    name = (llm.model_routing.primary_provider or "").strip().lower()
+
+    if name == "minimax":
+        cfg = llm.minimax
+        return ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model, "MINIMAX_API_KEY")
+    if name == "deepseek":
+        cfg = llm.deepseek
+        return ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model_pro, "DEEPSEEK_API_KEY")
+    if name == "openrouter":
+        cfg = llm.fallback
+        return ProviderSpec(name, cfg.base_url, cfg.api_key, _OPENROUTER_DEFAULT_MODEL, "OPENROUTER_API_KEY")
+    if name in ("lm_studio", "local", "primary"):
+        cfg = llm.primary
+        return ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model, "(no key needed for a local model)")
+    raise ValueError(
+        f"Unsupported llm.model_routing.primary_provider={name!r}; "
+        f"expected one of: minimax, deepseek, openrouter, lm_studio"
+    )
+
+
+def _usable_provider_key(key: str | None) -> bool:
+    """True iff the key is a real key, not empty or a placeholder.
+
+    Mirrors ``src/core/keys.py::_usable`` (same helper): only keys that START
+    with a placeholder marker (``your_...``) or an unresolved settings
+    interpolation token (``${api_keys:...}``) are rejected. A key that merely
+    contains ``your_`` mid-string is usable.
+    """
+    return _usable(key) is not None
+
+
 def _resolve_provider(settings) -> ProviderSpec:
     """Pick the LLM the analyst uses: whatever the app is configured to use.
 
@@ -76,33 +116,18 @@ def _resolve_provider(settings) -> ProviderSpec:
     they differ only in host, key and model id. Reading the choice from
     ``llm.model_routing.primary_provider`` is what keeps the analyst from
     drifting back to a hard-coded vendor when the app's default changes.
+
+    Raises ``ValueError`` when the configured key is unusable, so the query
+    path fails up front with a clear message instead of sending a placeholder
+    to the provider and surfacing its 401.
     """
-    llm = settings.llm
-    name = (llm.model_routing.primary_provider or "").strip().lower()
+    spec = _select_provider(settings)
 
-    if name == "minimax":
-        cfg = llm.minimax
-        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model, "MINIMAX_API_KEY")
-    elif name == "deepseek":
-        cfg = llm.deepseek
-        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model_pro, "DEEPSEEK_API_KEY")
-    elif name == "openrouter":
-        cfg = llm.fallback
-        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, _OPENROUTER_DEFAULT_MODEL, "OPENROUTER_API_KEY")
-    elif name in ("lm_studio", "local", "primary"):
-        cfg = llm.primary
-        spec = ProviderSpec(name, cfg.base_url, cfg.api_key, cfg.model, "(no key needed for a local model)")
-    else:
+    if not _usable_provider_key(spec.api_key):
         raise ValueError(
-            f"Unsupported llm.model_routing.primary_provider={name!r}; "
-            f"expected one of: minimax, deepseek, openrouter, lm_studio"
-        )
-
-    key = (spec.api_key or "").strip()
-    if not key or "your_" in key.lower():
-        raise ValueError(
-            f"{spec.name} API key required (set {spec.env_var}) -- the analyst now uses the "
-            f"app's configured LLM provider instead of a hard-coded Anthropic model"
+            f"{spec.name} API key required (set {spec.env_var}) -- the configured value is empty "
+            f"or an unresolved placeholder such as '${{api_keys:{spec.name}:api_key}}'; the "
+            f"analyst uses the app's configured LLM provider instead of a hard-coded Anthropic model"
         )
     if not (spec.model or "").strip():
         raise ValueError(

@@ -1,8 +1,47 @@
 import os
+import sys
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+
+# ---------------------------------------------------------------------------
+# Import-time spend guard (runs before any src import; see test_spend_guard.py)
+# ---------------------------------------------------------------------------
+#
+# The repo's ``.env`` holds real keys (a paid MiniMax key among them), and
+# deleting the vars per test is NOT enough:
+#   (a) import-time code runs ``load_dotenv()`` (src/research/data/_fred_key.py)
+#       before any fixture, exporting real values into os.environ;
+#   (b) src/core/config.py reads the .env FILE directly (pydantic ``env_file``
+#       and ``dotenv_values`` for YAML interpolation), which deletion cannot stop.
+# A var set to "" overrides both: env beats env_file, ``env_vars.update(os.environ)``
+# runs after the .env read, and ``load_dotenv(override=False)`` never replaces an
+# existing (even empty) var. ``MARKETPULSE_KEYS_ENV_ONLY=1`` keeps src/core/keys.py
+# off the .env/credentials.yaml files entirely.
+#
+# Deliberate opt-outs (documented live runs need FRED_API_KEY etc.):
+# --live-credentials on the pytest command line, MARKETPULSE_USE_REAL_CREDENTIALS=1,
+# or RUN_LIVE_TESTS=1.
+
+SPEND_GUARD_ENV_KEYS = [
+    "MINIMAX_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "FRED_API_KEY",
+    "EIA_API_KEY",
+]
+
+if not (
+    "--live-credentials" in sys.argv
+    or os.environ.get("MARKETPULSE_USE_REAL_CREDENTIALS") == "1"
+    or os.environ.get("RUN_LIVE_TESTS") == "1"
+):
+    for _guarded_key in SPEND_GUARD_ENV_KEYS:
+        os.environ[_guarded_key] = ""
+    os.environ["MARKETPULSE_KEYS_ENV_ONLY"] = "1"
 
 # ---------------------------------------------------------------------------
 # E2E smoke-test opt-in (W5 T25, Metis SC6)
@@ -118,6 +157,7 @@ _SENSITIVE_ENV_KEYS = [
     "MINIMAX_API_KEY",
     "DEEPSEEK_API_KEY",
     "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
     "FRED_API_KEY",
     "EIA_API_KEY",
     "ALPACA_KEY_ID",
@@ -136,6 +176,9 @@ def isolate_test_environment(monkeypatch, tmp_path, request):
     1. Points research reports and on-chain cache files to tmp_path.
     2. Copies daily.csv into tmp_path so existing reads succeed but writes stay isolated.
     3. Prevents loading private credentials.yaml and sensitive env vars unless opted in.
+       Keys are BLANKED (""), not deleted: an empty env var still overrides the .env
+       file in pydantic-settings and in config.py's dotenv interpolation, and stops
+       import-time ``load_dotenv(override=False)`` from exporting real values.
     """
     import shutil
     from pathlib import Path
@@ -171,9 +214,11 @@ def isolate_test_environment(monkeypatch, tmp_path, request):
     )
 
     if not allow_real_keys:
-        # Strip live API keys from environment
+        # Blank live API keys in the environment ("" beats the .env file; see the
+        # import-time spend guard at the top of this file). monkeypatch restores the
+        # blank value after each test, so no real value ever leaks back in.
         for key in _SENSITIVE_ENV_KEYS:
-            monkeypatch.delenv(key, raising=False)
+            monkeypatch.setenv(key, "")
 
         # Force Settings to load credentials.example.yaml rather than developer credentials.yaml.
         # Only the developer's real file is hidden: a test that chdir()s into tmp_path and writes its

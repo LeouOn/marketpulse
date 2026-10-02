@@ -36,6 +36,7 @@ of ``token`` (LLM output), ``tool_call``, ``tool_result``, ``final``,
 from __future__ import annotations
 
 import json
+import math
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -49,6 +50,7 @@ from ..research import tools as research_tools
 from ..research.data import AssetConfig, AssetRegistry
 from ..research.macro.regimes import RulesBasedClassifier
 from ..research.strategies import _REGISTRY
+from .json_utils import to_builtin
 
 router = APIRouter(prefix="/api/research", tags=["research"])
 
@@ -640,6 +642,7 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
 
     try:
         from src.research.macro.factors import MacroFactorProvider
+        from src.research.macro.model import regime_contest
         from src.research.macro.regimes import (
             REGIME_COLUMNS,
             SCORE_COLUMN_PREFIX,
@@ -690,6 +693,8 @@ async def regimes_tape(start: str | None = None, end: str | None = None):
         rec["scores"] = {
             col: float(row[SCORE_COLUMN_PREFIX + col]) for col in REGIME_COLUMNS if SCORE_COLUMN_PREFIX + col in row
         }
+        # Additive: near-tie signal so clients can flag a flippable label.
+        rec.update(regime_contest(rec["scores"]))
         records.append(rec)
     if not records:
         raise HTTPException(
@@ -717,6 +722,21 @@ def pd_timestamp_to_date(ts: Any) -> Any:
     if isinstance(ts, pd.Timestamp):
         return ts.date().isoformat()
     return str(ts)
+
+
+def _finite_or_none(value: Any) -> float | None:
+    """Coerce an OHLCV cell to a JSON-safe float.
+
+    NaN/inf are rejected by ``JSONResponse`` (``allow_nan=False``), and
+    ``iterrows`` boxes NaN in float columns as ``NaT`` in mixed frames
+    (datetime ``ts`` + floats), which ``float()`` cannot convert at all.
+    All of those become ``null``.
+    """
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
 
 
 @router.get("/{asset}/data")
@@ -758,27 +778,29 @@ async def get_asset_data(
         ohlcv_rows.append(
             {
                 "ts": str(row["ts"]),
-                "open": float(row["open"]),
-                "high": float(row["high"]),
-                "low": float(row["low"]),
-                "close": float(row["close"]),
-                "volume": float(row.get("volume", 0.0)) if "volume" in row else None,
+                "open": _finite_or_none(row["open"]),
+                "high": _finite_or_none(row["high"]),
+                "low": _finite_or_none(row["low"]),
+                "close": _finite_or_none(row["close"]),
+                "volume": _finite_or_none(row["volume"]) if "volume" in row else None,
             }
         )
 
-    return {
-        "success": True,
-        "data": {
-            "asset": asset,
-            "timeframe": timeframe,
-            "rows": int(len(df)),
-            "returned": len(ohlcv_rows),
-            "start": str(df["ts"].min()),
-            "end": str(df["ts"].max()),
-            "summary": r.data,
-            "ohlcv": ohlcv_rows,
-        },
-    }
+    return to_builtin(
+        {
+            "success": True,
+            "data": {
+                "asset": asset,
+                "timeframe": timeframe,
+                "rows": int(len(df)),
+                "returned": len(ohlcv_rows),
+                "start": str(df["ts"].min()),
+                "end": str(df["ts"].max()),
+                "summary": r.data,
+                "ohlcv": ohlcv_rows,
+            },
+        }
+    )
 
 
 @router.post("/{asset}/backtest")
@@ -815,7 +837,7 @@ async def asset_regime(asset: str, date: str | None = None):
     _require_asset(asset)
     try:
         from src.research.macro.factors import MacroFactorProvider
-        from src.research.macro.model import MacroRegimeModel
+        from src.research.macro.model import MacroRegimeModel, regime_contest
         from src.research.macro.regimes import SCORE_SCALE_NOTE
     except ImportError as e:
         raise HTTPException(
@@ -863,14 +885,17 @@ async def asset_regime(asset: str, date: str | None = None):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    scores_payload = {r.value: float(v) for r, v in result.scores.items()} if result.scores else None
     return {
         "success": True,
         "data": {
             "asset": asset,
             "regime": result.regime.value,
             "probs": {r.value: float(p) for r, p in result.probs.items()},
-            "scores": {r.value: float(v) for r, v in result.scores.items()} if result.scores else None,
+            "scores": scores_payload,
             "score_scale": SCORE_SCALE_NOTE,
+            # Additive: near-tie signal so clients can flag a flippable label.
+            **regime_contest(scores_payload),
             "source": result.source,
             "narrative": result.narrative,
             "timestamp": str(result.timestamp) if result.timestamp else None,

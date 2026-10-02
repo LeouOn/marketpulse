@@ -207,35 +207,50 @@ async def validate_trade(request: TradeValidationRequest):
 @ai_router.get("/status")
 async def get_ai_status():
     """Get AI analyst status and configuration"""
+    import os
+
+    from src.ai.massive_analyst import _select_provider
+    from src.core.config import get_settings
+
+    key_error: Optional[str] = None
+    history: list = []
     try:
         analyst = get_analyst()
-
-        import os
-
-        status = {
-            # The provider the analyst actually talks to, resolved from app config.
-            "provider": analyst.provider.name,
-            "model": analyst.provider.model,
-            "base_url": analyst.provider.base_url,
-            "provider_api_configured": bool(analyst.provider.api_key),
-            # Kept so anything still reading the old field keeps working.
-            "anthropic_api_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
-            "massive_api_configured": bool(os.getenv("MASSIVE_API_KEY")),
-            "message_history_length": len(analyst.message_history),
-            "features": {
-                "divergence_detection": True,
-                "ict_analysis": True,
-                "risk_management": True,
-                "technical_indicators": True,
-                "massive_mcp_server": bool(os.getenv("MASSIVE_API_KEY")),
-            },
-        }
-
-        return JSONResponse(content={"success": True, "data": status})
-
+        provider_spec = analyst.provider
+        history = analyst.message_history
+    except ValueError as e:
+        # The configured provider key is missing or an unresolved placeholder
+        # (e.g. "${api_keys:minimax:api_key}"). That is a status fact, not a
+        # crash: report provider_api_configured=false plus the message, never a
+        # misleading "configured: true".
+        key_error = str(e)
+        provider_spec = _select_provider(get_settings())
     except Exception as e:
         logger.error(f"Error getting AI status: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+    status = {
+        # The provider the analyst actually talks to, resolved from app config.
+        "provider": provider_spec.name,
+        "model": provider_spec.model,
+        "base_url": provider_spec.base_url,
+        "provider_api_configured": key_error is None,
+        # Kept so anything still reading the old field keeps working.
+        "anthropic_api_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "massive_api_configured": bool(os.getenv("MASSIVE_API_KEY")),
+        "message_history_length": len(history),
+        "features": {
+            "divergence_detection": True,
+            "ict_analysis": True,
+            "risk_management": True,
+            "technical_indicators": True,
+            "massive_mcp_server": bool(os.getenv("MASSIVE_API_KEY")),
+        },
+    }
+    if key_error:
+        status["message"] = key_error
+
+    return JSONResponse(content={"success": True, "data": status})
 
 
 @ai_router.get("/")

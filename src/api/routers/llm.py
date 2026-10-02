@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import json
+import re
 from datetime import datetime
 
 from fastapi import APIRouter
@@ -28,6 +29,25 @@ from .deps import (
 )
 
 router = APIRouter(prefix="/api/llm", tags=["llm"])
+
+# Reasoning models (MiniMax-M3) return their chain of thought inline in the
+# message content as <think>...</think> around the real answer. Remove it before
+# the reply reaches the user.
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>|<think>.*\Z", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_think(content: str | None) -> str | None:
+    """Remove inline ``<think>...</think>`` reasoning from model output.
+
+    Handles multiple blocks, multi-line blocks, and an unterminated opening
+    ``<think>`` (drops from the tag to the end of the text). Leading whitespace
+    left behind after removal is trimmed; text without think tags is returned
+    untouched.
+    """
+    if not content or "<think>" not in content.lower():
+        return content
+    return _THINK_BLOCK_RE.sub("", content).lstrip()
+
 
 # ---------------------------------------------------------------------------
 # Shared router-backed client -- reuses sessions across requests
@@ -209,7 +229,7 @@ async def chat_with_llm(request: ChatRequest):
             )
 
             if response and "choices" in response and len(response["choices"]) > 0:
-                response_text = response["choices"][0]["message"]["content"]
+                response_text = _strip_think(response["choices"][0]["message"]["content"])
                 logger.info(f"LLM chat success: {len(response_text)} chars")
 
         except TimeoutError:

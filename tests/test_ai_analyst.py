@@ -295,6 +295,11 @@ def status_client(monkeypatch):
 
 def test_status_endpoint_reports_configured_state(status_client, monkeypatch):
     monkeypatch.setenv("MASSIVE_API_KEY", "massive-key-123")
+    # Pin a fake provider key on the cached settings (same pattern as
+    # tests/test_ai_status_unresolved_key.py) so the test passes with AND
+    # without a real .env -- the endpoint builds its analyst from these
+    # settings, not from the ambient environment.
+    _settings(minimax__api_key="sk-test-fake")
 
     response = status_client.get("/api/ai/status")
 
@@ -456,6 +461,10 @@ def test_status_reports_the_provider_in_use(status_client):
 
 def test_status_works_without_an_anthropic_key(status_client):
     """The endpoint must not be dark when only the app's default provider is keyed."""
+    # Pin a fake key so this holds with AND without a .env (see
+    # tests/test_ai_status_unresolved_key.py for the settings-patch pattern).
+    _settings(minimax__api_key="sk-test-fake")
+
     data = status_client.get("/api/ai/status").json()["data"]
 
     assert data["provider"] == "minimax"
@@ -482,9 +491,12 @@ def test_status_explains_a_missing_key_for_the_configured_provider(status_client
     finally:
         config_mod.get_settings = original
 
-    assert response.status_code == 500
-    assert "minimax" in response.json()["detail"]
-    assert "MINIMAX_API_KEY" in response.json()["detail"]
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["provider"] == "minimax"
+    assert data["provider_api_configured"] is False
+    assert "minimax" in data["message"]
+    assert "MINIMAX_API_KEY" in data["message"]
 
 
 # ===========================================================================

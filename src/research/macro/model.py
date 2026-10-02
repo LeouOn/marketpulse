@@ -53,6 +53,8 @@ Public API
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -116,6 +118,45 @@ class RegimeClassification:
     source: str
     timestamp: datetime | None = None
     scores: dict[Regime, float] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Contested-regime signal -- derived from classifier output, not scoring
+# ---------------------------------------------------------------------------
+
+#: Two regimes whose raw stress scores sit closer together than this are
+#: "contested": the dominant label (an argmax over softmax probabilities)
+#: can flip on small data revisions, so clients surface the margin instead.
+CONTESTED_MARGIN = 0.15
+
+
+def regime_contest(scores: Mapping[str, float] | None) -> dict[str, float | str | bool | None]:
+    """Summarize how close the top two raw regime scores are.
+
+    Pure helper over the classifier's *output* scores (never the scoring
+    logic itself).  Returns ``{"margin", "contested", "runner_up"}`` where
+
+    * ``margin`` is top score minus second score (raw ``[0, 1]`` stress
+      scale, NOT the softmax probabilities),
+    * ``contested`` is ``margin < CONTESTED_MARGIN`` (a tie at exactly the
+      threshold is not contested),
+    * ``runner_up`` is the second-ranked regime's name.
+
+    When the signal cannot be computed -- no scores, fewer than two
+    regimes, or any non-finite (NaN/inf) score -- ``margin`` is ``None``
+    and ``contested`` is ``False``: absence must not read as a contest.
+    Ties break deterministically by regime name (alphabetical).
+    """
+    empty = {"margin": None, "contested": False, "runner_up": None}
+    if not scores or len(scores) < 2:
+        return empty
+    items = [(name, float(value)) for name, value in scores.items()]
+    if any(not math.isfinite(value) for _, value in items):
+        return empty
+    ranked = sorted(items, key=lambda kv: (-kv[1], kv[0]))
+    (_, top), (runner_up, second) = ranked[0], ranked[1]
+    margin = top - second
+    return {"margin": margin, "contested": bool(margin < CONTESTED_MARGIN), "runner_up": runner_up}
 
 
 # ---------------------------------------------------------------------------
