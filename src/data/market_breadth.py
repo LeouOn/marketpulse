@@ -2,6 +2,7 @@
 Provides advance/decline, new highs/lows, TICK, VOLD, and McClellan indicators
 """
 
+import math
 from datetime import datetime
 from typing import Any
 
@@ -71,9 +72,20 @@ class MarketBreadthCollector:
             nasdaq_declining = sum(1 for change in nasdaq_data["changes"] if change < 0)
             nasdaq_unchanged = len(nasdaq_data["changes"]) - nasdaq_advancing - nasdaq_declining
 
-            # Calculate ratios
-            nyse_ad_ratio = nyse_advancing / nyse_declining if nyse_declining > 0 else 0
-            nasdaq_ad_ratio = nasdaq_advancing / nasdaq_declining if nasdaq_declining > 0 else 0
+            # Calculate ratios. When nothing declines, adv/dec is undefined:
+            # the count proxy (like hl_ratio below) keeps an all-advance market
+            # reading bullish instead of 0.0 -- the most bearish value. With no
+            # data at all the neutral sentinel is 1.0, matching the except path.
+            nyse_ad_ratio = (
+                nyse_advancing / nyse_declining
+                if nyse_declining > 0
+                else (nyse_advancing if nyse_advancing > 0 else 1.0)
+            )
+            nasdaq_ad_ratio = (
+                nasdaq_advancing / nasdaq_declining
+                if nasdaq_declining > 0
+                else (nasdaq_advancing if nasdaq_advancing > 0 else 1.0)
+            )
 
             # Net advance/decline
             nyse_net_ad = nyse_advancing - nyse_declining
@@ -279,6 +291,12 @@ class MarketBreadthCollector:
                 previous_price = hist["Close"].iloc[-2]
                 change = current_price - previous_price
                 volume = hist["Volume"].iloc[-1]
+
+                # A NaN close/volume would silently count as "unchanged" (NaN
+                # compares False everywhere) and poison the VOLD sums -- skip
+                # the symbol instead.
+                if not math.isfinite(change) or not math.isfinite(volume):
+                    continue
 
                 changes.append(change)
                 volumes.append(volume)

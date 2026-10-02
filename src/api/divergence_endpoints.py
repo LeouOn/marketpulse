@@ -7,9 +7,11 @@ Scan for and visualize divergences:
 - Interactive charts with divergence overlays
 """
 
+import math
 from datetime import datetime
 from typing import List, Optional
 
+import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
@@ -39,6 +41,47 @@ class DivergenceScanRequest(BaseModel):
     indicators: Optional[List[str]] = None  # None = all
 
 
+def _json_safe(value):
+    """Replace non-finite floats (NaN/inf) with None so the JSON renders.
+
+    Starlette's JSONResponse rejects NaN/inf (``allow_nan=False``), so one
+    gappy data point in the detector output would otherwise turn the whole
+    scan into a 500 instead of a null field.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+def _with_price_points(df: pd.DataFrame, divergences: List[dict]) -> List[dict]:
+    """Attach the positional ``price_points`` chart overlays need.
+
+    ``scan_for_divergences`` serialises pivot timestamps but drops the pivot
+    indices ``ChartGenerator.add_divergence_overlays`` expects; recover them
+    from the frame's index. Divergences whose timestamps no longer match the
+    frame are skipped rather than crashing the whole chart.
+    """
+    enriched: List[dict] = []
+    for div in divergences:
+        if div.get("price_points"):
+            enriched.append(div)
+            continue
+        try:
+            positions = df.index.get_indexer([pd.Timestamp(div["start_time"]), pd.Timestamp(div["end_time"])])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if positions[0] < 0 or positions[1] < 0:
+            continue
+        out = dict(div)
+        out["price_points"] = (int(positions[0]), int(positions[1]))
+        enriched.append(out)
+    return enriched
+
+
 @divergence_router.post("/scan")
 async def scan_divergences(request: DivergenceScanRequest):
     """
@@ -53,8 +96,8 @@ async def scan_divergences(request: DivergenceScanRequest):
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for {request.symbol}")
 
-        # Scan for divergences
-        result = scan_for_divergences(df, min_strength=request.min_strength)
+        # Scan for divergences (NaN/inf strengths serialise as null)
+        result = _json_safe(scan_for_divergences(df, min_strength=request.min_strength))
 
         # Add symbol and timestamp
         result["symbol"] = request.symbol
@@ -121,8 +164,10 @@ async def get_divergence_chart(
         # Scan for divergences
         result = scan_for_divergences(df, min_strength=min_strength)
 
-        # Parse indicators
-        indicator_list = indicators.split(",") if indicators else ["sma_20", "ema_50", "vwap"]
+        # Parse indicators (tolerate spaces and trailing commas)
+        indicator_list = (
+            [i.strip() for i in indicators.split(",") if i.strip()] if indicators else ["sma_20", "ema_50", "vwap"]
+        )
 
         # Create base chart
         fig = chart_gen.create_candlestick_chart(
@@ -131,7 +176,9 @@ async def get_divergence_chart(
 
         # Add divergence overlays
         if result["divergences"]:
-            fig = chart_gen.add_divergence_overlays(fig=fig, df=df, divergences=result["divergences"])
+            fig = chart_gen.add_divergence_overlays(
+                fig=fig, df=df, divergences=_with_price_points(df, result["divergences"])
+            )
 
         # Add summary text
         summary_text = f"Found {result['total_divergences']} divergences | Signal: {result['signal']}"
@@ -195,7 +242,13 @@ async def get_divergence_dashboard(
         )
 
         if result["divergences"]:
-            price_chart = chart_gen.add_divergence_overlays(fig=price_chart, df=df, divergences=result["divergences"])
+            price_chart = chart_gen.add_divergence_overlays(
+                fig=price_chart, df=df, divergences=_with_price_points(df, result["divergences"])
+            )
+
+        # Precompute the strongest-strength metric: result["strongest"] may be
+        # None, and the template cannot format that inline.
+        strongest_strength = f"{result['strongest']['strength']:.0f}" if result["strongest"] else "0"
 
         # Create indicator panel
         indicator_panel = chart_gen.create_indicator_panel(df=df, title=f"{symbol} Indicators")
@@ -337,8 +390,7 @@ async def get_divergence_dashboard(
             </div>
             <div class="metric-card">
                 <div class="metric-label">Strongest Signal</div>
-                <div class="metric-value" style="color: #FFD700;">{
-            result["strongest"]["strength"]:.0f if result['strongest'] else 0}</div>
+                <div class="metric-value" style="color: #FFD700;">{strongest_strength}</div>
             </div>
         </div>
 
@@ -412,6 +464,8 @@ async def get_divergence_dashboard(
 
         return HTMLResponse(content=html_template)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating divergence dashboard: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e

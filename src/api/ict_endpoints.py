@@ -5,6 +5,7 @@ This module contains all ICT-related API endpoints for MarketPulse.
 Import these into main.py to keep code organized.
 """
 
+import math
 from datetime import datetime
 from typing import Optional
 
@@ -37,6 +38,56 @@ class MarketResponse(BaseModel):
     timestamp: str
 
 
+#: Timeframes the interval/period maps actually know how to fetch.
+_VALID_TIMEFRAMES = ("1m", "5m", "15m", "30m", "1h", "4h", "1d")
+
+
+def _invalid_request_response(timeframe: str, lookback: int) -> Optional[MarketResponse]:
+    """Reject requests whose parameters would silently produce nonsense.
+
+    An unknown timeframe used to fall back to the 5m/5d fetch while the bogus
+    value was echoed back in the response; ``lookback=0`` returned the whole
+    frame (``iloc[-0:]``) and a negative lookback dropped the *first* rows.
+    """
+    if timeframe not in _VALID_TIMEFRAMES:
+        return MarketResponse(
+            success=False,
+            error=f"Unknown timeframe {timeframe!r}; valid values: {', '.join(_VALID_TIMEFRAMES)}",
+            timestamp=datetime.now().isoformat(),
+        )
+    if lookback < 1:
+        return MarketResponse(
+            success=False,
+            error=f"lookback must be a positive integer, got {lookback}",
+            timestamp=datetime.now().isoformat(),
+        )
+    return None
+
+
+def _nonfinite_candles_response() -> MarketResponse:
+    """Refuse non-finite candle data instead of analyzing it.
+
+    NaN/inf in OHLCV used to reach the payload as ``null`` prices (pydantic
+    maps NaN floats to null) or fail deep inside the analyzer with cryptic
+    errors ("arange: cannot compute length", "Maximum allowed size exceeded").
+    """
+    return MarketResponse(
+        success=False,
+        error="Candle data contains non-finite values (NaN/inf in open/high/low/close/volume); refusing to analyze",
+        timestamp=datetime.now().isoformat(),
+    )
+
+
+def _candles_are_finite(candles) -> bool:
+    cols = [c for c in ("open", "high", "low", "close", "volume") if c in getattr(candles, "columns", [])]
+    if not cols:
+        return True
+    try:
+        return bool(candles[cols].map(math.isfinite).all().all())
+    except TypeError:  # non-numeric column: let the analyzer surface its own error
+        return True
+
+
 @ict_router.post("/analyze", response_model=MarketResponse)
 async def analyze_ict_concepts(request: ICTAnalysisRequest):
     """
@@ -50,6 +101,10 @@ async def analyze_ict_concepts(request: ICTAnalysisRequest):
     - Order Flow Data
     """
     try:
+        invalid = _invalid_request_response(request.timeframe, request.lookback)
+        if invalid is not None:
+            return invalid
+
         # Get candlestick data
         client = YahooFinanceClient()
 
@@ -75,6 +130,8 @@ async def analyze_ict_concepts(request: ICTAnalysisRequest):
             return MarketResponse(
                 success=False, error=f"No data available for {request.symbol}", timestamp=datetime.now().isoformat()
             )
+        if not _candles_are_finite(candles):
+            return _nonfinite_candles_response()
 
         # Limit to requested lookback
         if len(candles) > request.lookback:
@@ -166,6 +223,10 @@ async def generate_ict_signals(request: ICTAnalysisRequest):
     to generate high-probability trade signals
     """
     try:
+        invalid = _invalid_request_response(request.timeframe, request.lookback)
+        if invalid is not None:
+            return invalid
+
         # Get candlestick data
         client = YahooFinanceClient()
 
@@ -181,6 +242,8 @@ async def generate_ict_signals(request: ICTAnalysisRequest):
             return MarketResponse(
                 success=False, error=f"No data available for {request.symbol}", timestamp=datetime.now().isoformat()
             )
+        if not _candles_are_finite(candles):
+            return _nonfinite_candles_response()
 
         if len(candles) > request.lookback:
             candles = candles.iloc[-request.lookback :]
@@ -253,6 +316,8 @@ async def quick_ict_scan(symbol: str):
 
         if candles is None or candles.empty:
             return MarketResponse(success=False, error=f"No data for {symbol}", timestamp=datetime.now().isoformat())
+        if not _candles_are_finite(candles):
+            return _nonfinite_candles_response()
 
         # Quick analysis
         generator = ICTSignalGenerator()

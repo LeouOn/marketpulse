@@ -106,6 +106,10 @@ class ICTSignalGenerator:
         Returns:
             Dictionary with all ICT elements and order flow data
         """
+        if candles is None:
+            # A None frame must not crash the composition below.
+            candles = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
         logger.info(f"Analyzing market with {len(candles)} candles")
 
         # ICT Concepts
@@ -151,6 +155,10 @@ class ICTSignalGenerator:
         Returns:
             List of ICTSignal objects
         """
+        if candles is None or candles.empty:
+            # No candles -> no signals (the sub-generators read iloc[-1]).
+            return []
+
         if market_analysis is None:
             market_analysis = self.analyze_market(candles)
 
@@ -347,6 +355,32 @@ class ICTSignalGenerator:
                                 market_structure="bullish",
                             )
                         )
+                    else:  # bearish
+                        entry = current_price
+                        stop = ob.high + 2
+                        tp1 = entry - (stop - entry) * 1.5
+                        tp2 = entry - (stop - entry) * 3
+
+                        risk = stop - entry
+                        reward = entry - tp1
+
+                        signals.append(
+                            ICTSignal(
+                                type="short",
+                                confidence=min(100, confluence.score + ob.strength * 0.2),
+                                entry_price=entry,
+                                stop_loss=stop,
+                                take_profit=[tp1, tp2],
+                                timestamp=current_time,
+                                trigger="ORDER_BLOCK_RETEST",
+                                ict_elements=["Bearish OB", "Volume Spike"],
+                                order_flow_confirmation=f"CVD: {recent_cvd:+.0f}, Vol Spike",
+                                risk=risk,
+                                reward=reward,
+                                risk_reward_ratio=reward / risk if risk > 0 else 0,
+                                market_structure="bearish",
+                            )
+                        )
 
         return signals
 
@@ -409,6 +443,43 @@ class ICTSignalGenerator:
                             reward=reward,
                             risk_reward_ratio=reward / risk if risk > 0 else 0,
                             market_structure="bullish",
+                        )
+                    )
+
+                elif pool.type == "buy_side" and market_structure.type == "bearish":
+                    # Buy-side liquidity swept, expect continuation down.
+
+                    current_price = candles.iloc[-1]["close"]
+
+                    entry = current_price
+                    stop = pool.price + 3  # Above the swept level
+                    tp1 = entry - (stop - entry) * 2
+                    tp2 = entry - (stop - entry) * 3
+
+                    risk = stop - entry
+                    reward = entry - tp1
+
+                    recent_cvd = cvd.iloc[-5:].mean() if len(cvd) >= 5 else 0
+
+                    confluence = self._calculate_confluence(
+                        {"liquidity_sweep": True, "structure_aligned": True, "cvd_confirms": recent_cvd < 0}
+                    )
+
+                    signals.append(
+                        ICTSignal(
+                            type="short",
+                            confidence=min(100, confluence.score + pool.strength * 0.2),
+                            entry_price=entry,
+                            stop_loss=stop,
+                            take_profit=[tp1, tp2],
+                            timestamp=current_time,
+                            trigger="LIQUIDITY_SWEEP",
+                            ict_elements=["Buy-Side Liquidity Swept", "Bearish Structure"],
+                            order_flow_confirmation=f"CVD: {recent_cvd:+.0f}",
+                            risk=risk,
+                            reward=reward,
+                            risk_reward_ratio=reward / risk if risk > 0 else 0,
+                            market_structure="bearish",
                         )
                     )
 

@@ -5,13 +5,26 @@ Wraps the upstream alert_manager for setting and checking trade alerts.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
+from numbers import Real
 from typing import Any
 
 from loguru import logger
 
 # In-memory alert store (survives within a session)
 _active_alerts: list[dict[str, Any]] = []
+
+
+def _valid_price(value: Any) -> bool:
+    """True for a usable positive numeric price.
+
+    NaN/inf, strings, bools and non-positives are broken data, not prices —
+    an alert must not fire on them (NaN in particular is truthy, so a bare
+    ``if spy_price and vix_price`` would fire on it).
+    """
+    return isinstance(value, Real) and not isinstance(value, bool) and math.isfinite(value) and value > 0
+
 
 # ---------------------------------------------------------------------------
 # Tool: create_alert
@@ -121,7 +134,7 @@ async def check_alerts(market_snapshot_json: str) -> dict[str, Any]:
                 vix_data = market.get("vix") or market.get("^vix", {})
                 spy_price = spy_data.get("price", 0) if isinstance(spy_data, dict) else 0
                 vix_price = vix_data.get("price", 0) if isinstance(vix_data, dict) else 0
-                if spy_price and vix_price:
+                if _valid_price(spy_price) and _valid_price(vix_price):
                     fired = True  # Simplified — real impl would parse the condition
 
             if fired or "always" in condition.lower():

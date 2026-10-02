@@ -6,6 +6,8 @@ Better validation using:
 - No hardcoded price ranges
 """
 
+import math
+from numbers import Real
 from typing import Any
 
 # Thresholds (configurable)
@@ -21,6 +23,15 @@ REASONABLE_RANGES: dict[str, tuple[float, float]] = {
     "IWM": (150.0, 300.0),
     "DIA": (300.0, 500.0),
 }
+
+
+def _is_real_number(value: Any) -> bool:
+    """True for plain real numbers (int/float/numpy reals), False for bool.
+
+    ``bool`` is technically an ``int`` subclass, but a price of ``True`` is a
+    data bug, not a 1.0 reading.
+    """
+    return isinstance(value, Real) and not isinstance(value, bool)
 
 
 class ValidationResult:
@@ -62,6 +73,14 @@ def validate_freshness(
     if data_age_seconds is None:
         return ValidationResult(True, warnings=["Data age unknown (timestamp missing)"])
 
+    if not _is_real_number(data_age_seconds) or math.isnan(data_age_seconds):
+        # NaN compares False against everything, so it would silently read as
+        # "fresh"; treat it like an unknown age instead. (inf stays "stale".)
+        return ValidationResult(True, warnings=["Data age unknown (non-numeric or NaN)"])
+
+    if data_age_seconds < 0:
+        return ValidationResult(True, warnings=[f"Data age is negative ({data_age_seconds:.0f}s): future timestamp?"])
+
     if data_age_seconds > max_age_seconds:
         return ValidationResult(
             True, warnings=[f"Data is stale: {data_age_seconds:.0f}s old (max: {max_age_seconds}s)"]
@@ -87,6 +106,13 @@ def validate_change_from_previous(
     """
     if price is None or prev_close is None:
         return ValidationResult(False, ["Price or previous close is None"])
+
+    if not _is_real_number(price):
+        return ValidationResult(False, [f"Price is not a number: {price!r}"])
+    if not _is_real_number(prev_close):
+        return ValidationResult(False, [f"Previous close is not a number: {prev_close!r}"])
+    if not math.isfinite(price) or not math.isfinite(prev_close):
+        return ValidationResult(False, ["Price or previous close is not finite (NaN/inf)"])
 
     if prev_close <= 0:
         return ValidationResult(False, [f"Invalid previous close: {prev_close}"])
@@ -119,11 +145,19 @@ def validate_cross_symbol_consistency(
     spy_data = internals.get("spy")
     qqq_data = internals.get("qqq")
 
-    if spy_data and qqq_data:
+    if isinstance(spy_data, dict) and isinstance(qqq_data, dict):
         spy_change = spy_data.get("change_pct", 0)
         qqq_change = qqq_data.get("change_pct", 0)
 
-        if spy_change != 0 or qqq_change != 0:
+        if not (
+            _is_real_number(spy_change)
+            and _is_real_number(qqq_change)
+            and math.isfinite(spy_change)
+            and math.isfinite(qqq_change)
+        ):
+            # NaN diffs compare False below and would silently skip validation.
+            warnings.append("Cannot verify SPY/QQQ consistency: change_pct is non-numeric or non-finite")
+        elif spy_change != 0 or qqq_change != 0:
             divergence = abs(spy_change - qqq_change)
 
             if divergence > max_divergence_pct:
@@ -151,28 +185,32 @@ def validate_futures_spot_consistency(
     warnings = []
 
     # ES=F (S&P futures) vs SPY
-    if "es=f" in internals and "spy" in internals:
-        es_price = internals["es=f"].get("price", 0)
-        spy_price = internals["spy"].get("price", 0)
+    es_data = internals.get("es=f")
+    spy_data = internals.get("spy")
+    if isinstance(es_data, dict) and isinstance(spy_data, dict):
+        es_price = es_data.get("price", 0)
+        spy_price = spy_data.get("price", 0)
 
         if es_price > 0 and spy_price > 0:
             # S&P futures track SPY, multiply spot by ~1 for the futures price approximation
             # Actually ES=F is priced differently, we check % change instead
-            es_change = internals["es=f"].get("change_pct", 0)
-            spy_change = internals["spy"].get("change_pct", 0)
+            es_change = es_data.get("change_pct", 0)
+            spy_change = spy_data.get("change_pct", 0)
 
             diff = abs(es_change - spy_change)
             if diff > max_diff_pct * 3:  # Give more room for futures
                 warnings.append(f"ES=F ({es_change:+.2f}%) vs SPY ({spy_change:+.2f}%) diff {diff:.2f}%")
 
     # NQ=F (Nasdaq futures) vs QQQ
-    if "nq=f" in internals and "qqq" in internals:
-        nq_price = internals["nq=f"].get("price", 0)
-        qqq_price = internals["qqq"].get("price", 0)
+    nq_data = internals.get("nq=f")
+    qqq_data = internals.get("qqq")
+    if isinstance(nq_data, dict) and isinstance(qqq_data, dict):
+        nq_price = nq_data.get("price", 0)
+        qqq_price = qqq_data.get("price", 0)
 
         if nq_price > 0 and qqq_price > 0:
-            nq_change = internals["nq=f"].get("change_pct", 0)
-            qqq_change = internals["qqq"].get("change_pct", 0)
+            nq_change = nq_data.get("change_pct", 0)
+            qqq_change = qqq_data.get("change_pct", 0)
 
             diff = abs(nq_change - qqq_change)
             if diff > max_diff_pct * 5:  # Nasdaq is more volatile
@@ -196,6 +234,18 @@ def validate_ohlc(open_price: float, high_price: float, low_price: float, close_
 
     if any(p is None for p in [open_price, high_price, low_price, close_price]):
         return ValidationResult(False, ["One or more OHLC values are None"])
+
+    if any(not _is_real_number(p) for p in [open_price, high_price, low_price, close_price]):
+        return ValidationResult(
+            False,
+            [
+                f"OHLC contains non-numeric price: O={open_price!r}, H={high_price!r}, "
+                f"L={low_price!r}, C={close_price!r}"
+            ],
+        )
+
+    if any(not math.isfinite(p) for p in [open_price, high_price, low_price, close_price]):
+        return ValidationResult(False, ["OHLC contains non-finite price (NaN/inf)"])
 
     if any(p <= 0 for p in [open_price, high_price, low_price, close_price]):
         issues.append(
@@ -223,6 +273,9 @@ def validate_market_internals(internals: dict[str, Any], strict: bool = True) ->
         ValidationResult with aggregated issues/warnings
     """
     result = ValidationResult(True)
+
+    if not isinstance(internals, dict):
+        return ValidationResult(False, [f"internals is not a dict: {type(internals).__name__}"])
 
     for symbol, data in internals.items():
         # Skip metadata keys
@@ -276,6 +329,9 @@ def is_data_usable(internals: dict[str, Any]) -> tuple[bool, str]:
         Tuple of (bool, reason_string)
     """
     # Check for synthetic/mock data - not usable for trading
+    if not isinstance(internals, dict):
+        return False, "Market internals is not a dict"
+
     if internals.get("synthetic") or internals.get("data_source") == "mock":
         return False, "Data is synthetic/mock - not suitable for trading decisions"
 
@@ -291,8 +347,8 @@ def is_data_usable(internals: dict[str, Any]) -> tuple[bool, str]:
             return False, f"{sym.upper()} data is not a dict"
 
         price = data.get("price", 0)
-        if price <= 0:
-            return False, f"{sym.upper()} price is {price} - invalid"
+        if not _is_real_number(price) or not math.isfinite(price) or price <= 0:
+            return False, f"{sym.upper()} price is {price!r} - invalid"
 
     return True, "Data passes basic usability checks"
 
@@ -314,6 +370,9 @@ def flag_data_quality(internals: dict[str, Any]) -> dict[str, Any]:
         - synthetic: True if data is from mock
         - freshness_status: 'fresh' or 'stale'
     """
+    if not isinstance(internals, dict):
+        internals = {}
+
     quality_flags = {
         "data_quality": "unknown",
         "issues": [],
@@ -330,7 +389,8 @@ def flag_data_quality(internals: dict[str, Any]) -> dict[str, Any]:
         quality_flags["warnings"].append(f"Data is synthetic (source: {internals.get('data_source', 'unknown')})")
 
     # Check freshness
-    data_age = internals.get("spy", {}).get("data_age_seconds") if "spy" in internals else None
+    spy_entry = internals.get("spy")
+    data_age = spy_entry.get("data_age_seconds") if isinstance(spy_entry, dict) else None
     if data_age is not None:
         if data_age <= FRESHNESS_THRESHOLD_SECONDS:
             quality_flags["freshness_status"] = "fresh"

@@ -9,6 +9,7 @@ Endpoints for:
 - Alert management
 """
 
+import math
 import uuid
 from datetime import date, datetime
 from typing import List, Optional
@@ -19,6 +20,7 @@ from pydantic import BaseModel
 
 from src.alerts.alert_manager import AlertManager, AlertPriority
 from src.analysis.risk_manager import RiskManager
+from src.api.json_utils import to_builtin
 from src.journal.trade_tracker import TradeJournal
 from src.state.position_manager import Position, PositionManager, PositionSide, PositionStatus
 
@@ -98,6 +100,43 @@ trade_journal = TradeJournal()
 alert_manager = AlertManager()
 
 
+def _validate_trade_inputs(
+    *,
+    entry_price: float,
+    stop_loss: float,
+    take_profit: Optional[float] = None,
+    direction: str,
+    contracts: Optional[int] = None,
+    point_value: Optional[float] = None,
+    risk_amount: Optional[float] = None,
+) -> None:
+    """Reject inputs the risk math cannot handle honestly.
+
+    The downstream comparisons are plain float relations, so a NaN/inf price slips
+    every guard, becomes a NaN risk metric, and then breaks JSON serialization
+    (a 500). A zero ``point_value`` divides by zero in position sizing. An
+    unknown direction is silently treated as ``short`` by the
+    ``.lower() == "long"`` checks, inverting the trade. Non-positive
+    contracts/risk amounts produce nonsense approvals.
+    """
+    prices = {"entry_price": entry_price, "stop_loss": stop_loss}
+    if take_profit is not None:
+        prices["take_profit"] = take_profit
+    if risk_amount is not None:
+        prices["risk_amount"] = risk_amount
+    for name, value in prices.items():
+        if not math.isfinite(value):
+            raise HTTPException(status_code=400, detail=f"{name} must be a finite number, got {value!r}")
+    if risk_amount is not None and risk_amount <= 0:
+        raise HTTPException(status_code=400, detail=f"risk_amount must be positive, got {risk_amount!r}")
+    if direction.strip().lower() not in ("long", "short"):
+        raise HTTPException(status_code=400, detail=f"direction must be 'long' or 'short', got {direction!r}")
+    if point_value is not None and point_value <= 0:
+        raise HTTPException(status_code=400, detail=f"point_value must be positive, got {point_value!r}")
+    if contracts is not None and contracts <= 0:
+        raise HTTPException(status_code=400, detail=f"contracts must be positive, got {contracts!r}")
+
+
 # ============================================================================
 # RISK MANAGEMENT ENDPOINTS
 # ============================================================================
@@ -111,6 +150,14 @@ async def validate_trade(request: TradeValidationRequest):
     Returns approval status, warnings, and suggested position size
     """
     try:
+        _validate_trade_inputs(
+            entry_price=request.entry_price,
+            stop_loss=request.stop_loss,
+            take_profit=request.take_profit,
+            direction=request.direction,
+            contracts=request.contracts,
+            point_value=request.point_value,
+        )
         validation = risk_manager.validate_trade(
             symbol=request.symbol,
             entry_price=request.entry_price,
@@ -142,6 +189,8 @@ async def validate_trade(request: TradeValidationRequest):
             },
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error validating trade: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -169,6 +218,13 @@ async def calculate_position_size(
         Suggested number of contracts
     """
     try:
+        _validate_trade_inputs(
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            direction=direction,
+            point_value=point_value,
+            risk_amount=risk_amount,
+        )
         contracts = risk_manager.calculate_position_size(
             entry_price=entry_price,
             stop_loss=stop_loss,
@@ -195,6 +251,8 @@ async def calculate_position_size(
             },
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error calculating position size: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -208,6 +266,8 @@ async def record_trade_result(request: RecordTradeRequest):
     Updates daily P&L and consecutive loss counter
     """
     try:
+        if not math.isfinite(request.pnl):
+            raise HTTPException(status_code=400, detail=f"pnl must be a finite number, got {request.pnl!r}")
         risk_manager.record_trade_result(request.pnl)
 
         summary = risk_manager.get_risk_summary()
@@ -223,6 +283,8 @@ async def record_trade_result(request: RecordTradeRequest):
             },
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error recording trade result: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -273,6 +335,15 @@ async def open_position(request: PositionRequest):
     Validates risk and records position
     """
     try:
+        _validate_trade_inputs(
+            entry_price=request.entry_price,
+            stop_loss=request.stop_loss,
+            take_profit=request.take_profit,
+            direction=request.side,
+            contracts=request.contracts,
+            point_value=request.point_value,
+        )
+        side = request.side.strip().lower()
         # First validate the trade
         validation = risk_manager.validate_trade(
             symbol=request.symbol,
@@ -291,7 +362,7 @@ async def open_position(request: PositionRequest):
         position = Position(
             id=str(uuid.uuid4()),
             symbol=request.symbol,
-            side=PositionSide.LONG if request.side.lower() == "long" else PositionSide.SHORT,
+            side=PositionSide.LONG if side == "long" else PositionSide.SHORT,
             entry_price=request.entry_price,
             stop_loss=request.stop_loss,
             take_profit=request.take_profit,
@@ -330,6 +401,8 @@ async def open_position(request: PositionRequest):
 
         return {"success": True, "data": {"position_id": position.id, "warnings": validation.warnings}}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error opening position: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -460,36 +533,40 @@ async def analyze_performance(request: PerformanceRequest):
             days=request.days, start_date=request.start_date, end_date=request.end_date
         )
 
-        return {
-            "success": True,
-            "data": {
-                "total_trades": stats.total_trades,
-                "winning_trades": stats.winning_trades,
-                "losing_trades": stats.losing_trades,
-                "win_rate": f"{stats.win_rate:.2f}%",
-                "total_pnl": stats.total_pnl,
-                "gross_profit": stats.gross_profit,
-                "gross_loss": stats.gross_loss,
-                "average_win": stats.average_win,
-                "average_loss": stats.average_loss,
-                "largest_win": stats.largest_win,
-                "largest_loss": stats.largest_loss,
-                "profit_factor": stats.profit_factor,
-                "average_rr": stats.average_rr,
-                "expectancy": stats.expectancy,
-                "max_drawdown": stats.max_drawdown,
-                "max_drawdown_pct": f"{stats.max_drawdown_pct:.2f}%",
-                "sharpe_ratio": stats.sharpe_ratio,
-                "consecutive_wins": stats.consecutive_wins,
-                "consecutive_losses": stats.consecutive_losses,
-                "max_consecutive_wins": stats.max_consecutive_wins,
-                "max_consecutive_losses": stats.max_consecutive_losses,
-                "best_setup": stats.best_setup,
-                "worst_setup": stats.worst_setup,
-                "best_session": stats.best_session,
-                "worst_session": stats.worst_session,
-            },
-        }
+        # to_builtin: an all-winning journal has profit_factor = inf (gross_loss 0),
+        # which JSONResponse refuses; non-finite stats serialize as null.
+        return to_builtin(
+            {
+                "success": True,
+                "data": {
+                    "total_trades": stats.total_trades,
+                    "winning_trades": stats.winning_trades,
+                    "losing_trades": stats.losing_trades,
+                    "win_rate": f"{stats.win_rate:.2f}%",
+                    "total_pnl": stats.total_pnl,
+                    "gross_profit": stats.gross_profit,
+                    "gross_loss": stats.gross_loss,
+                    "average_win": stats.average_win,
+                    "average_loss": stats.average_loss,
+                    "largest_win": stats.largest_win,
+                    "largest_loss": stats.largest_loss,
+                    "profit_factor": stats.profit_factor,
+                    "average_rr": stats.average_rr,
+                    "expectancy": stats.expectancy,
+                    "max_drawdown": stats.max_drawdown,
+                    "max_drawdown_pct": f"{stats.max_drawdown_pct:.2f}%",
+                    "sharpe_ratio": stats.sharpe_ratio,
+                    "consecutive_wins": stats.consecutive_wins,
+                    "consecutive_losses": stats.consecutive_losses,
+                    "max_consecutive_wins": stats.max_consecutive_wins,
+                    "max_consecutive_losses": stats.max_consecutive_losses,
+                    "best_setup": stats.best_setup,
+                    "worst_setup": stats.worst_setup,
+                    "best_session": stats.best_session,
+                    "worst_session": stats.worst_session,
+                },
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error analyzing performance: {e}")
@@ -521,24 +598,27 @@ async def analyze_by_setup(days: Optional[int] = Query(None)):
         trade_journal.load_trades(position_manager.closed_positions)
         analyses = trade_journal.analyze_by_setup(days=days)
 
-        return {
-            "success": True,
-            "data": {
-                "setups": [
-                    {
-                        "setup_type": a.setup_type,
-                        "total_trades": a.total_trades,
-                        "win_rate": f"{a.win_rate:.2f}%",
-                        "profit_factor": a.profit_factor,
-                        "total_pnl": a.total_pnl,
-                        "average_pnl": a.average_pnl,
-                        "best_trade": a.best_trade,
-                        "worst_trade": a.worst_trade,
-                    }
-                    for a in analyses
-                ]
-            },
-        }
+        # to_builtin: profit_factor is inf for setups with no losses (see /analyze).
+        return to_builtin(
+            {
+                "success": True,
+                "data": {
+                    "setups": [
+                        {
+                            "setup_type": a.setup_type,
+                            "total_trades": a.total_trades,
+                            "win_rate": f"{a.win_rate:.2f}%",
+                            "profit_factor": a.profit_factor,
+                            "total_pnl": a.total_pnl,
+                            "average_pnl": a.average_pnl,
+                            "best_trade": a.best_trade,
+                            "worst_trade": a.worst_trade,
+                        }
+                        for a in analyses
+                    ]
+                },
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error analyzing by setup: {e}")

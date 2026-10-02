@@ -5,6 +5,7 @@ Each tool wraps ``OHLCAnalyzer`` methods.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -71,6 +72,13 @@ async def analyze_symbol_technicals(symbol: str, ohlcv_json: str) -> dict[str, A
         candles = ohlcv_data.get("candles", [])
         interval = ohlcv_data.get("interval", "1d")
 
+        # OHLCAnalyzer only has 4h/1d/7d/30d buckets. Map any other interval
+        # get_ohlcv can return (1m..2h intraday, weekly...) onto the closest
+        # bucket so the candles still get analysed instead of silently
+        # producing an empty NEUTRAL result.
+        if interval not in {"4h", "1d", "7d", "30d"}:
+            interval = "4h" if interval in {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "2h"} else "1d"
+
         wrapped: dict[str, Any] = {"historical_data": {}}
         wrapped["historical_data"][interval] = {
             "symbol": symbol,
@@ -79,6 +87,11 @@ async def analyze_symbol_technicals(symbol: str, ohlcv_json: str) -> dict[str, A
 
         analyzer = OHLCAnalyzer()
         result = analyzer.analyze_symbol(wrapped, symbol)
+
+        # An analyzer failure must not masquerade as a successful NEUTRAL
+        # analysis -- surface its error instead of the defaulted fields.
+        if result.get("error"):
+            return {"symbol": symbol, "error": result["error"]}
 
         # Trim for LLM context
         return {
@@ -136,6 +149,17 @@ async def find_support_resistance(symbol: str, ohlcv_json: str) -> dict[str, Any
         import pandas as pd
 
         ohlcv_data = json.loads(ohlcv_json)
+
+        # Guard against LLM fabricating non-dict data (e.g. JSON array)
+        if not isinstance(ohlcv_data, dict):
+            return {
+                "error": (
+                    f"Invalid OHLCV data format: expected a JSON object, "
+                    f"got {type(ohlcv_data).__name__}. Use the raw JSON "
+                    f"returned by get_ohlcv -- do not fabricate data."
+                )
+            }
+
         candles = ohlcv_data.get("candles", [])
 
         if len(candles) < 10:
@@ -185,7 +209,7 @@ async def find_support_resistance(symbol: str, ohlcv_json: str) -> dict[str, Any
 
         return {
             "symbol": symbol,
-            "current_price": current_price,
+            "current_price": current_price if math.isfinite(current_price) else None,
             "supports": supports[:5],
             "resistances": resistances[:5],
             "nearest_support": _nearest_level(current_price, supports, "below"),
@@ -220,7 +244,10 @@ def _dedupe_levels(levels: list[dict], min_distance_pct: float = 1.0) -> list[di
             merged.append(lvl)
             continue
         last = merged[-1]
-        if abs(lvl["level"] - last["level"]) / last["level"] * 100 < min_distance_pct:
+        # A 0.0 baseline level is legitimate (e.g. a crashed/missing print):
+        # treat it as maximally far so the merge never divides by zero.
+        distance_pct = abs(lvl["level"] - last["level"]) / last["level"] * 100 if last["level"] else 100.0
+        if distance_pct < min_distance_pct:
             # Merge -- keep the stronger one
             if lvl["strength"] > last["strength"]:
                 merged[-1] = lvl

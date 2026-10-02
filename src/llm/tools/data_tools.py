@@ -19,11 +19,43 @@ get_symbol_52w_stats  Computed from YahooFinanceClient OHLCV data
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import datetime
 from typing import Any
 
 import pandas as pd
 from loguru import logger
+
+
+def _num_or_none(value: Any) -> float | None:
+    """Coerce to float; None/NaN/inf become ``None`` (JSON null).
+
+    Tool payloads are JSON-serialized by the agent framework, where a stray
+    ``nan`` float raises and a ``None`` cell crashes ``float()`` — a single bad
+    cell must not kill the whole tool result.
+    """
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _round_or_none(value: Any, digits: int = 4) -> float | None:
+    n = _num_or_none(value)
+    return None if n is None else round(n, digits)
+
+
+def _int_or_none(value: Any) -> int | None:
+    n = _num_or_none(value)
+    return None if n is None else int(n)
+
+
+def _na(value: Any) -> Any:
+    """``"N/A"`` for missing AND present-but-None values (``dict.get``'s
+    default does not cover the latter), preserving falsy-but-real 0/0.0."""
+    return "N/A" if value is None else value
+
 
 # ---------------------------------------------------------------------------
 # Tool: get_market_internals
@@ -68,10 +100,10 @@ async def get_market_internals() -> dict[str, Any]:
                 data = internals[key]
                 if isinstance(data, dict):
                     summary[key] = {
-                        "price": data.get("price", "N/A"),
-                        "change": data.get("change", "N/A"),
-                        "change_pct": data.get("change_pct", "N/A"),
-                        "volume": data.get("volume", "N/A"),
+                        "price": _na(data.get("price")),
+                        "change": _na(data.get("change")),
+                        "change_pct": _na(data.get("change_pct")),
+                        "volume": _na(data.get("volume")),
                     }
 
         # Add macro if available
@@ -157,22 +189,24 @@ async def get_ohlcv(
         else:
             df.columns = [c.lower() for c in df.columns]
 
-        # Build a compact candle list for the LLM context
+        # Build a compact candle list for the LLM context. Non-finite / missing
+        # cells serialize as null instead of crashing (int(nan) raises) or
+        # leaking nan floats into the agent's JSON.
         candles: list[dict[str, Any]] = []
         for idx, row in df.tail(50).iterrows():  # cap at 50 candles
             candles.append(
                 {
                     "time": str(idx),
-                    "open": round(float(row.get("open", 0)), 4),
-                    "high": round(float(row.get("high", 0)), 4),
-                    "low": round(float(row.get("low", 0)), 4),
-                    "close": round(float(row.get("close", 0)), 4),
-                    "volume": int(row.get("volume", 0)),
+                    "open": _round_or_none(row.get("open")),
+                    "high": _round_or_none(row.get("high")),
+                    "low": _round_or_none(row.get("low")),
+                    "close": _round_or_none(row.get("close")),
+                    "volume": _int_or_none(row.get("volume")),
                 }
             )
 
         return {
-            "symbol": symbol,
+            "symbol": clean_symbol,
             "period": period,
             "interval": interval,
             "candles": candles,
@@ -220,19 +254,20 @@ async def get_breadth() -> dict[str, Any]:
         if not breadth:
             return {"error": "No breadth data available"}
 
-        # Pick the most relevant fields
+        # Pick the most relevant fields (present-but-None degrades to "N/A";
+        # falsy-but-real values like 0 pass through).
         return {
-            "nyse_advancing": breadth.get("nyse_advancing", "N/A"),
-            "nyse_declining": breadth.get("nyse_declining", "N/A"),
-            "nyse_ad_ratio": breadth.get("nyse_ad_ratio", "N/A"),
-            "nasdaq_advancing": breadth.get("nasdaq_advancing", "N/A"),
-            "nasdaq_declining": breadth.get("nasdaq_declining", "N/A"),
-            "nasdaq_ad_ratio": breadth.get("nasdaq_ad_ratio", "N/A"),
-            "new_highs_52w": breadth.get("new_highs_52w", "N/A"),
-            "new_lows_52w": breadth.get("new_lows_52w", "N/A"),
-            "mcclellan_osc": breadth.get("mcclellan_osc", "N/A"),
-            "tick_avg": breadth.get("tick_avg_30m", "N/A"),
-            "vold": breadth.get("vold_nyse", "N/A"),
+            "nyse_advancing": _na(breadth.get("nyse_advancing")),
+            "nyse_declining": _na(breadth.get("nyse_declining")),
+            "nyse_ad_ratio": _na(breadth.get("nyse_ad_ratio")),
+            "nasdaq_advancing": _na(breadth.get("nasdaq_advancing")),
+            "nasdaq_declining": _na(breadth.get("nasdaq_declining")),
+            "nasdaq_ad_ratio": _na(breadth.get("nasdaq_ad_ratio")),
+            "new_highs_52w": _na(breadth.get("new_highs_52w")),
+            "new_lows_52w": _na(breadth.get("new_lows_52w")),
+            "mcclellan_osc": _na(breadth.get("mcclellan_osc")),
+            "tick_avg": _na(breadth.get("tick_avg_30m")),
+            "vold": _na(breadth.get("vold_nyse")),
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -296,19 +331,28 @@ async def get_symbol_52w_stats(symbol: str) -> dict[str, Any]:
                 "error": (f"Data for {clean_symbol} is missing columns: {missing}. Got columns: {list(df.columns)}")
             }
 
-        high_52w = float(df["high"].max())
-        low_52w = float(df["low"].min())
-        current = float(df["close"].iloc[-1])
+        high_52w = _num_or_none(df["high"].max())
+        low_52w = _num_or_none(df["low"].min())
+        current = _num_or_none(df["close"].iloc[-1])
+        if high_52w is None or low_52w is None or current is None:
+            return {
+                "error": (
+                    f"Data for {clean_symbol} contains non-finite high/low/close values; "
+                    f"refusing to compute 52-week stats"
+                )
+            }
 
-        pct_from_high = round(((current - high_52w) / high_52w) * 100, 2)
-        pct_from_low = round(((current - low_52w) / low_52w) * 100, 2)
+        # A zero reference makes the percentage undefined (and used to divide
+        # by zero, killing the whole result); report null for that one field.
+        pct_from_high = None if high_52w == 0 else round(((current - high_52w) / high_52w) * 100, 2)
+        pct_from_low = None if low_52w == 0 else round(((current - low_52w) / low_52w) * 100, 2)
 
         # Find the date of the 52W high and low
         high_date = str(df["high"].idxmax())
         low_date = str(df["low"].idxmin())
 
         return {
-            "symbol": symbol,
+            "symbol": clean_symbol,
             "current_price": current,
             "high_52w": high_52w,
             "low_52w": low_52w,

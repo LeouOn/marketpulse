@@ -274,6 +274,16 @@ class VolumeProfileBuilder:
         if candles.empty:
             return VolumeProfile(levels=[], poc=0.0, vah=0.0, val=0.0, total_volume=0.0)
 
+        # Non-finite prices (NaN/inf in low/high) make the tick grid
+        # unbuildable: np.arange over an infinite span raises
+        # "Maximum allowed size exceeded", and NaN endpoints silently poison
+        # poc/vah/val. Drop the bad candles; the rest still form a profile.
+        finite = np.isfinite(candles["low"]) & np.isfinite(candles["high"])
+        candles = candles.loc[finite]
+
+        if candles.empty:
+            return VolumeProfile(levels=[], poc=0.0, vah=0.0, val=0.0, total_volume=0.0)
+
         # Create price levels
         min_price = candles["low"].min()
         max_price = candles["high"].max()

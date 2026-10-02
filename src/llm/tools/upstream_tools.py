@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from datetime import datetime
 from typing import Any
 
@@ -40,6 +41,26 @@ DETECT_DIVERGENCES_DEF: dict[str, Any] = {
 }
 
 
+def _field(source: Any, key: str, default: Any = None) -> Any:
+    """Read ``key`` from either an object (getattr) or a dict (get)."""
+    if isinstance(source, dict):
+        return source.get(key, default)
+    return getattr(source, key, default)
+
+
+def _signal_summary(s: Any) -> dict:
+    """One ICT signal reduced to the fields agents consume."""
+    return {
+        "type": _field(s, "type", "unknown"),
+        "confidence": _field(s, "confidence", 0),
+        "entry": _field(s, "entry_price", 0),
+        "stop": _field(s, "stop_loss", 0),
+        "targets": _field(s, "take_profit", _field(s, "targets", [])),
+        "trigger": str(_field(s, "trigger", ""))[:120],
+        "rr_ratio": _field(s, "risk_reward_ratio", 0),
+    }
+
+
 async def detect_divergences(symbol: str, ohlcv_json: str) -> dict[str, Any]:
     """Detect divergences from OHLCV data."""
     try:
@@ -58,13 +79,14 @@ async def detect_divergences(symbol: str, ohlcv_json: str) -> dict[str, Any]:
 
         result = await asyncio.to_thread(scan_for_divergences, df, 60.0)
 
+        by_type = result.get("by_type", {})
         return {
             "symbol": symbol,
             "divergences_found": result.get("total_divergences", 0),
-            "regular_bullish": result.get("regular_bullish", 0),
-            "regular_bearish": result.get("regular_bearish", 0),
-            "hidden_bullish": result.get("hidden_bullish", 0),
-            "hidden_bearish": result.get("hidden_bearish", 0),
+            "regular_bullish": by_type.get("regular_bullish", 0),
+            "regular_bearish": by_type.get("regular_bearish", 0),
+            "hidden_bullish": by_type.get("hidden_bullish", 0),
+            "hidden_bearish": by_type.get("hidden_bearish", 0),
             "details": result.get("divergences", [])[:10],
             "timestamp": datetime.now().isoformat(),
         }
@@ -116,24 +138,17 @@ async def generate_ict_signals(symbol: str, ohlcv_json: str) -> dict[str, Any]:
                 break
 
         generator = ICTSignalGenerator()
-        result = await asyncio.to_thread(generator.generate_signals, df, None)
+        signals = await asyncio.to_thread(generator.generate_signals, df, None)
 
-        signals = result.get("signals", [])
+        # generate_signals returns a list of ICTSignal objects; tolerate the
+        # {"signals": [...]} shape too rather than calling .get on a list.
+        if isinstance(signals, dict):
+            signals = signals.get("signals", [])
+
         return {
             "symbol": symbol,
             "signal_count": len(signals),
-            "signals": [
-                {
-                    "type": s.get("type", s.type if hasattr(s, "type") else "unknown"),
-                    "confidence": s.get("confidence", 0),
-                    "entry": s.get("entry_price", 0),
-                    "stop": s.get("stop_loss", 0),
-                    "targets": s.get("take_profit", s.get("targets", [])),
-                    "trigger": str(s.get("trigger", ""))[:120],
-                    "rr_ratio": s.get("risk_reward_ratio", 0),
-                }
-                for s in signals[:5]
-            ],
+            "signals": [_signal_summary(s) for s in signals[:5]],
             "timestamp": datetime.now().isoformat(),
         }
     except Exception as e:
@@ -182,30 +197,32 @@ async def compute_indicators(symbol: str, ohlcv_json: str) -> dict[str, Any]:
                 df.rename(columns={c: c.lower() for c in df.columns}, inplace=True)
                 break
 
-        ti = TechnicalIndicators()
-        result = await asyncio.to_thread(ti.compute_all, df) if hasattr(ti, "compute_all") else {}
+        # TechnicalIndicators exposes calculate_all(df) (no compute_all); it
+        # returns a frame whose columns are the indicator series. Take the
+        # last row, skip the OHLCV columns, and drop NaN/inf (short history).
+        computed = await asyncio.to_thread(TechnicalIndicators.calculate_all, df)
 
-        # Fallback: call individual methods
-        if not result:
-            result = {
-                "sma_20": await asyncio.to_thread(ti.sma, df["close"], 20) if hasattr(ti, "sma") else None,
-                "sma_50": await asyncio.to_thread(ti.sma, df["close"], 50) if hasattr(ti, "sma") else None,
-                "rsi": await asyncio.to_thread(ti.rsi, df["close"]) if hasattr(ti, "rsi") else None,
-                "macd": await asyncio.to_thread(ti.macd, df["close"]) if hasattr(ti, "macd") else None,
-                "atr": await asyncio.to_thread(ti.atr, df) if hasattr(ti, "atr") else None,
-            }
-
-        # Extract latest values
-        def _last(v):
+        def _last(v: Any):
             if v is None:
                 return None
-            if hasattr(v, "iloc"):
-                return round(float(v.iloc[-1]), 4) if len(v) > 0 else None
-            return round(float(v), 4)
+            try:
+                if pd.isna(v) or (isinstance(v, float) and not math.isfinite(v)):
+                    return None
+                return round(float(v), 4)
+            except (TypeError, ValueError):
+                return None
+
+        last_row = computed.iloc[-1] if len(computed) else {}
+        indicators = {
+            col: _last(last_row[col])
+            for col in computed.columns
+            if col not in ("open", "high", "low", "close", "volume")
+        }
+        indicators = {k: v for k, v in indicators.items() if v is not None}
 
         return {
             "symbol": symbol,
-            "indicators": {k: _last(v) for k, v in result.items() if v is not None},
+            "indicators": indicators,
             "timestamp": datetime.now().isoformat(),
         }
     except Exception as e:
@@ -465,7 +482,9 @@ async def analyze_order_flow(symbol: str, ohlcv_json: str) -> dict[str, Any]:
         # Absorption: high volume, small price change
         recent_range = abs(closes[-1] - closes[-5]) if len(closes) >= 5 else 0
         recent_vol = volumes[-5:].mean() if len(volumes) >= 5 else 0
-        absorption = recent_vol > volumes.mean() * 1.5 and recent_range < (df["high"].max() - df["low"].min()) * 0.3
+        absorption = bool(
+            recent_vol > volumes.mean() * 1.5 and recent_range < (df["high"].max() - df["low"].min()) * 0.3
+        )
 
         return {
             "symbol": symbol,
