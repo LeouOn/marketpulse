@@ -250,6 +250,11 @@ class MockMarketDataProvider:
                 # Mean reversion: pull 10% back toward midpoint
                 new_price = new_price * 0.9 + midpoint * 0.1
 
+        # Report the move that actually happened: clamping and mean
+        # reversion both move the final price away from base + change, so
+        # change/change_pct are recomputed from the final price.
+        change = new_price - base_price
+        change_pct = (change / base_price * 100) if base_price else 0.0
         self.base_prices[symbol] = new_price
         return {"price": new_price, "change": change, "change_pct": change_pct}
 

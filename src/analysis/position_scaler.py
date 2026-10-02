@@ -8,11 +8,18 @@ Scale position size based on:
 - Market conditions
 """
 
+import math
 from dataclasses import dataclass
+from numbers import Real
 from typing import Any, Dict, List
 
 import numpy as np
 from loguru import logger
+
+
+def _is_valid_ratio(value: Any) -> bool:
+    """True for a finite real number (rejects None/NaN/inf/bool/str)."""
+    return isinstance(value, Real) and not isinstance(value, bool) and math.isfinite(value)
 
 
 @dataclass
@@ -147,7 +154,16 @@ class PositionScaler:
         Returns:
             Kelly fraction (0-1)
         """
-        if stats.win_rate == 0 or stats.average_loser == 0 or stats.total_trades < 10:
+        if (
+            not _is_valid_ratio(stats.win_rate)
+            or not _is_valid_ratio(stats.average_winner)
+            or not _is_valid_ratio(stats.average_loser)
+            or stats.win_rate == 0
+            or stats.average_winner == 0
+            or stats.average_loser == 0
+            or stats.total_trades < 10
+        ):
+            # No data, contradictory data, or non-finite inputs: no edge.
             return 0.0
 
         # Calculate odds
@@ -183,7 +199,11 @@ class PositionScaler:
         # Get base size from consecutive performance
         streak_contracts = self.calculate_contracts_from_streak(stats.recent_trades)
 
-        if not use_kelly or stats.total_trades < 10:
+        # A missing/NaN/inf/non-positive balance makes the Kelly leg
+        # meaningless: reject that leg (streak-only, still capped), never
+        # convert garbage to a contract count.
+        balance_ok = _is_valid_ratio(account_balance) and account_balance > 0
+        if not use_kelly or stats.total_trades < 10 or not balance_ok:
             # Not enough data for Kelly, just use streak
             return min(streak_contracts, self.max_contracts)
 
@@ -229,6 +249,12 @@ class PositionScaler:
         Returns:
             Dict with size and confidence metrics
         """
+        # Invalid signal input is treated as the weakest signal, and the
+        # strength is clamped to [0, 100]: garbage must not read as strong.
+        if not _is_valid_ratio(signal_strength):
+            signal_strength = 0.0
+        signal_strength = max(0.0, min(signal_strength, 100.0))
+
         # Base recommendation
         base_size = self.get_recommended_size(stats, account_balance)
 

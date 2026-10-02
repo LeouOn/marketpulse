@@ -181,7 +181,12 @@ class KnowledgeGraph:
         if not self._built:
             return []
 
-        entity_id = entity.lower().replace(" ", "_").replace("-", "_")
+        # Empty/None/blank input must not crash (.lower() on None) or
+        # fuzzy-match an arbitrary node ("" is a substring of every label).
+        if not entity or not str(entity).strip():
+            return []
+
+        entity_id = str(entity).lower().replace(" ", "_").replace("-", "_")
 
         # Try exact match first, then fuzzy
         if entity_id not in self.graph:

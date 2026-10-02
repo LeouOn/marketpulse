@@ -4,8 +4,11 @@ Backtesting API Endpoints
 Run backtests, get performance metrics, and optimize strategies.
 """
 
+import math
+from datetime import datetime
 from typing import Any, Dict, List
 
+import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
@@ -22,6 +25,33 @@ backtest_router = APIRouter(prefix="/api/backtest", tags=["Backtesting"])
 backtest_engine = BacktestEngine()
 position_scaler = PositionScaler()
 regime_classifier = MarketRegimeClassifier()
+
+
+def _json_safe(value: Any) -> Any:
+    """Make a backtest payload survive JSONResponse's strict serializer.
+
+    The engine computes over pandas/numpy, so a realistic result carries
+    np.float64 setup stats (json.dumps TypeError), datetime/Timestamp equity
+    stamps (TypeError), and NaN/inf metrics like sharpe with zero variance or
+    profit_factor with no losers (allow_nan=False ValueError) -- each of which
+    turned every successful backtest into a 500. Non-finite floats become
+    null, datetimes become ISO strings, numpy scalars become native ones.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if hasattr(value, "item") and not isinstance(value, (str, bytes)):  # numpy scalar
+        value = value.item()
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 class BacktestRequest(BaseModel):
@@ -125,7 +155,7 @@ async def run_backtest(request: BacktestRequest):
             ],
         }
 
-        return JSONResponse(content={"success": True, "data": results_dict})
+        return JSONResponse(content={"success": True, "data": _json_safe(results_dict)})
 
     except Exception as e:
         logger.error(f"Error running backtest: {e}")

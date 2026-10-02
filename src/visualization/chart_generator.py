@@ -73,6 +73,13 @@ class ChartGenerator:
         Returns:
             Plotly Figure
         """
+        required = {"open", "high", "low", "close", "volume"}
+        missing = required - set(df.columns)
+        if missing:
+            raise ValueError(
+                f"candlestick chart needs OHLCV columns; missing: {sorted(missing)} (got columns: {list(df.columns)})"
+            )
+
         # Determine subplot layout
         rows = 2 if show_volume else 1
         row_heights = [0.7, 0.3] if show_volume else [1.0]
@@ -372,7 +379,7 @@ class ChartGenerator:
                 fig.add_shape(
                     type="rect",
                     x0=fvg["start_time"],
-                    x1=fvg["end_time"] if "end_time" in fvg else df.index[-1],
+                    x1=fvg["end_time"] if "end_time" in fvg else (df.index[-1] if len(df) else fvg["start_time"]),
                     y0=fvg["lower"],
                     y1=fvg["upper"],
                     fillcolor=color,
@@ -400,7 +407,7 @@ class ChartGenerator:
                 fig.add_shape(
                     type="rect",
                     x0=ob["start_time"],
-                    x1=ob["end_time"] if "end_time" in ob else df.index[-1],
+                    x1=ob["end_time"] if "end_time" in ob else (df.index[-1] if len(df) else ob["start_time"]),
                     y0=ob["lower"],
                     y1=ob["upper"],
                     fillcolor=self.COLORS["order_block"],
@@ -449,10 +456,19 @@ class ChartGenerator:
         Returns:
             Plotly Figure
         """
+        if df.empty:
+            raise ValueError("Volume profile needs at least one candle (got an empty frame)")
+
         # Calculate price range
         price_min = df["low"].min()
         price_max = df["high"].max()
+        if not (np.isfinite(price_min) and np.isfinite(price_max)):
+            raise ValueError("Volume profile needs finite low/high prices (got NaN/inf)")
         price_range = price_max - price_min
+        if price_range <= 0:
+            # Flat series (a single price level): widen to one visible bin so
+            # the profile still renders instead of dividing by zero.
+            price_min, price_max, price_range = price_min - 0.5, price_max + 0.5, 1.0
 
         # Create bins
         bin_size = price_range / bins
@@ -465,6 +481,10 @@ class ChartGenerator:
             # Typical price for this candle
             typical_price = (df["high"].iloc[i] + df["low"].iloc[i] + df["close"].iloc[i]) / 3
             volume = df["volume"].iloc[i]
+
+            # Gappy candles (NaN cells) cannot be binned -- skip them.
+            if not (np.isfinite(typical_price) and np.isfinite(volume)):
+                continue
 
             # Find which bin this belongs to
             bin_idx = int((typical_price - price_min) / bin_size)
@@ -617,8 +637,16 @@ class ChartGenerator:
                 line_color = "#F44336"
                 symbol = "▼"
 
-            # Get time points
-            price_idx1, price_idx2 = div["price_points"]
+            # Get time points (indices from the frame the scan ran on; a
+            # different/trimmed frame means they may not match -- skip rather
+            # than crash)
+            try:
+                price_idx1, price_idx2 = div["price_points"]
+            except (KeyError, TypeError, ValueError):
+                continue
+            n_rows = len(df)
+            if not (0 <= price_idx1 < n_rows and 0 <= price_idx2 < n_rows):
+                continue
             start_time = df.index[price_idx1]
             end_time = df.index[price_idx2]
 

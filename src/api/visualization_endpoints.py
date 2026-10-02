@@ -10,6 +10,7 @@ Serves interactive charts and visualizations:
 - Risk dashboards
 """
 
+import math
 from datetime import datetime
 from typing import List, Optional
 
@@ -25,12 +26,12 @@ from src.visualization.chart_generator import ChartGenerator
 
 
 def _json_float(value):
-    """Float for JSON. NaN and missing values become None."""
+    """Float for JSON. NaN, inf and missing values become None."""
     try:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    if number != number:
+    if not math.isfinite(number):  # NaN (x != x) and +/-inf: JSON cannot carry either
         return None
     return number
 
@@ -69,6 +70,10 @@ async def get_candlestick_chart(request: ChartRequest):
     Returns HTML with embedded Plotly chart
     """
     try:
+        # Plotly rejects heights below 10 with a ValueError; refuse up front.
+        if request.height < 10:
+            raise HTTPException(status_code=400, detail=f"height must be >= 10, got {request.height}")
+
         # Get historical data
         df = bars_frame(yahoo_client, symbol=request.symbol, period=request.period, interval=request.timeframe)
 
@@ -167,6 +172,10 @@ async def get_volume_profile(
     Returns HTML with embedded chart
     """
     try:
+        # numpy histograms cannot take <=0 bins (arange/negative-dimension errors).
+        if bins < 1:
+            raise HTTPException(status_code=400, detail=f"bins must be >= 1, got {bins}")
+
         # Get historical data
         df = bars_frame(yahoo_client, symbol=symbol, period=period, interval=timeframe)
 

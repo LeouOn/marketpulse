@@ -196,6 +196,9 @@ class MarketRegimeClassifier:
         versus_sma = (
             "Above" if market_data.sma_20 is not None and market_data.current_price > market_data.sma_20 else "Below"
         )
+        # A flat/empty feed can report avg_volume == 0; the ratio must not
+        # raise ZeroDivisionError during prompt assembly.
+        volume_ratio = market_data.volume / market_data.avg_volume if market_data.avg_volume else 0.0
 
         prompt = f"""Analyze the current {market_data.symbol} market regime and provide classification.
 
@@ -205,7 +208,7 @@ Price Action (Last 4 hours):
 - Current Price: ${market_data.current_price:.2f}
 - Range: {market_data.range_points:.1f} points
 - Volume: {market_data.volume:,} vs Average: {market_data.avg_volume:,}
-- Volume Ratio: {market_data.volume / market_data.avg_volume:.2f}x
+- Volume Ratio: {volume_ratio:.2f}x
 
 Volatility Metrics:
 - VIX: {market_data.vix:.2f} ({market_data.vix_percentile:.0f}th percentile)
@@ -265,6 +268,9 @@ Be concise but specific. Focus on actionable insights."""
     def _parse_llm_response(self, response: str, market_data: MarketData) -> RegimeAnalysis:
         """Parse LLM response into RegimeAnalysis"""
 
+        # Some providers return content=None; treat it like any other junk
+        # text rather than crashing on .lower().
+        response = response or ""
         response_lower = response.lower()
 
         # Extract regime
@@ -284,7 +290,8 @@ Be concise but specific. Focus on actionable insights."""
 
         conf_match = re.search(r"confidence[:\s]+(\d+)%?", response_lower)
         if conf_match:
-            confidence = float(conf_match.group(1))
+            # Keep the documented 0-100 contract even for sloppy model output.
+            confidence = max(0.0, min(100.0, float(conf_match.group(1))))
 
         # Extract bias
         bias = "neutral"

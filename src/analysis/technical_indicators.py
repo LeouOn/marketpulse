@@ -202,8 +202,9 @@ class TechnicalIndicators:
         Returns:
             OBV series
         """
-        direction = np.where(close.diff() > 0, 1, -1)
-        direction[0] = 0
+        delta = close.diff()
+        # Flat (and missing) closes contribute 0 volume; only strict moves move OBV.
+        direction = np.where(delta > 0, 1, np.where(delta < 0, -1, 0))
         obv = (direction * volume).cumsum()
 
         return pd.Series(obv, index=close.index)
@@ -235,10 +236,11 @@ class TechnicalIndicators:
         plus_dm = np.where((high_diff > low_diff) & (high_diff > 0), high_diff, 0)
         minus_dm = np.where((low_diff > high_diff) & (low_diff > 0), low_diff, 0)
 
-        # Smooth TR, +DM, -DM
+        # Smooth TR, +DM, -DM (index-explicit: a default RangeIndex would
+        # misalign against the DatetimeIndex inputs the callers pass)
         tr_smooth = pd.Series(true_range).rolling(window=period).mean()
-        plus_dm_smooth = pd.Series(plus_dm).rolling(window=period).mean()
-        minus_dm_smooth = pd.Series(minus_dm).rolling(window=period).mean()
+        plus_dm_smooth = pd.Series(plus_dm, index=high.index).rolling(window=period).mean()
+        minus_dm_smooth = pd.Series(minus_dm, index=low.index).rolling(window=period).mean()
 
         # Calculate +DI and -DI
         plus_di = 100 * (plus_dm_smooth / tr_smooth)
@@ -488,7 +490,11 @@ def get_support_resistance(df: pd.DataFrame, lookback: int = 20) -> Dict[str, Li
     Returns:
         Dict with support and resistance levels
     """
-    recent = df.tail(lookback * 2)
+    # A pivot needs `lookback` bars on BOTH sides, so each consumes ~2*lookback+1
+    # rows; the old tail(lookback*2) window left the scan range [L, len-L) EMPTY
+    # for every input. This window fits 3-4 confirmed pivots (the function
+    # returns at most 3 of each kind anyway).
+    recent = df.tail(lookback * 8 + 5)
 
     # Find pivot highs and lows
     resistance_levels = []
@@ -509,5 +515,5 @@ def get_support_resistance(df: pd.DataFrame, lookback: int = 20) -> Dict[str, Li
 
     return {
         "resistance": sorted(resistance_levels, reverse=True)[:3],  # Top 3
-        "support": sorted(support_levels)[-3:],  # Bottom 3
+        "support": sorted(support_levels)[:3],  # Bottom 3 = the three LOWEST
     }
