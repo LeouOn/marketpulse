@@ -19,6 +19,7 @@ Spec: .omo/plans/multi-asset-macro-research-lab.md W4 T16 (lines 1364-1395).
 
 from __future__ import annotations
 
+import math
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar
@@ -89,13 +90,20 @@ class CycleAccumulation(Strategy):
             return pd.Series(1.0, index=df.index, name="signal")
 
         intensities: list[float] = []
+        neutral = self.params.get("neutral_intensity", 1.0)
         for ts in df.index:
             try:
-                intensity = self._cycle_phase(pd.Timestamp(ts), factor_df)
+                intensity = float(self._cycle_phase(pd.Timestamp(ts), factor_df))
+                if not math.isfinite(intensity):
+                    # NaN survives .clip() and inf clips to the MAXIMUM
+                    # intensity — either would let a bad macro row poison
+                    # DCA sizing. Fall back to neutral instead.
+                    intensity = neutral
             except Exception:
-                # Defensive: a bad row in factor_df must not halt the
-                # whole series -- fall back to neutral for this bar only.
-                intensity = self.default_params.get("neutral_intensity", 1.0)
+                # Defensive: a bad row in factor_df (or a non-numeric phase)
+                # must not halt the whole series -- fall back to neutral
+                # for this bar only.
+                intensity = neutral
             intensities.append(float(intensity))
 
         return pd.Series(intensities, index=df.index, name="signal").clip(lower=0.0, upper=1.5)

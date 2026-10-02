@@ -8,6 +8,7 @@ model. Designed for visualization and hypothesis testing.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -49,6 +50,12 @@ class CurveSimulator:
             baseline_curve: Dict mapping tenor name to yield in percent.
                            e.g., {"2y": 4.16, "10y": 4.58, ...}
         """
+        if not baseline_curve:
+            raise ValueError("baseline_curve is empty -- provide at least one tenor yield")
+        for tenor, value in baseline_curve.items():
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+                raise ValueError(f"baseline yield for {tenor!r} must be a finite number, got {value!r}")
+
         self.baseline_curve = dict(baseline_curve)
         self.tools = {t.name: t for t in get_all_tools()}
 
@@ -83,6 +90,21 @@ class CurveSimulator:
             ToolName.FORWARD_GUIDANCE: forward_guidance,
             ToolName.BANK_REGULATION: bank_regulation,
         }
+
+        # Validate overrides up front: each tool declares its own deployment
+        # range, and NaN/inf would silently poison every downstream number
+        # (NaN is truthy, so the `or` fallbacks in spread math never catch it).
+        for tool_name, override_value in overrides.items():
+            if override_value is None:
+                continue
+            tool = self.tools[tool_name]
+            value = override_value
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"{tool_name.value} must be a finite number, got {value!r}")
+            if not (tool.min_value <= value <= tool.max_value):
+                raise ValueError(
+                    f"{tool_name.value}={value} is outside its tool range [{tool.min_value}, {tool.max_value}]"
+                )
 
         tool_effects: dict[str, dict[str, float]] = {}
         cumulative_bps: dict[str, float] = {t: 0.0 for t in ALL_TENORS}
@@ -180,7 +202,13 @@ class CurveSimulator:
         Returns:
             SimulationResult with the scenario label set.
         """
-        presets = self.SCENARIO_PRESETS.get(scenario, self.SCENARIO_PRESETS["current"])
+        presets = self.SCENARIO_PRESETS.get(scenario)
+        if presets is None:
+            # Silently falling back to "current" would label someone's typo
+            # with numbers it never computed.
+            raise ValueError(
+                f"unknown scenario {scenario!r}; expected one of: {', '.join(sorted(self.SCENARIO_PRESETS))}"
+            )
         result = self.simulate(**presets)
         result.scenario_label = scenario
         return result

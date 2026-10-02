@@ -11,6 +11,8 @@ The hawkish score is normalized to [0, 1] where:
 
 from __future__ import annotations
 
+import math
+
 from src.warsh.tools import ToolName
 
 # ---------------------------------------------------------------------------
@@ -108,6 +110,38 @@ _TOOL_WEIGHTS: dict[ToolName, float] = {
 }
 
 
+def _normalize_tool_values(tool_values: dict) -> dict[ToolName, float]:
+    """Normalize keys and keep only usable values.
+
+    Keys may be ``ToolName`` enums, value-form strings ("rmp") or name-form
+    strings ("RMP") — previously the two public functions disagreed on which
+    forms they accepted. Values that cannot be used as a finite float
+    (``None``, NaN/inf-arbitrary, non-numeric) are dropped like missing tools
+    instead of crashing (``float(None)``) or skewing the score through
+    ``min``/``max`` NaN-ordering quirks.
+    """
+    out: dict[ToolName, float] = {}
+    for key, value in tool_values.items():
+        tool: ToolName | None = None
+        if isinstance(key, ToolName):
+            tool = key
+        elif isinstance(key, str):
+            for tn in ToolName:
+                if tn.value == key or tn.name == key:
+                    tool = tn
+                    break
+        if tool is None:
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(number):
+            continue
+        out[tool] = number
+    return out
+
+
 def calculate_hawkish_score(tool_values: dict) -> float:
     """Calculate an aggregate hawkish score in [0, 1] from tool values.
 
@@ -118,20 +152,9 @@ def calculate_hawkish_score(tool_values: dict) -> float:
     Returns:
         Hawkish score in [0, 1]. Higher = more hawkish.
     """
-    # Normalize keys to ToolName enum (accept strings or enums).
-    normalized: dict[ToolName, float] = {}
-    for key, value in tool_values.items():
-        if isinstance(key, ToolName):
-            normalized[key] = float(value)
-        elif isinstance(key, str):
-            try:
-                normalized[ToolName(key)] = float(value)
-            except ValueError:
-                # Try matching by enum value (e.g. "rmp")
-                for tn in ToolName:
-                    if tn.value == key:
-                        normalized[tn] = float(value)
-                        break
+    # Normalize keys to ToolName enum (enum / value-form / name-form keys),
+    # dropping None/NaN/garbage values like missing tools.
+    normalized = _normalize_tool_values(tool_values)
 
     score_funcs = {
         ToolName.RMP: _rmp_hawkish,
@@ -233,16 +256,8 @@ def calculate_scenario_match(tool_values: dict) -> dict[str, float]:
         The three scores sum to approximately 1.0 if normalized, but here we
         return raw similarity (so multiple can be high if scenarios overlap).
     """
-    # Normalize input keys.
-    user: dict[ToolName, float] = {}
-    for key, value in tool_values.items():
-        if isinstance(key, ToolName):
-            user[key] = float(value)
-        elif isinstance(key, str):
-            for tn in ToolName:
-                if tn.value == key or tn.name == key:
-                    user[tn] = float(value)
-                    break
+    # Normalize input keys; drop None/NaN values like missing tools.
+    user = _normalize_tool_values(tool_values)
 
     out: dict[str, float] = {}
     for scenario, ref in _SCENARIO_REFERENCES.items():
