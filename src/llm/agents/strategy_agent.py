@@ -32,8 +32,10 @@ Your job: propose a concrete trading strategy based on current signals,
 then VALIDATE it by running a backtest.
 
 WORKFLOW:
-1. **Read Signals** — Review the ICT signals and divergences from other
-   agents (provided in context). What patterns are active?
+1. **Read Signals** — Review the ICT signals and divergences provided in
+   context. If they are missing or stale, fetch them yourself: call
+   generate_ict_signals for the symbol and detect_divergences on the recent
+   candles. What patterns are active?
 2. **Propose Strategy** — Based on the signals, propose a specific strategy:
    - Entry conditions (e.g. "Enter long when FVG + CVD confirmation appears
      on the 15m chart, with RSI divergence bullish")

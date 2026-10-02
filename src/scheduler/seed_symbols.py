@@ -45,19 +45,25 @@ def seed_symbols():
     try:
         settings = get_settings()
         db = DatabaseManager(settings.database_url)
+        # The seeder is runnable standalone (python -m) against a fresh
+        # database, so make sure the tables exist before writing.
+        db.create_tables()
         session = db.get_session()
     except Exception as e:
         logger.error(f"Cannot connect to database for seeding: {e}")
         return
     try:
         for symbol, name, asset_type, yahoo_symbol in SYMBOLS:
-            row = Symbol(
-                symbol=symbol,
-                name=name,
-                asset_type=asset_type,
-                yahoo_symbol=yahoo_symbol,
-            )
-            session.merge(row)
+            # Upsert by the natural key (symbol). session.merge() would key on
+            # the autoincrement ``id`` and insert a duplicate row on every
+            # re-run, tripping the UNIQUE constraint on ``symbol``.
+            existing = session.query(Symbol).filter_by(symbol=symbol).first()
+            if existing is not None:
+                existing.name = name
+                existing.asset_type = asset_type
+                existing.yahoo_symbol = yahoo_symbol
+            else:
+                session.add(Symbol(symbol=symbol, name=name, asset_type=asset_type, yahoo_symbol=yahoo_symbol))
         session.commit()
         logger.info(f"Seeded {len(SYMBOLS)} symbols")
     except Exception as e:

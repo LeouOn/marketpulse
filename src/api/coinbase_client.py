@@ -88,9 +88,13 @@ class CoinbaseClient:
         symbol format: 'BTC-USD', 'ETH-USD'
         """
         data = await self._get(f"/v2/prices/{symbol}/spot")
-        if data and "data" in data:
-            return {"symbol": symbol, "price": float(data["data"]["amount"]), "timestamp": datetime.now().isoformat()}
-        return None
+        try:
+            price = float(data["data"]["amount"])
+        except (KeyError, TypeError, ValueError, IndexError):
+            # Missing/null/non-numeric amount: degrade to None, never crash
+            # the caller (get_prices loops over symbols unwrapped).
+            return None
+        return {"symbol": symbol, "price": price, "timestamp": datetime.now().isoformat()}
 
     async def get_prices(self, symbols: list[str]) -> dict[str, dict]:
         """Get prices for multiple crypto symbols"""
@@ -116,23 +120,27 @@ class CoinbaseClient:
 
         data = await self._get(f"/v2/products/{symbol}/candles", params)
         if data and isinstance(data, list):
-            return [
-                {
-                    "timestamp": candle[0],
-                    "low": float(candle[1]),
-                    "high": float(candle[2]),
-                    "open": float(candle[3]),
-                    "close": float(candle[4]),
-                    "volume": float(candle[5]),
-                }
-                for candle in data
-            ]
+            try:
+                return [
+                    {
+                        "timestamp": candle[0],
+                        "low": float(candle[1]),
+                        "high": float(candle[2]),
+                        "open": float(candle[3]),
+                        "close": float(candle[4]),
+                        "volume": float(candle[5]),
+                    }
+                    for candle in data
+                ]
+            except (KeyError, TypeError, ValueError, IndexError):
+                # Truncated/garbage rows: no candles rather than a crash.
+                return None
         return None
 
     async def get_ticker(self, symbol: str) -> dict[str, Any] | None:
         """Get ticker data for crypto symbol"""
         data = await self._get(f"/v2/products/{symbol}/ticker")
-        if data and "data" in data:
+        try:
             t = data["data"]
             return {
                 "symbol": symbol,
@@ -142,7 +150,9 @@ class CoinbaseClient:
                 "volume": float(t["volume"]),
                 "timestamp": t.get("time", datetime.now().isoformat()),
             }
-        return None
+        except (KeyError, TypeError, ValueError, IndexError, AttributeError):
+            # Missing/null quote fields or a non-dict payload: no ticker.
+            return None
 
     async def get_market_data(self, symbols: list[str]) -> dict[str, Any]:
         """
@@ -173,7 +183,9 @@ class CoinbaseClient:
         try:
             data = await self._get("/v2/time")
             return data is not None
-        except:
+        except Exception:
+            # ``except:`` would also swallow asyncio.CancelledError -- a
+            # cancellation must propagate, not read as "API down".
             return False
 
 
