@@ -146,7 +146,9 @@ class IndicatorProvider:
             Empty when FGI data is unavailable.
         mvrv_lookup : dict[str, float]
             ``{date_string: mvrv_z}`` for OnChainGated scaling.
-            Empty when MVRV data is unavailable.
+            Empty when MVRV data is unavailable — or when every row is
+            synthetic: rows tagged ``source == "synthetic"`` are excluded
+            (with one loud log) so a backtest never runs on fabricated data.
         """
         close = df["close"].astype(float)
         close_arr = close.to_numpy()
@@ -183,17 +185,23 @@ class IndicatorProvider:
 
                 mvrv_df = fetch_mvrv()
                 if not mvrv_df.empty and "ts" in mvrv_df.columns and "mvrv_z" in mvrv_df.columns:
-                    # Warn if the entire series is synthetic - a backtest
-                    # run on noise is misleading. We do NOT change behavior;
-                    # the caller still gets the lookup dict, just with a
-                    # visible warning so the user knows the data is fake.
-                    if "source" in mvrv_df.columns and (mvrv_df["source"] == "synthetic").all():
-                        logger.warning(
-                            "MVRV data is entirely synthetic - backtest "
-                            "results on this series are not meaningful. "
-                            "Configure a Glassnode API key or provide real "
-                            "data to get trustworthy results."
-                        )
+                    # Honesty rule: synthetic rows must never feed a
+                    # backtest. Any row tagged source == "synthetic" is
+                    # excluded from the lookup, loudly (once). Frames with
+                    # no source column (legacy consumers, hand-built
+                    # frames) are treated as real.
+                    if "source" in mvrv_df.columns:
+                        synthetic = mvrv_df["source"] == "synthetic"
+                        n_synthetic = int(synthetic.sum())
+                        if n_synthetic:
+                            logger.warning(
+                                f"MVRV: excluding {n_synthetic}/{len(mvrv_df)} "
+                                "synthetic rows from mvrv_lookup — backtest "
+                                "results on fabricated data are meaningless. "
+                                "Configure a Glassnode API key or source real "
+                                "on-chain data."
+                            )
+                        mvrv_df = mvrv_df[~synthetic]
                     for _, row in mvrv_df.iterrows():
                         mvrv_lookup[str(row["ts"].date())] = float(row["mvrv_z"])
             except Exception:

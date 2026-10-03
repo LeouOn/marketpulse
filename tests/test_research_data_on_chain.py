@@ -86,7 +86,7 @@ def test_fetch_mvrv_returns_cached_when_available(tmp_data_dir, monkeypatch):
 
     import src.research.data.on_chain as mod
 
-    # Pre-populate cache
+    # Pre-populate cache (legacy format: no source column, real-looking values)
     df_cache = pd.DataFrame(
         {
             "ts": [pd.Timestamp("2024-01-01")],
@@ -101,10 +101,15 @@ def test_fetch_mvrv_returns_cached_when_available(tmp_data_dir, monkeypatch):
     df = fetch_mvrv(force=False)
     assert len(df) == 1
     assert df["mvrv_z"].iloc[0] == 1.2
+    assert df["source"].iloc[0] == "real"  # legacy real file: honest provenance, never "cache"
 
 
-def test_fetch_mvrv_network_error_returns_synthetic(tmp_data_dir, monkeypatch):
-    """On network failure with no cache, return synthetic fallback (not crash)."""
+def test_fetch_mvrv_network_error_returns_empty(tmp_data_dir, monkeypatch):
+    """No key + no cache + network failure -> EMPTY frame (never synthetic).
+
+    Contract (2026-10-03): synthetic data is available only through the
+    explicit ``allow_synthetic=True`` opt-in and is never persisted.
+    """
     import requests
 
     monkeypatch.setattr(
@@ -115,13 +120,13 @@ def test_fetch_mvrv_network_error_returns_synthetic(tmp_data_dir, monkeypatch):
 
     df = fetch_mvrv(force=True)
     assert isinstance(df, pd.DataFrame)
-    assert "ts" in df.columns
-    assert "mvrv_z" in df.columns
-    assert len(df) > 0  # synthetic has 2500 rows
+    assert df.empty
+    assert list(df.columns) == ["ts", "mvrv_z", "source"]
+    assert not (tmp_data_dir / "mvrv.csv").exists()  # nothing laundered to disk
 
 
-def test_fetch_mvrv_api_error_returns_synthetic(tmp_data_dir, monkeypatch):
-    """When API returns an error dict, fall back to synthetic."""
+def test_fetch_mvrv_api_error_returns_empty(tmp_data_dir, monkeypatch):
+    """When the API returns an error dict, return the empty frame."""
     import requests
 
     mock_resp = MagicMock()
@@ -130,8 +135,9 @@ def test_fetch_mvrv_api_error_returns_synthetic(tmp_data_dir, monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **kw: mock_resp)
 
     df = fetch_mvrv(force=True)
-    assert isinstance(df, pd.DataFrame)
-    assert "mvrv_z" in df.columns
+    assert df.empty
+    assert list(df.columns) == ["ts", "mvrv_z", "source"]
+    assert not (tmp_data_dir / "mvrv.csv").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -151,8 +157,8 @@ def test_fetch_puell_creates_csv_cache(tmp_data_dir, monkeypatch):
     assert (tmp_data_dir / "puell.csv").exists()
 
 
-def test_fetch_puell_network_error_returns_synthetic(tmp_data_dir, monkeypatch):
-    """On network failure with no cache, return synthetic fallback."""
+def test_fetch_puell_network_error_returns_empty(tmp_data_dir, monkeypatch):
+    """On network failure with no cache, return the empty frame."""
     import requests
 
     monkeypatch.setattr(
@@ -163,18 +169,23 @@ def test_fetch_puell_network_error_returns_synthetic(tmp_data_dir, monkeypatch):
 
     df = fetch_puell(force=True)
     assert isinstance(df, pd.DataFrame)
-    assert "puell" in df.columns
-    assert len(df) > 0
+    assert df.empty
+    assert list(df.columns) == ["ts", "puell", "source"]
+    assert not (tmp_data_dir / "puell.csv").exists()
 
 
 # ---------------------------------------------------------------------------
-# Synthetic fallback caching (regression: prevent repeated API hits)
+# Provenance contract (regression: synthetic must never be laundered as "cache")
 # ---------------------------------------------------------------------------
 
 
-def test_synthetic_mvrv_is_cached_on_first_call(tmp_data_dir, monkeypatch):
-    """After a network failure, the synthetic fallback should be written to disk
-    so the next call hits the cache instead of re-hitting the API."""
+def test_synthetic_mvrv_never_persisted_even_with_optin(tmp_data_dir, monkeypatch):
+    """allow_synthetic=True returns tagged rows but NEVER writes the cache.
+
+    This is the regression test for the laundering bug: the old code wrote
+    the synthetic series to MVRV_CSV without a source column, so the next
+    call served it as source="cache".
+    """
     import requests
 
     import src.research.data.on_chain as oc
@@ -186,22 +197,19 @@ def test_synthetic_mvrv_is_cached_on_first_call(tmp_data_dir, monkeypatch):
         MagicMock(side_effect=requests.ConnectionError("offline")),
     )
 
-    # First call: network fails, synthetic returned AND cached
-    df1 = fetch_mvrv(force=True)
-    assert (tmp_data_dir / "mvrv.csv").exists()
-    # No `source` column in the persisted cache
-    cached_on_disk = pd.read_csv(tmp_data_dir / "mvrv.csv")
-    assert "source" not in cached_on_disk.columns
-    # The returned df has the source column
-    assert df1["source"].iloc[0] == "synthetic"
+    # Opt-in call: synthetic in memory, nothing on disk
+    df1 = fetch_mvrv(force=True, allow_synthetic=True)
+    assert len(df1) > 0
+    assert (df1["source"] == "synthetic").all()
+    assert not (tmp_data_dir / "mvrv.csv").exists()
 
-    # Second call: cache should be returned (no further API call)
+    # Second call without the opt-in: still empty (no laundered cache to read)
     df2 = fetch_mvrv(force=False)
-    assert (df2["source"] == "cache").all()
+    assert df2.empty
 
 
-def test_synthetic_puell_is_cached_on_first_call(tmp_data_dir, monkeypatch):
-    """Same regression for Puell — synthetic fallback should be cached."""
+def test_synthetic_puell_never_persisted_even_with_optin(tmp_data_dir, monkeypatch):
+    """Same laundering regression for Puell."""
     import requests
 
     import src.research.data.on_chain as oc
@@ -213,14 +221,159 @@ def test_synthetic_puell_is_cached_on_first_call(tmp_data_dir, monkeypatch):
         MagicMock(side_effect=requests.ConnectionError("offline")),
     )
 
-    df1 = fetch_puell(force=True)
-    assert (tmp_data_dir / "puell.csv").exists()
-    cached_on_disk = pd.read_csv(tmp_data_dir / "puell.csv")
-    assert "source" not in cached_on_disk.columns
-    assert df1["source"].iloc[0] == "synthetic"
+    df1 = fetch_puell(force=True, allow_synthetic=True)
+    assert (df1["source"] == "synthetic").all()
+    assert not (tmp_data_dir / "puell.csv").exists()
 
     df2 = fetch_puell(force=False)
-    assert (df2["source"] == "cache").all()
+    assert df2.empty
+
+
+def test_legacy_synthetic_mvrv_file_detected_not_served_as_real(tmp_data_dir, monkeypatch):
+    """A legacy laundered file (no source column, values == the deterministic
+    generator for its row count) must be served tagged synthetic, not "cache".
+    Uses the REAL generator, exactly like the file the bug produced."""
+    import src.research.data.on_chain as oc
+
+    legacy = oc._synthetic_mvrv(500)  # same generator, dates end "now" as the bug did
+    legacy.to_csv(oc.MVRV_CSV, index=False)  # no source column — legacy format
+
+    df = fetch_mvrv(force=False)
+    assert len(df) == 500
+    assert (df["source"] == "synthetic").all()
+    assert oc.MVRV_CSV.exists()  # the owner's file is left in place
+
+
+def test_legacy_synthetic_puell_file_detected_not_served_as_real(tmp_data_dir, monkeypatch):
+    """Same legacy detection for Puell."""
+    import src.research.data.on_chain as oc
+
+    legacy = oc._synthetic_puell(400)
+    legacy.to_csv(oc.PUELL_CSV, index=False)
+
+    df = fetch_puell(force=False)
+    assert len(df) == 400
+    assert (df["source"] == "synthetic").all()
+    assert oc.PUELL_CSV.exists()
+
+
+def test_legacy_real_mvrv_file_served_as_real(tmp_data_dir, monkeypatch):
+    """A legacy file with values that do NOT match the generator is real data
+    (best-effort: written before the source column existed)."""
+    import src.research.data.on_chain as oc
+
+    legacy = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=50, freq="D"),
+            "mvrv_z": [0.5 + 0.01 * i for i in range(50)],
+        }
+    )
+    legacy.to_csv(oc.MVRV_CSV, index=False)
+
+    df = fetch_mvrv(force=False)
+    assert len(df) == 50
+    assert (df["source"] == "real").all()
+
+
+def test_real_fetch_roundtrip_preserves_source(tmp_data_dir, monkeypatch):
+    """Provenance survives a disk round trip: a real fetch persists
+    source="real" and the next call serves those rows still tagged real."""
+    import requests
+
+    import src.research.data.on_chain as oc
+
+    ts = 1_700_000_000
+    mock_resp = _mock_glassnode_response([(ts, 1.5), (ts + 86_400, 2.0)])
+    monkeypatch.setattr(requests, "get", lambda *a, **kw: mock_resp)
+
+    df1 = fetch_mvrv(force=True)
+    assert (df1["source"] == "real").all()
+
+    on_disk = pd.read_csv(oc.MVRV_CSV)
+    assert "source" in on_disk.columns  # persisted provenance
+
+    monkeypatch.setattr(requests, "get", MagicMock(side_effect=requests.ConnectionError("offline")))
+    df2 = fetch_mvrv(force=False)
+    assert len(df2) == 2
+    assert (df2["source"] == "real").all()  # NOT relabelled "cache"
+
+
+# ---------------------------------------------------------------------------
+# IndicatorProvider integration: synthetic rows must not feed backtests
+# ---------------------------------------------------------------------------
+
+
+def _indicator_df() -> pd.DataFrame:
+    import numpy as np
+
+    return pd.DataFrame({"close": np.linspace(100.0, 200.0, 250)})
+
+
+def test_indicator_lookup_skips_synthetic_rows(monkeypatch):
+    """mvrv_lookup must contain only real-provenance dates."""
+    from src.research.backtest.indicators import IndicatorProvider
+
+    mixed = pd.DataFrame(
+        {
+            "ts": [
+                pd.Timestamp("2024-01-01"),
+                pd.Timestamp("2024-01-02"),
+                pd.Timestamp("2024-01-03"),
+                pd.Timestamp("2024-01-04"),
+            ],
+            "mvrv_z": [1.0, 2.0, 3.0, 4.0],
+            "source": ["real", "synthetic", "synthetic", "real"],
+        }
+    )
+    monkeypatch.setattr("src.research.data.on_chain.fetch_mvrv", lambda: mixed)
+
+    result = IndicatorProvider().compute(_indicator_df())
+    assert set(result["mvrv_lookup"]) == {"2024-01-01", "2024-01-04"}
+    assert result["mvrv_lookup"]["2024-01-01"] == 1.0
+    assert result["mvrv_lookup"]["2024-01-04"] == 4.0
+
+
+def test_indicator_lookup_all_synthetic_is_empty_and_logs(monkeypatch):
+    """A fully synthetic series produces an EMPTY lookup and one loud log."""
+    from loguru import logger
+
+    from src.research.backtest.indicators import IndicatorProvider
+
+    synthetic = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=10, freq="D"),
+            "mvrv_z": [1.0] * 10,
+            "source": ["synthetic"] * 10,
+        }
+    )
+    monkeypatch.setattr("src.research.data.on_chain.fetch_mvrv", lambda: synthetic)
+
+    messages: list[str] = []
+    sink = logger.add(lambda m: messages.append(str(m)))
+    try:
+        result = IndicatorProvider().compute(_indicator_df())
+    finally:
+        logger.remove(sink)
+
+    assert result["mvrv_lookup"] == {}
+    assert any("synthetic" in m and "MVRV" in m for m in messages)
+
+
+def test_indicator_lookup_without_source_column_kept(monkeypatch):
+    """Backward compatibility: rows with no source column (legacy mocks,
+    hand-built frames) are treated as real, not dropped."""
+    from src.research.backtest.indicators import IndicatorProvider
+
+    no_source = pd.DataFrame(
+        {
+            "ts": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-02")],
+            "mvrv_z": [1.5, 2.0],
+        }
+    )
+    monkeypatch.setattr("src.research.data.on_chain.fetch_mvrv", lambda: no_source)
+
+    result = IndicatorProvider().compute(_indicator_df())
+    assert set(result["mvrv_lookup"]) == {"2024-01-01", "2024-01-02"}
 
 
 # ---------------------------------------------------------------------------
