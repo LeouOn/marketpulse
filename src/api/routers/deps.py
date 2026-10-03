@@ -10,8 +10,10 @@ from datetime import datetime
 from typing import Any
 
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_serializer
 
+from src.api.json_utils import to_builtin
+from src.api.safe_json import unexpected_error
 from src.core.config import get_settings
 
 settings = get_settings()
@@ -52,6 +54,20 @@ class MarketResponse(BaseModel):
     data: dict[str, Any] | None = None
     error: str | None = None
     timestamp: str
+    error_id: str | None = None
+
+    @field_validator("data", mode="before")
+    @classmethod
+    def normalize_data(cls, value: Any) -> Any:
+        """Normalize before pydantic's response-model fast path sees numpy."""
+        return to_builtin(value)
+
+    @model_serializer(mode="wrap")
+    def serialize_envelope(self, handler):
+        result = handler(self)
+        if self.error_id is None:
+            result.pop("error_id", None)
+        return result
 
 
 class UserComment(BaseModel):
@@ -113,6 +129,11 @@ def success_response(data: Any) -> MarketResponse:
 
 def error_response(error: str) -> MarketResponse:
     return MarketResponse(success=False, error=error, timestamp=get_current_timestamp())
+
+
+def unexpected_response(exc: BaseException) -> MarketResponse:
+    """Preserve a soft-fail envelope while hiding unexpected exception text."""
+    return MarketResponse(success=False, timestamp=get_current_timestamp(), **unexpected_error(exc))
 
 
 def init_state(*, collector=None, ohlc_analyzer=None, db_manager=None):

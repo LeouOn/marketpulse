@@ -17,13 +17,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI, Request, status
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from loguru import logger
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 # Module-scope (not lazy in lifespan) so circular imports surface at import time.
 from src.api.route_utils import route_entries
 from src.api.routers import deps as router_deps
+from src.api.safe_json import SafeJSONResponse, unexpected_error
 
 # Import with error handling for missing dependencies
 try:
@@ -130,24 +132,46 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="MarketPulse API", description="Real-time market internals analysis API", version="0.1.0", lifespan=lifespan
+    title="MarketPulse API",
+    description="Real-time market internals analysis API",
+    version="0.1.0",
+    lifespan=lifespan,
+    default_response_class=SafeJSONResponse,
 )
 
 
 # Global exception handler to ensure JSON responses
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global exception handler caught: {exc}")
-    logger.error(f"Request: {request.method} {request.url}")
-    import traceback
-
-    logger.error(f"Traceback: {traceback.format_exc()}")
-    return JSONResponse(
+    error = unexpected_error(exc)
+    return SafeJSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "success": False,
-            "error": str(exc),
-            "detail": "Internal server error",
+            **error,
+            "detail": error["error"],
+            "timestamp": datetime.now().isoformat(),
+        },
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def safe_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code < 500:
+        return await http_exception_handler(request, exc)
+    # A router using internal_http_error already logged its original traceback.
+    error_id = (exc.headers or {}).get("X-Error-ID")
+    if exc.detail == "Internal server error" and error_id:
+        error = {"error": "Internal server error", "error_id": error_id}
+    else:
+        error = unexpected_error(exc)
+    return SafeJSONResponse(
+        status_code=exc.status_code,
+        headers=exc.headers,
+        content={
+            "success": False,
+            **error,
+            "detail": error["error"],
             "timestamp": datetime.now().isoformat(),
         },
     )
