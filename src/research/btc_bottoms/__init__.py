@@ -7,11 +7,13 @@ scratchpad for the study-wide conventions.
 """
 
 from src.research.btc_bottoms.frame import (
+    ASOF_COLUMNS,
     DERIVED_COLUMNS,
     FRAME_COLUMNS,
     LAG_TABLE,
     FrameSources,
     LagSpec,
+    asof,
     build_frame,
     coverage_report,
 )
@@ -19,9 +21,11 @@ from src.research.btc_bottoms.frame import (
 __all__ = [
     "FRAME_COLUMNS",
     "DERIVED_COLUMNS",
+    "ASOF_COLUMNS",
     "LAG_TABLE",
     "LagSpec",
     "FrameSources",
     "build_frame",
+    "asof",
     "coverage_report",
 ]

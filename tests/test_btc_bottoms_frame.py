@@ -18,6 +18,7 @@ from src.research.btc_bottoms.frame import (
     FRAME_COLUMNS,
     LAG_TABLE,
     LagSpec,
+    asof,
     build_frame,
     coverage_report,
 )
@@ -55,7 +56,7 @@ def _fake_fgi() -> pd.DataFrame:
 def _fake_fred_daily() -> dict[str, pd.Series]:
     idx = pd.date_range("2025-09-01", "2026-02-14", freq="B", name="ts")  # business days
     out: dict[str, pd.Series] = {}
-    for col in ("dgs10", "dfii10", "t10yie", "dgs2", "vix", "hy_oas", "dxy", "rrp_onday"):
+    for col in ("dgs10", "dfii10", "t10yie", "dgs2", "vix", "hy_oas", "baa10y", "dxy", "rrp_onday"):
         out[col] = pd.Series(np.arange(1.0, 1.0 + len(idx)), index=idx, name=col)
     return out
 
@@ -193,6 +194,33 @@ class TestLagHonoured:
                 assert base in LAG_TABLE, col
                 continue
             assert col in LAG_TABLE, col
+
+    def test_dxy_publication_lag_shift_5(self, tmp_path, monkeypatch):
+        # Vintage-style fixture (measured 2026-10-03 on FRED vintages sampled
+        # 2026-09-19..2026-10-02): a DTWEXBGS observation dated Friday D first
+        # becomes visible D+3 (Monday). Placement must be >= first visibility;
+        # the table uses +5 (max observed 4 + 1 margin). This test FAILS with a
+        # +1 shift (the value would land on D+1, before it existed publicly).
+        obs_day = pd.Timestamp("2026-01-09")  # Friday
+        first_visible = obs_day + pd.Timedelta(days=3)  # Monday
+        single = {
+            **_fake_fred_daily(),
+            "dxy": pd.Series([7.7], index=pd.DatetimeIndex([obs_day], name="ts"), name="dxy"),
+        }
+        monkeypatch.setenv("MARKETPULSE_DATA_DIR", str(tmp_path))
+        df = build_frame(refresh=True, sources=FakeSources(fred_daily=lambda: single))
+        assert LAG_TABLE["dxy"].shift_days == 5
+        for day in pd.date_range(obs_day, obs_day + pd.Timedelta(days=4)):
+            assert np.isnan(df.loc[day, "dxy"]), (
+                f"dxy visible on {day.date()} before first visibility {first_visible.date()}"
+            )
+        assert df.loc[obs_day + pd.Timedelta(days=5), "dxy"] == 7.7
+
+    def test_baa10y_shift_plus_one(self, built):
+        raw = _fake_fred_daily()["baa10y"]
+        d = pd.Timestamp("2026-01-05")  # Monday: value dated 01-05 lands 01-06
+        assert np.isnan(built.loc[d, "baa10y"])
+        assert built.loc[d + pd.Timedelta(days=1), "baa10y"] == raw.loc[d]
 
     def test_lag_shifts_non_negative_ints(self):
         for col, spec in LAG_TABLE.items():
@@ -348,6 +376,84 @@ class TestDegradation:
         df = build_frame(refresh=True, sources=FakeSources(btc_daily=lambda: extended))
         assert pd.Timestamp("2026-02-16") not in df.index
         assert df.index.max() == pd.Timestamp("2026-02-15")
+
+    def test_net_liquidity_hand_computed(self, built):
+        # Units: WALCL $mn, WTREGEN $mn, RRPONTSYD $bn -> RRP x 1000 to $mn.
+        # Hand-compute the 2026-01-09 row from the fake generators:
+        #   walcl   = 7_000.0  (weekly obs 2026-01-07, arange start)
+        #   wtregen =   800.0  (weekly obs 2026-01-07, arange start)
+        #   rrp     = value dated 2026-01-08 = 1.0 + position of 2026-01-08 in the
+        #             business-day fake starting 2025-09-01
+        fd = _fake_fred_daily()["rrp_onday"]
+        rrp_val = float(fd.loc[pd.Timestamp("2026-01-08")])
+        expected = 7_000.0 - 800.0 - 1_000.0 * rrp_val
+        assert built.loc[pd.Timestamp("2026-01-09"), "net_liquidity"] == pytest.approx(expected)
+        # and it is exactly the frame's own lagged inputs (pins signs + x1000)
+        row_date = pd.Timestamp("2026-01-09")
+        recompute = (
+            built.loc[row_date, "walcl"] - built.loc[row_date, "wtregen"] - 1_000.0 * built.loc[row_date, "rrp_onday"]
+        )
+        assert built.loc[row_date, "net_liquidity"] == pytest.approx(recompute)
+
+
+# ---------------------------------------------------------------------------
+# asof(): causal as-of view over the daily macro columns
+# ---------------------------------------------------------------------------
+
+
+class TestAsOf:
+    def test_fills_macro_gaps_with_age_companions(self, built):
+        out = asof(built, max_stale_days=5)
+        # Sunday 2026-01-04: raw dgs10 NaN (nothing published Sat/Sun);
+        # as-of carries Saturday's value (obs dated Friday 01-02) with age 1
+        sat = pd.Timestamp("2026-01-03")
+        sun = pd.Timestamp("2026-01-04")
+        assert not np.isnan(built.loc[sat, "dgs10"])
+        assert np.isnan(built.loc[sun, "dgs10"])
+        assert out.loc[sun, "dgs10"] == built.loc[sat, "dgs10"]
+        assert out.loc[sun, "dgs10_age"] == 1
+        assert out.loc[sat, "dgs10_age"] == 0
+
+    def test_btc_and_fgi_never_filled(self, built):
+        out = asof(built, max_stale_days=5)
+        fgi = _fake_fgi()
+        d_gap = fgi["ts"].iloc[3] + pd.Timedelta(days=1)
+        assert np.isnan(out.loc[d_gap, "fgi_value"])
+        assert "fgi_value_age" not in out.columns
+        assert "close_age" not in out.columns
+        pd.testing.assert_series_equal(out["close"], built["close"])
+
+    def test_respects_max_stale_days(self, built):
+        out = asof(built, max_stale_days=0)
+        # with limit 0 nothing is filled at all
+        pd.testing.assert_series_equal(out["dgs10"], built["dgs10"], check_names=False)
+
+    def test_never_fills_across_longer_gap(self, tmp_path, monkeypatch):
+        # a 10-calendar-day hole in vix: asof(5) must not bridge it
+        idx = pd.date_range("2025-09-01", "2026-02-14", freq="B", name="ts")
+        vix = pd.Series(np.arange(1.0, 1.0 + len(idx)), index=idx, name="vix")
+        hole_start = pd.Timestamp("2026-01-05")
+        hole_end = pd.Timestamp("2026-01-16")
+        vix[(vix.index >= hole_start) & (vix.index <= hole_end)] = float("nan")
+        mutated = {**_fake_fred_daily(), "vix": vix}
+        monkeypatch.setenv("MARKETPULSE_DATA_DIR", str(tmp_path))
+        df = build_frame(refresh=True, sources=FakeSources(fred_daily=lambda: mutated))
+        out = asof(df, max_stale_days=5)
+        # rows after the last pre-hole placement +5 stay NaN
+        last_before = df["vix"].loc[:hole_start].dropna().index.max()
+        assert np.isnan(out.loc[last_before + pd.Timedelta(days=6), "vix"])
+        assert out.loc[last_before + pd.Timedelta(days=3), "vix"] == df.loc[last_before, "vix"]
+
+    def test_prefix_invariance(self, built):
+        t = pd.Timestamp("2026-01-20")
+        whole = asof(built, max_stale_days=5)
+        prefix = asof(built.loc[:t], max_stale_days=5)
+        pd.testing.assert_frame_equal(prefix, whole.loc[:t], check_freq=False)
+
+    def test_input_frame_untouched(self, built):
+        before = built.copy(deep=True)
+        asof(built, max_stale_days=5)
+        pd.testing.assert_frame_equal(built, before, check_freq=False)
 
 
 # ---------------------------------------------------------------------------

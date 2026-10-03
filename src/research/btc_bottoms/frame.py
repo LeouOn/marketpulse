@@ -35,8 +35,9 @@ dfii10                FRED                           DFII10    daily   +1       
 t10yie                FRED                           T10YIE    daily   +1       unrevised market close; no ffill
 dgs2                  FRED                           DGS2      daily   +1       unrevised market close; no ffill
 vix                   FRED                           VIXCLS    daily   +1       unrevised market close; no ffill
-hy_oas                FRED                           BAMLH0A0HYM2 daily  +1       unrevised market close; no ffill
-dxy                   FRED                           DTWEXBGS  daily   +1       trade-weighted broad USD index; no ffill
+hy_oas                FRED                           BAMLH0A0HYM2 daily  +1       unrevised market close; no ffill; starts 2023-10-04
+baa10y                FRED                           BAA10Y    daily   +1       Moody's Baa - 10y since 1986; long-history credit stress
+dxy                   FRED                           DTWEXBGS  daily   +5       first visible ~D+3, posting irregular; no ffill
 rrp_onday             FRED                           RRPONTSYD daily   +1       overnight reverse repo, $bn; no ffill
 walcl                 FRED                           WALCL     weekly  +2       Wednesday obs, released ~Thu; ffill + ``_age``
 wtregen               FRED                           WTREGEN   weekly  +2       Treasury General Account; ffill + ``_age``
@@ -49,6 +50,7 @@ funding_rate          Kraken Futures (public)        PF_XBTUSD hourly 0        h
 close_chg_21d/63d     derived from close             --        daily   --       pct change over trailing 21/63 days (causal)
 dfii10_chg_21d/63d    derived from dfii10            --        daily   --       diff over trailing 21/63 days (causal)
 mvrv_z                derived                        --        daily   --       (mcap - mcap/mvrv) / expanding std(mcap), min 365 d
+net_liquidity         derived                        --        daily   --       walcl - wtregen - 1000 x rrp_onday ($mn)
 ===================== ============================== ========= ======== ======== =====================================================
 
 The MVRV Z-score is the classic (market cap - realized cap) / std(market cap)
@@ -69,8 +71,18 @@ Source realities measured on 2026-10-03 (live build):
   are covered.
 * **``hy_oas`` starts 2023-10-04**: FRED serves BAMLH0A0HYM2 only from that
   date (ICE BofA licensing cutoff on FRED's side).
-* **``dxy`` (DTWEXBGS) lags ~a week** on FRED (last obs typically 5-7 days
-  old); ``dxy_ice`` (yahoo DX-Y.NYB) is the fresher dollar column.
+* **``dxy`` (DTWEXBGS) first becomes visible ~3 days after its observation date**
+  (FRED vintage check, daily vintages 2026-09-19 .. 2026-10-02: the obs dated
+  2026-09-25 first appeared on vintage 2026-09-28; the lead's independent
+  sample measured 3-4). FRED's posting is also irregular -- no new DTWEXBGS
+  observation was visible for a full week in that sample -- so the column uses
+  **shift +5** (max observed first-visibility 4 plus one day of margin).
+  ``dxy_ice`` (yahoo DX-Y.NYB) is the fresher dollar column. Same vintage
+  check: DGS10/DFII10/DGS2/BAA10Y lag 1 on weekdays (weekend ramp to 3 is
+  FRED's Monday ingestion of Friday's already-public Treasury print),
+  T10YIE/BAMLH0A0HYM2/VIXCLS/RRPONTSYD lag 0 on weekdays, WALCL/WTREGEN
+  Wednesday observations become visible Thursday (lag 1; the +2 shift keeps
+  one day of margin).
 * **Coin Metrics restates its most recent days** (values can shift by ~1 ulp
   or more within the tail). The +1 shift protects point-in-time placement,
   not against restatements of already-placed rows; treat the last ~5 days of
@@ -93,10 +105,12 @@ from src.research.data._paths import cache_dir
 __all__ = [
     "FRAME_COLUMNS",
     "DERIVED_COLUMNS",
+    "ASOF_COLUMNS",
     "LAG_TABLE",
     "LagSpec",
     "FrameSources",
     "build_frame",
+    "asof",
     "coverage_report",
     "main",
 ]
@@ -136,8 +150,25 @@ LAG_TABLE: dict[str, LagSpec] = {
     "t10yie": LagSpec("t10yie", "FRED", "T10YIE", "daily", 1, note="10y breakeven; unrevised market close"),
     "dgs2": LagSpec("dgs2", "FRED", "DGS2", "daily", 1, note="2y nominal; unrevised market close"),
     "vix": LagSpec("vix", "FRED", "VIXCLS", "daily", 1, note="CBOE VIX close; unrevised"),
-    "hy_oas": LagSpec("hy_oas", "FRED", "BAMLH0A0HYM2", "daily", 1, note="ICE BofA HY OAS; unrevised market close"),
-    "dxy": LagSpec("dxy", "FRED", "DTWEXBGS", "daily", 1, note="trade-weighted broad USD index"),
+    "hy_oas": LagSpec(
+        "hy_oas",
+        "FRED",
+        "BAMLH0A0HYM2",
+        "daily",
+        1,
+        note="ICE BofA HY OAS; FRED serves it only from 2023-10-04 (licence cutoff)",
+    ),
+    "baa10y": LagSpec(
+        "baa10y", "FRED", "BAA10Y", "daily", 1, note="Moody's Baa - 10y spread since 1986; long-history credit stress"
+    ),
+    "dxy": LagSpec(
+        "dxy",
+        "FRED",
+        "DTWEXBGS",
+        "daily",
+        5,
+        note="first visible ~D+3 on FRED (vintages 2026-09-19..10-02), posting irregular; +5 = max observed 4 + 1 margin",
+    ),
     "rrp_onday": LagSpec("rrp_onday", "FRED", "RRPONTSYD", "daily", 1, note="overnight reverse repo, $bn"),
     "walcl": LagSpec(
         "walcl", "FRED", "WALCL", "weekly", 2, True, "Fed balance sheet, $bn; Wed obs, released ~Thu; ffill + _age"
@@ -171,6 +202,7 @@ LAG_TABLE: dict[str, LagSpec] = {
 
 DERIVED_COLUMNS: list[str] = [
     "mvrv_z",
+    "net_liquidity",
     "close_chg_21d",
     "close_chg_63d",
     "dfii10_chg_21d",
@@ -186,6 +218,7 @@ FRAME_COLUMNS: list[str] = [
     "dgs2",
     "vix",
     "hy_oas",
+    "baa10y",
     "dxy",
     "rrp_onday",
     "walcl",
@@ -199,6 +232,27 @@ FRAME_COLUMNS: list[str] = [
     "mcap_usd",
     "funding_rate",
     *DERIVED_COLUMNS,
+]
+
+#: Daily macro/on-chain/funding columns an as-of view may carry forward
+#: (never the BTC or FGI columns; the weekly columns already carry their own
+#: ``_age`` staleness companions after their +2 shift).
+ASOF_COLUMNS: list[str] = [
+    "dgs10",
+    "dfii10",
+    "t10yie",
+    "dgs2",
+    "vix",
+    "hy_oas",
+    "baa10y",
+    "dxy",
+    "rrp_onday",
+    "spx",
+    "gold",
+    "dxy_ice",
+    "mvrv",
+    "mcap_usd",
+    "funding_rate",
 ]
 
 FRAME_CACHE_NAME = "btc_bottoms/frame.parquet"
@@ -345,6 +399,9 @@ def _derive(df: pd.DataFrame) -> None:
     df["close_chg_63d"] = df["close"].pct_change(63, fill_method=None)
     df["dfii10_chg_21d"] = df["dfii10"].diff(21)
     df["dfii10_chg_63d"] = df["dfii10"].diff(63)
+    # Net liquidity ($mn): Fed balance sheet - Treasury General Account -
+    # overnight reverse repo. WALCL/WTREGEN are $mn, RRPONTSYD is $bn (x1000).
+    df["net_liquidity"] = df["walcl"] - df["wtregen"] - 1_000.0 * df["rrp_onday"]
 
 
 def _mvrv_z_full(mvrv_raw: pd.Series, mcap_raw: pd.Series, shift: int) -> pd.Series:
@@ -387,7 +444,7 @@ def _assemble(sources: FrameSources) -> pd.DataFrame:
 
     for col, s in sources.fred_daily().items():
         _attach_plain(df, col, s, LAG_TABLE[col].shift_days)
-    for col in ("dgs10", "dfii10", "t10yie", "dgs2", "vix", "hy_oas", "dxy", "rrp_onday", "fgi_value"):
+    for col in ("dgs10", "dfii10", "t10yie", "dgs2", "vix", "hy_oas", "baa10y", "dxy", "rrp_onday", "fgi_value"):
         if col not in df.columns:
             df[col] = float("nan")
 
@@ -463,6 +520,42 @@ def build_frame(refresh: bool = False, *, sources: FrameSources | None = None) -
     tmp.replace(cache_path)
     logger.info(f"[btc_bottoms] frame built: {len(df)} rows, {df.index.min().date()} -> {df.index.max().date()}")
     return df
+
+
+# ---------------------------------------------------------------------------
+# As-of view (causal convenience over the sparse daily macro columns)
+# ---------------------------------------------------------------------------
+
+
+def asof(frame: pd.DataFrame, max_stale_days: int = 5) -> pd.DataFrame:
+    """Return a copy carrying :data:`ASOF_COLUMNS` forward up to ``max_stale_days``.
+
+    Sunday/Monday rows of the daily macro columns are NaN by construction
+    (calendar-shifted business-day publications; correct, but every consumer
+    would otherwise re-derive an as-of rule). This pure function forward-fills
+    each as-of column from its most recent placement and adds ``<col>_age`` =
+    calendar days since that placement entered the frame (0 on the placement
+    row). Values older than ``max_stale_days`` stay NaN -- it never bridges a
+    longer gap -- and the BTC/FGI/weekly columns are never touched.
+
+    Causal by construction (prefix-invariant): each output row depends only on
+    placements at or before it.
+    """
+    out = frame.copy()
+    idx = frame.index
+    placement_dates = pd.Series(idx, index=idx)
+    for col in ASOF_COLUMNS:
+        if col not in frame.columns:
+            continue
+        s = frame[col]
+        placed = s.notna()
+        dates = placement_dates.where(placed).ffill()
+        age = (idx - dates).dt.days.astype(float)
+        filled = s.ffill()
+        ok = filled.notna() & (age <= max_stale_days)
+        out[col] = filled.where(ok)
+        out[f"{col}_age"] = age.where(ok)
+    return out
 
 
 # ---------------------------------------------------------------------------

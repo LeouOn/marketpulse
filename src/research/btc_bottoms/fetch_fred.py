@@ -37,6 +37,7 @@ SERIES_DAILY: dict[str, str] = {
     "dgs2": "DGS2",
     "vix": "VIXCLS",
     "hy_oas": "BAMLH0A0HYM2",
+    "baa10y": "BAA10Y",
     "dxy": "DTWEXBGS",
     "rrp_onday": "RRPONTSYD",
 }
