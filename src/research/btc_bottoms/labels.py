@@ -27,12 +27,14 @@ hit rate >= 0.5"; the tests pin the exact boundary values so a later
 
 NaN policy (decided here, as instructed)
 ----------------------------------------
-Any NaN among the metric inputs (``lift``, ``placebo_p_lift``,
-``sweep_median_lift``, ``loo_min_hit_rate``) returns
-``"cannot evaluate"``: NaN is *missing* evidence, not failed evidence,
-and "no evidence" would assert the signal showed nothing, which a NaN
-does not establish.  ``n_evaluable < 2`` short-circuits to
-``"cannot evaluate"`` before any NaN check, per the plan.
+The hit criterion is evaluated FIRST: a signal with fewer than 2
+usable leads is "no evidence" regardless of its other metrics - a
+never-firing signal's NaN lift (0 episodes) is an informative absence,
+not missing evidence.  NaN among the metric inputs matters only when
+the hit criterion IS met: then the lift/placebo/robustness tests
+cannot be applied, the evidence is genuinely incomplete, and the
+result is "cannot evaluate".  ``n_evaluable < 2`` short-circuits to
+"cannot evaluate" before everything, per the plan.
 
 Never return "validated", "predictive", "proven" or "works": the label
 vocabulary is closed by the plan.
@@ -65,11 +67,17 @@ def label(
     if n_evaluable < 2:
         return "cannot evaluate"
 
+    # Hit criterion first: < 2 usable leads is "no evidence" whatever
+    # the other metrics read (a never-firing signal's NaN lift is an
+    # informative absence, not missing evidence).
+    hit_criterion = n_usable_leads >= 2
+    if not hit_criterion:
+        return "no evidence"
+
     metrics = (lift, placebo_p_lift, sweep_median_lift, loo_min_hit_rate)
     if any(isinstance(m, float) and math.isnan(m) for m in metrics):
         return "cannot evaluate"
 
-    hit_criterion = n_usable_leads >= 2
     tests_pass = (
         lift >= 1.5
         and n_episodes >= 3

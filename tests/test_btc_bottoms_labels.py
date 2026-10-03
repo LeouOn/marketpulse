@@ -94,12 +94,19 @@ class TestLabel:
         )
         assert label(**candidate_kwargs(n_evaluable=2)) == "candidate"
 
-    def test_nan_metric_is_cannot_evaluate(self):
-        # NaN is missing evidence, not failed evidence (documented choice).
+    def test_nan_metric_is_cannot_evaluate_when_hits_exist(self):
+        # NaN is missing evidence only when the hit criterion is met
+        # (the tests cannot be applied); documented choice.
         for key in ("lift", "placebo_p_lift", "sweep_median_lift", "loo_min_hit_rate"):
             assert label(**candidate_kwargs(**{key: math.nan})) == "cannot evaluate"
-        # ...even when the hit criterion is NOT met (still cannot evaluate).
-        assert label(**candidate_kwargs(lift=math.nan, n_usable_leads=0)) == "cannot evaluate"
+
+    def test_nan_metrics_with_no_hits_is_no_evidence(self):
+        # Hit criterion is evaluated FIRST: a never-firing signal (0
+        # episodes, NaN lift) is an informative absence -> no evidence,
+        # not missing evidence.
+        assert label(**candidate_kwargs(lift=math.nan, n_usable_leads=0)) == "no evidence"
+        assert label(**candidate_kwargs(lift=math.nan, n_usable_leads=1)) == "no evidence"
+        assert label(**candidate_kwargs(lift=math.nan, placebo_p_lift=math.nan, n_usable_leads=1)) == "no evidence"
 
     def test_vocabulary_is_closed(self):
         """The function can only speak the four plan labels."""
