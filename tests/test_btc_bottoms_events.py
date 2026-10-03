@@ -66,13 +66,27 @@ class TestCycleShapes:
         row = out.iloc[0]
         assert row["horizon"] == "cycle"
         assert row["peak_date"] == _day(5) and row["peak_price"] == 200.0
+        assert bool(row["peak_censored"]) is False  # peak is mid-data
         assert row["bottom_date"] == _day(6) and row["bottom_price"] == 100.0
         assert row["bottom_intraday_low"] == 95.0  # intraday low reported, not used
         assert row["drawdown"] == pytest.approx(-0.5)
+        assert row["severity"] == "deep_correction"  # |-0.5| < SEVERITY_BOUNDARY
         assert row["confirm_date"] == _day(11)  # first close >= 100 * 1.30 = 130
         assert row["days_to_confirm"] == 5
+        assert row["false_confirms"] == 0  # clean V: the confirming bounce held
         assert row["recovered_date"] == _day(12)  # first close > 200 after bottom
         assert bool(row["provisional"]) is False
+
+    def test_cycle_peak_on_first_row_is_censored(self):
+        closes = _flat((200, 1), (100, 5), (135, 1), (250, 10))  # data starts AT the peak
+        out = ev.find_bottoms(_frame(closes), "cycle")
+        assert len(out) == 1
+        row = out.iloc[0]
+        assert row["peak_date"] == _day(0)
+        assert bool(row["peak_censored"]) is True  # a higher pre-window peak cannot be excluded
+        # ...but the bottom-side facts are unaffected.
+        assert row["bottom_date"] == _day(1) and row["bottom_price"] == 100.0
+        assert row["confirm_date"] == _day(6)
 
     def test_w_shape_single_event_at_global_min(self):
         closes = _flat((100, 3), (200, 1), (110, 4), (150, 1), (95, 4), (160, 2), (250, 5))
@@ -84,8 +98,10 @@ class TestCycleShapes:
         assert row["peak_date"] == _day(3) and row["peak_price"] == 200.0
         assert row["bottom_date"] == _day(9) and row["bottom_price"] == 95.0
         assert row["drawdown"] == pytest.approx(-0.525)
+        assert row["severity"] == "deep_correction"
         assert row["confirm_date"] == _day(13)  # 160 >= 95 * 1.30 = 123.5
         assert row["days_to_confirm"] == 4
+        assert row["false_confirms"] == 1  # the +45% bounce off 110 was a trap
         assert row["recovered_date"] == _day(15)  # new ATH ends the episode
         assert bool(row["provisional"]) is False
 
@@ -133,6 +149,31 @@ class TestCycleShapes:
         assert pd.isna(row["confirm_date"])
         assert pd.isna(row["days_to_confirm"])
         assert pd.isna(row["recovered_date"])
+
+    def test_double_failed_bounce_counts_two_false_confirms(self):
+        closes = _flat((100, 3), (200, 1), (108, 2), (145, 2), (102, 2), (140, 2), (95, 2), (130, 2), (250, 3))
+        out = ev.find_bottoms(_frame(closes), "cycle")
+        assert len(out) == 1
+        row = out.iloc[0]
+        assert row["bottom_date"] == _day(12) and row["bottom_price"] == 95.0
+        # 145 confirms 108 -> broken by 102; 140 confirms 102 -> broken by 95.
+        assert row["false_confirms"] == 2
+        assert row["confirm_date"] == _day(14)  # 130 >= 95 * 1.30 = 123.5
+
+    def test_failed_bounce_below_confirm_is_not_a_false_confirm(self):
+        closes = _flat((100, 2), (200, 1), (100, 3), (125, 2), (90, 2), (130, 1), (250, 3))
+        out = ev.find_bottoms(_frame(closes), "cycle")
+        assert len(out) == 1
+        # +25% off 100 never reached the +30% confirmation level, so breaking
+        # it is a continuing decline, not a confirmed-then-broken bounce.
+        assert out.iloc[0]["false_confirms"] == 0
+
+    def test_severity_boundary_is_inclusive_at_55(self):
+        at_boundary = ev.find_bottoms(_frame(_flat((100, 3), (200, 1), (90, 4), (120, 1), (250, 3))), "cycle")
+        assert at_boundary.iloc[0]["drawdown"] == pytest.approx(-0.55)
+        assert at_boundary.iloc[0]["severity"] == "bear_bottom"  # |dd| >= SEVERITY_BOUNDARY
+        below = ev.find_bottoms(_frame(_flat((100, 3), (200, 1), (91, 4), (119, 1), (250, 3))), "cycle")
+        assert below.iloc[0]["severity"] == "deep_correction"
 
     def test_new_ath_ends_episode_and_no_retrigger_on_shallow_dip(self):
         closes = _flat((100, 5), (200, 1), (110, 1), (145, 1), (250, 3), (205, 3))
@@ -214,6 +255,11 @@ class TestSwingShapes:
         assert s1["confirm_date"] == _day(6)  # 85 >= 70 * 1.15 = 80.5
         assert s2["bottom_date"] == _day(8) and s2["bottom_price"] == 50.0
         assert s2["confirm_date"] == _day(11)  # 65 >= 50 * 1.15 = 57.5
+        # Swings are structurally false-confirm-free: a qualifying rebound
+        # RESOLVES the episode, so a broken bounce lands in the next event.
+        assert s1["false_confirms"] == 0 and s2["false_confirms"] == 0
+        # Severity is a cycle-scale classification; swings carry no value.
+        assert s1["severity"] is None and s2["severity"] is None
         # Swings deliberately overlap the cycle episode: independent state machines.
         assert s2["bottom_date"] == cyc.iloc[0]["bottom_date"]
 
@@ -273,7 +319,9 @@ class TestContract:
         assert str(out["confirm_date"].dtype).startswith("datetime64")
         assert str(out["recovered_date"].dtype).startswith("datetime64")
         assert str(out["days_to_confirm"].dtype) == "Int64"
+        assert str(out["false_confirms"].dtype) == "Int64"
         assert out["provisional"].dtype == bool
+        assert out["peak_censored"].dtype == bool
         assert (out["horizon"] == "cycle").all()
         assert out["drawdown"].lt(0).all()
         # Rows sorted by bottom_date.
@@ -419,30 +467,61 @@ class TestGridAndStability:
         bottoms = [ev.find_bottoms(df, "cycle", cycle_dd=dd)["bottom_date"].tolist() for dd in (0.35, 0.45, 0.55)]
         assert bottoms[0] == bottoms[1] == bottoms[2]
 
-    def test_stability_summary_counts_shifted_bottoms(self):
-        # Swing episodes end at the rebound, so a threshold change can merge
-        # two swings into one whose bottom sits on the later, deeper low.
+    def test_stability_summary_counts_merged_swings(self):
+        # Swing episodes end at the rebound, so raising swing_dd merges the
+        # two swings into one. Exact-first matching attributes the survivor to
+        # its own date and reports the other as disappeared -- not as a shift.
         closes = _flat((200, 3), (134, 1), (180, 1), (129, 1), (168, 2))
         df = _frame(closes)
         summary = ev.stability_summary(df, "swing", grid={"swing_dd": [0.35]}, baseline={"swing_dd": 0.30})
         row = summary.iloc[0]
         assert row["n_baseline"] == 2 and row["n_combo"] == 1
         assert row["matched"] == 1
-        assert row["shifted"] == 1
-        assert row["max_shift_days"] == 2  # day 3 (134) vs day 5 (129)
+        assert row["shifted"] == 0
+        assert row["max_shift_days"] == 0
         assert row["appeared"] == 0 and row["disappeared"] == 1
 
     def test_default_grid_central_combo_matches_find_bottoms(self):
         closes = _flat((100, 3), (200, 1), (110, 4), (150, 1), (95, 4), (160, 2), (250, 5))
         df = _frame(closes)
         out = ev.grid_labels(df, "cycle", grid=None)
-        # Default cycle grid = dd x confirm, includes the central defaults.
         central = out[(out["cycle_dd"] == 0.45) & (out["cycle_confirm"] == 0.30)]
         direct = ev.find_bottoms(df, "cycle")
         cols = ev.EVENT_COLUMNS
         pd.testing.assert_frame_equal(
             central[cols].reset_index(drop=True), direct[cols].reset_index(drop=True), check_dtype=False
         )
+        # The widened default grid (dd up to 0.60) is visible on the per-combo
+        # surface: this path's deepest era is -52.5%, so dd >= 0.55 yields
+        # n_combo = 0 -- exactly the fragility the wider grid exists to show.
+        summary = ev.stability_summary(df, "cycle", grid=None)
+        assert len(summary) == 15  # 5 dd values x 3 confirm values
+        assert sorted(summary["cycle_dd"].unique()) == [0.40, 0.45, 0.50, 0.55, 0.60]
+        deep = summary[summary["cycle_dd"] >= 0.55]
+        assert (deep["n_combo"] == 0).all()
+        shallow = summary[summary["cycle_dd"] <= 0.50]
+        assert (shallow["n_combo"] == 1).all()
+
+    def test_event_robustness_reports_max_surviving_dd(self):
+        # Two eras: -42% (fragile) and -77% (robust); confirm fixed.
+        closes = _flat(
+            (100, 3),
+            (200, 1),
+            (116, 2),
+            (250, 3),  # era 1: -42%
+            (58, 2),
+            (300, 3),  # era 2: -76.8%
+        )
+        df = _frame(closes)
+        rob = ev.event_robustness(df, "cycle", grid={"cycle_dd": [0.40, 0.45, 0.50, 0.55]}, baseline={"cycle_dd": 0.40})
+        assert len(rob) == 2
+        fragile, deep = rob.iloc[0], rob.iloc[1]
+        # An event exists exactly while cycle_dd <= |its own drawdown|.
+        assert fragile["max_surviving_cycle_dd"] == pytest.approx(abs(fragile["drawdown"]))
+        assert deep["max_surviving_cycle_dd"] == pytest.approx(abs(deep["drawdown"]))
+        assert fragile["combos_present"] == 1 and fragile["combos_total"] == 4  # only dd=0.40
+        assert deep["combos_present"] == 4 and deep["combos_total"] == 4
+        assert fragile["severity"] == "deep_correction" and deep["severity"] == "bear_bottom"
 
 
 # ---------------------------------------------------------------------------
@@ -464,6 +543,10 @@ class TestRealDataSanity:
     def test_cycle_events_include_known_lows(self, btc: pd.DataFrame):
         out = ev.find_bottoms(btc, "cycle")
         assert len(out) >= 3  # tiny sample: report counts, no p-values
+        # The fragile pair must be distinguishable without reading code.
+        assert set(out["severity"]) <= {"bear_bottom", "deep_correction"}
+        assert int(out["peak_censored"].sum()) == 1  # the 2015 event peaks on the first data day
+        assert out.iloc[0]["peak_date"] == btc.index[0]
         for window_start, window_end in [
             ("2018-11-01", "2019-01-31"),
             ("2022-10-01", "2022-12-31"),

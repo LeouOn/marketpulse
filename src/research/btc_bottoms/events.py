@@ -40,6 +40,26 @@ Design decisions (defended, parameterised)
   an independent state machine and deliberately overlap cycle episodes --
   that nesting is the feature, not a bug: wave 2 can contrast signal
   behaviour inside vs outside cycle drawdowns.
+* **Severity is a judgement, not a discovery.** Cycle events carry a
+  ``severity`` classification: ``"bear_bottom"`` when ``|drawdown| >=
+  SEVERITY_BOUNDARY`` (0.55) else ``"deep_correction"``. The 0.55 constant is
+  a judgement boundary deliberately placed between the two clusters this data
+  shows (-53.1% mid-bull corrections vs -61%/-83% bear bottoms) so that the
+  fragile pair is visible in the output; it is NOT a value discovered from
+  the data. Swing events carry no severity (a cycle-scale claim).*
+* **Censored peaks.** ``peak_censored`` is True when the episode's peak is
+  the first row of the frame: a higher pre-window peak cannot be excluded, so
+  that event's ``peak_date``/``peak_price``/``drawdown`` are artefacts of
+  where the data starts (the 2015 event peaks on 2014-09-17, the first cached
+  day; the true Dec-2013 ATH lies outside the window). Bottom-side facts are
+  unaffected. A NaN first row can never be a peak and so never sets the flag.
+* **False confirmations.** ``false_confirms`` counts, within the same episode,
+  how many times the close rebounded ``>= confirm`` above the running low and
+  the episode later made a LOWER low -- each such bounce looked exactly like
+  the final confirmation on the day it happened. For the swing horizon this
+  counter is structurally zero: a qualifying rebound RESOLVES a swing episode,
+  so a broken bounce always lands in the *next* swing event (wave 2 can join
+  consecutive events to study swing-scale traps).*
 * **Ties go to the earliest date** (first occurrence of the running ATH, of
   the rolling-window high, and of the episode minimum).
 * **Robustness surface.** Every threshold is a keyword argument; the default
@@ -48,12 +68,12 @@ Design decisions (defended, parameterised)
   disappear or shift.
 
 Output contract: one row per bottom with columns ``horizon, peak_date,
-peak_price, bottom_date, bottom_price, bottom_intraday_low, drawdown,
-confirm_date, days_to_confirm, recovered_date, provisional``; ``drawdown`` is
-a negative fraction, ``days_to_confirm`` counts calendar days from the bottom
-to its confirmation, ``recovered_date`` is the first close strictly above the
-episode peak after the bottom (NaT if never). Rows are sorted by
-``bottom_date``.
+peak_price, peak_censored, bottom_date, bottom_price, bottom_intraday_low,
+drawdown, severity, confirm_date, days_to_confirm, false_confirms,
+recovered_date, provisional``; ``drawdown`` is a negative fraction,
+``days_to_confirm`` counts calendar days from the bottom to its confirmation,
+``recovered_date`` is the first close strictly above the episode peak after
+the bottom (NaT if never). Rows are sorted by ``bottom_date``.
 """
 
 from __future__ import annotations
@@ -69,9 +89,11 @@ __all__ = [
     "CYCLE_DEFAULTS",
     "SWING_DEFAULTS",
     "DEFAULT_GRIDS",
+    "SEVERITY_BOUNDARY",
     "find_bottoms",
     "grid_labels",
     "stability_summary",
+    "event_robustness",
 ]
 
 #: Exact output column order of :func:`find_bottoms`.
@@ -79,15 +101,24 @@ EVENT_COLUMNS = [
     "horizon",
     "peak_date",
     "peak_price",
+    "peak_censored",
     "bottom_date",
     "bottom_price",
     "bottom_intraday_low",
     "drawdown",
+    "severity",
     "confirm_date",
     "days_to_confirm",
+    "false_confirms",
     "recovered_date",
     "provisional",
 ]
+
+#: Cycle-severity boundary: |drawdown| >= this is a ``"bear_bottom"``, below it
+#: a ``"deep_correction"``. A judgement constant placed between the -53.1%
+#: corrections and the -61%+ bear bottoms observed in the cached daily data --
+#: documented as a choice, not presented as discovered.
+SEVERITY_BOUNDARY = 0.55
 
 #: Central (default) parameters per horizon.
 CYCLE_DEFAULTS: dict[str, float] = {"cycle_dd": 0.45, "cycle_confirm": 0.30}
@@ -99,10 +130,12 @@ _HORIZON_PARAMS: dict[str, tuple[str, ...]] = {
     "swing": ("swing_window", "swing_dd", "swing_confirm"),
 }
 
-#: Default neighbourhood grids for the wave-2 robustness sweep.
+#: Default neighbourhood grids for the wave-2 robustness sweep. The cycle grid
+#: reaches 0.60 so the fragile -53% pair (2021-07-20, 2026-06-30) visibly
+#: drops out at 0.55 instead of hiding behind a grid that stops at 0.50.
 DEFAULT_GRIDS: dict[str, dict[str, list[float | int]]] = {
     "cycle": {
-        "cycle_dd": [0.40, 0.45, 0.50],
+        "cycle_dd": [0.40, 0.45, 0.50, 0.55, 0.60],
         "cycle_confirm": [0.25, 0.30, 0.35],
     },
     "swing": {
@@ -187,6 +220,8 @@ def _episode_rows(
     peak_date: pd.Timestamp | None = None
     min_price = np.inf
     min_date: pd.Timestamp | None = None
+    confirmed_low: float | None = None  # running low that already saw a >= (1+rebound) bounce
+    false_confirms = 0
     for i in range(closes.size):
         close = closes[i]
         if not active:
@@ -196,10 +231,19 @@ def _episode_rows(
                 peak_date = anchor_date_of(i)
                 min_price = float(close)
                 min_date = dates[i]
+                confirmed_low = None
+                false_confirms = 0
         else:
             if close < min_price:
+                if confirmed_low is not None:
+                    # A bounce-confirmed low is being broken: on the day it
+                    # happened, that bounce looked exactly like the final call.
+                    false_confirms += 1
+                    confirmed_low = None
                 min_price = float(close)
                 min_date = dates[i]
+            elif confirmed_low is None and close >= min_price * (1.0 + rebound):
+                confirmed_low = min_price
             # New-ATH resolution must compare against the *frozen* episode
             # peak, not anchors[i]: the cummax anchor includes today's close,
             # so `close > anchors[i]` could never fire.
@@ -211,6 +255,7 @@ def _episode_rows(
                         "peak_price": peak_price,
                         "bottom_date": min_date,
                         "bottom_price": min_price,
+                        "false_confirms": false_confirms,
                         "provisional": False,
                     }
                 )
@@ -222,13 +267,14 @@ def _episode_rows(
                 "peak_price": peak_price,
                 "bottom_date": min_date,
                 "bottom_price": min_price,
+                "false_confirms": false_confirms,
                 "provisional": True,
             }
         )
     return events
 
 
-def _cycle_rows(closes: pd.Series, drawdown: float) -> list[dict]:
+def _cycle_rows(closes: pd.Series, drawdown: float, rebound: float) -> list[dict]:
     """Cycle episodes anchored to the running all-time-high close."""
     ath = closes.cummax()
     # cummax changes value only on strict new highs: those days carry the
@@ -242,7 +288,7 @@ def _cycle_rows(closes: pd.Series, drawdown: float) -> list[dict]:
         anchors=ath.to_numpy()[valid],
         anchor_date_of=lambda i: anchor_dates.iloc[np.flatnonzero(valid)[i]],
         drawdown=drawdown,
-        rebound=0.0,
+        rebound=rebound,
         ends_at_new_high=True,
     )
 
@@ -289,12 +335,15 @@ def _empty_output() -> pd.DataFrame:
             "horizon": pd.Series(dtype=object),
             "peak_date": pd.Series(dtype="datetime64[ns]"),
             "peak_price": pd.Series(dtype=float),
+            "peak_censored": pd.Series(dtype=bool),
             "bottom_date": pd.Series(dtype="datetime64[ns]"),
             "bottom_price": pd.Series(dtype=float),
             "bottom_intraday_low": pd.Series(dtype=float),
             "drawdown": pd.Series(dtype=float),
+            "severity": pd.Series(dtype=object),
             "confirm_date": pd.Series(dtype="datetime64[ns]"),
             "days_to_confirm": pd.Series(dtype="Int64"),
+            "false_confirms": pd.Series(dtype="Int64"),
             "recovered_date": pd.Series(dtype="datetime64[ns]"),
             "provisional": pd.Series(dtype=bool),
         }
@@ -308,8 +357,14 @@ def _finalize(
         return _empty_output()
     out = pd.DataFrame(rows)
     out["horizon"] = horizon
+    out["peak_censored"] = out["peak_date"] == closes.index[0]
     out["bottom_intraday_low"] = lows.reindex(out["bottom_date"]).to_numpy(dtype=float) if lows is not None else np.nan
     out["drawdown"] = out["bottom_price"] / out["peak_price"] - 1.0
+    if horizon == "cycle":
+        out["severity"] = np.where(out["drawdown"].abs() >= SEVERITY_BOUNDARY, "bear_bottom", "deep_correction")
+    else:
+        out["severity"] = None  # severity is a cycle-scale classification
+    out["false_confirms"] = pd.array(out["false_confirms"], dtype="Int64")
     # Confirmation (post hoc, uniformly for both horizons): first valid close
     # at >= bottom * (1 + rebound) strictly after the bottom day. For swings
     # this is exactly the resolution day; for cycles it is the identifiability
@@ -388,7 +443,7 @@ def find_bottoms(
 
     closes = _prepare(df)
     if horizon == "cycle":
-        rows = _cycle_rows(closes, float(params["cycle_dd"]))
+        rows = _cycle_rows(closes, float(params["cycle_dd"]), float(params["cycle_confirm"]))
         rebound = float(params["cycle_confirm"])
     else:
         rows = _swing_rows(
@@ -422,29 +477,118 @@ def grid_labels(
     sets across the neighbourhood. ``grid=None`` uses :data:`DEFAULT_GRIDS`.
     """
     keys, combos = _grid_combinations(horizon, grid)
+    # A combination with zero events contributes no rows by construction (this
+    # is a long-form EVENT frame); empty fully-typed chunks are concatenated
+    # anyway so dtypes stay consistent. To see WHICH combinations yielded
+    # zero events, use :func:`stability_summary` -- it emits one row per
+    # combination with ``n_combo`` regardless of event count.
     chunks = [find_bottoms(df, horizon, **combo).assign(**combo) for combo in combos]
-    non_empty = [chunk for chunk in chunks if len(chunk)]
-    if not non_empty:
-        return _empty_output().assign(**{k: pd.Series(dtype=float) for k in keys})
-    out = pd.concat(non_empty, ignore_index=True)
+    out = pd.concat(chunks, ignore_index=True)
     param_order = keys + EVENT_COLUMNS
     return out[param_order]
+
+
+def event_robustness(
+    df: pd.DataFrame,
+    horizon: str,
+    grid: Mapping[str, Sequence[float | int]] | None = None,
+    baseline: Mapping[str, float | int] | None = None,
+    match_days: int | None = None,
+) -> pd.DataFrame:
+    """Per-event robustness across a parameter neighbourhood.
+
+    One row per baseline event with its identifying columns plus:
+
+    * ``max_surviving_cycle_dd`` (resp. ``max_surviving_swing_dd``) -- for the
+      cycle horizon this is analytically the event's own ``|drawdown|``: a
+      cycle episode exists exactly while ``cycle_dd <= |drawdown|`` because the
+      ATH anchor does not move with the threshold. For swings the rolling
+      anchor DOES move with ``swing_dd``, so the column reports the largest
+      ``swing_dd`` among grid combinations where the event matched (an
+      empirical, grid-capped lower bound on the true value).
+    * ``combos_present`` / ``combos_total`` -- how many grid combinations the
+      event survived (matched by nearest bottom date within ``match_days``).
+
+    This is the per-event companion to :func:`stability_summary` (whose rows
+    are per-combination): it makes the fragile -53% pair visible without
+    reading code -- those events carry ``max_surviving_cycle_dd`` ~ 0.53 while
+    bear bottoms carry 0.61+.
+    """
+    keys, combos = _grid_combinations(horizon, grid)
+    base_params = dict(CYCLE_DEFAULTS) if horizon == "cycle" else dict(SWING_DEFAULTS)
+    if baseline is not None:
+        unknown = sorted(set(baseline) - set(_HORIZON_PARAMS[horizon]))
+        _require(not unknown, f"baseline keys {unknown} are not '{horizon}' parameters")
+        base_params.update(baseline)
+    _validate_params(horizon, base_params)
+    window = _DEFAULT_MATCH_DAYS[horizon] if match_days is None else int(match_days)
+    _require(window > 0, "match_days must be > 0")
+
+    base_events = find_bottoms(df, horizon, **base_params)
+    if not len(base_events):
+        return base_events.assign(
+            max_surviving_cycle_dd=pd.Series(dtype=float), combos_present=0, combos_total=len(combos)
+        )
+    dd_param = "cycle_dd" if horizon == "cycle" else "swing_dd"
+    present = np.zeros(len(base_events), dtype=int)
+    surviving_dd = np.full(len(base_events), -np.inf)
+    for combo in combos:
+        combo_events = find_bottoms(df, horizon, **combo)
+        pairs, _, _ = _match_events(base_events, combo_events, window)
+        for bi, _cj in pairs:
+            present[bi] += 1
+            if dd_param in combo:
+                surviving_dd[bi] = max(surviving_dd[bi], float(combo[dd_param]))
+    out = base_events[
+        [
+            "peak_date",
+            "peak_price",
+            "peak_censored",
+            "bottom_date",
+            "bottom_price",
+            "drawdown",
+            "severity",
+            "provisional",
+        ]
+    ].copy()
+    if horizon == "cycle":
+        out[f"max_surviving_{dd_param}"] = out["drawdown"].abs()
+    else:
+        out[f"max_surviving_{dd_param}"] = np.where(np.isfinite(surviving_dd), surviving_dd, np.nan)
+    out["combos_present"] = present
+    out["combos_total"] = len(combos)
+    return out
 
 
 def _match_events(
     baseline: pd.DataFrame, combo: pd.DataFrame, match_days: int
 ) -> tuple[list[tuple[int, int]], int, int]:
-    """Greedy nearest-date matching of combo events onto baseline events.
+    """Match combo events onto baseline events: exact dates first, then nearest.
 
-    Baseline events are taken in date order; each claims the unmatched combo
-    event with the nearest bottom date within ``match_days``. Returns
-    (matched index pairs, appeared count, disappeared count). Greedy matching
-    is adequate for neighbourhood sweeps where events move by days, not by
-    episodes; it is documented rather than optimal.
+    Pass 1 pairs events with identical bottom dates (one-to-one); pass 2 lets
+    each remaining baseline event claim the nearest unmatched combo event
+    within ``match_days``. Exact-first attribution keeps merged/split episodes
+    honest: when two baseline events fuse into one, the survivor pairs with
+    its own date and the other registers as ``disappeared`` instead of
+    "shifting" onto the survivor. Returns (matched index pairs, appeared,
+    disappeared); greedy nearest-date is adequate for neighbourhood sweeps
+    and is documented rather than optimal.
     """
     used: set[int] = set()
     pairs: list[tuple[int, int]] = []
+    by_date: dict[pd.Timestamp, list[int]] = {}
+    for cj, cdate in enumerate(combo["bottom_date"]):
+        by_date.setdefault(cdate, []).append(cj)
     for bi, bdate in enumerate(baseline["bottom_date"]):
+        for cj in by_date.get(bdate, []):
+            if cj not in used:
+                used.add(cj)
+                pairs.append((bi, cj))
+                break
+    matched_baseline = {bi for bi, _ in pairs}
+    for bi, bdate in enumerate(baseline["bottom_date"]):
+        if bi in matched_baseline:
+            continue
         best_j, best_gap = -1, match_days + 1
         for cj, cdate in enumerate(combo["bottom_date"]):
             if cj in used:
