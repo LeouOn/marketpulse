@@ -24,6 +24,7 @@ import pandas as pd
 import pytest
 
 from src.research.btc_bottoms.study import (
+    config_for,
     episodes,
     evaluate,
     evaluate_combination,
@@ -201,18 +202,40 @@ class TestPlacebo:
         assert p.p_hits == 1.0
         assert "not a p-value" in p.power_note
         assert "resolution" in p.power_note
+        # Exclusion zone (pre_window + cooldown = 70) is reported.
+        assert p.exclusion_zone == 70
+        assert p.n_eligible_shifts == 1000 - 2 * 70 + 1
+
+    def test_add_one_never_prints_exact_zero(self):
+        # Whatever the geometry, add-one keeps p >= 1/(N+1) > 0.
+        fire = fire_at([(b - 30, b - 25) for b in BOTTOMS])
+        p = placebo(fire, make_events(), shifts=100, seed=5, **CFG)
+        assert p.p_hits >= 1.0 / 101
+        assert p.p_lift >= 1.0 / 101 or np.isnan(p.p_lift)
+
+    def test_fallback_when_zone_leaves_too_few_shifts(self):
+        # Tiny series: the zone nearly empties the eligible range ->
+        # stdlib warning + fallback to all shifts, flagged in the note.
+        n = 90
+        idx = pd.date_range(START, periods=n, freq="D", name="ts")
+        fire = pd.Series(False, index=idx)
+        fire.iloc[40:45] = True
+        ev = pd.DataFrame({"bottom_date": [idx[60]], "confirm_date": [idx[70]]})
+        with pytest.warns(UserWarning, match="exclusion zone"):
+            p = placebo(fire, ev, shifts=20, seed=3, pre_window=60, cooldown=10, forward_window=30)
+        assert "FELL BACK" in p.power_note
 
     def test_perfect_leader_beats_rotations_but_power_is_limited(self):
-        # A deterministic leader covers 3/3; rigid circular rotations keep
-        # the bursts' relative geometry (built at fixed offsets from the
-        # same events), so a nontrivial fraction of rotations still covers
-        # all three wide windows.  The honest assertions: most rotations do
-        # worse than the truth, and the power note says so.  This is the
-        # engine's real resolution limit, not a bug.
+        # A deterministic leader covers 3/3; the exclusion zone removes
+        # the near-aligned rotations (k in [1,69]), so what remains is
+        # genuinely displaced geometry.  Honest assertions: most
+        # rotations do worse than the truth, add-one keeps p > 0, and
+        # the power note says so.  This is the engine's real resolution
+        # limit, not a bug.
         fire = fire_at([(b - 30, b - 25) for b in BOTTOMS])
         p = placebo(fire, make_events(), shifts=300, seed=7, **CFG)
         assert p.observed_hits == 3
-        assert 0 < p.p_hits <= 0.15
+        assert 1.0 / 301 <= p.p_hits <= 0.15
         assert p.p_lift <= 0.5
         assert "resolution" in p.power_note
 
@@ -327,6 +350,44 @@ class TestLatestEventView:
         assert "never use it to choose thresholds" in view["note"]
 
 
+class TestHorizonDefaults:
+    def test_config_for_values_and_overrides(self):
+        assert config_for("cycle").pre_window == 180
+        assert config_for("cycle").forward_window == 180
+        assert config_for("cycle").cooldown == 30
+        assert config_for("swing").pre_window == 30
+        assert config_for("swing").forward_window == 45
+        assert config_for("swing").cooldown == 10
+        assert config_for("cycle", cooldown=7).cooldown == 7
+        assert config_for("cycle", cooldown=7).pre_window == 180  # other keys keep defaults
+        with pytest.raises(ValueError, match="unknown horizon"):
+            config_for("monthly")
+        with pytest.raises(ValueError, match="unknown config keys"):
+            config_for("cycle", pre_wind=5)
+
+    def test_evaluate_uses_horizon_defaults(self):
+        # Fires 20 days before the second bottom; swing defaults
+        # (pre 30) cover it with NO explicit cfg keys.
+        fire = fire_at([(BOTTOMS[1] - 20, BOTTOMS[1] - 15)])
+        ev_swing = make_events(horizon="swing")
+        et = evaluate(fire, ev_swing, horizon="swing")
+        assert et.config.pre_window == 30
+        assert et.metrics["n_covered"] == 1
+        # Explicit keys beat horizon defaults.
+        et2 = evaluate(fire, ev_swing, horizon="swing", pre_window=10)
+        assert et2.config.pre_window == 10
+        assert et2.metrics["n_covered"] == 0  # -20 outside a 10-day pre-window
+
+    def test_horizon_defaults_reach_placebo_and_forward(self):
+        fire = fire_at([(BOTTOMS[1] - 20, BOTTOMS[1] - 15)])
+        ev_swing = make_events(horizon="swing")
+        p = placebo(fire, ev_swing, shifts=20, seed=2, horizon="swing")
+        assert p.exclusion_zone == 30 + 10  # swing pre + cooldown
+        close = pd.Series(np.linspace(100, 200, N), index=IDX)
+        fr = forward_returns(fire, close, ev_swing, horizon="swing")
+        assert fr.episode_returns.columns.tolist() == [30, 90, 180]
+
+
 class TestEventNormalisation:
     def test_provisional_excluded_by_default_with_count(self):
         fire = fire_at([(b - 30, b - 25) for b in BOTTOMS])
@@ -368,6 +429,58 @@ class TestEventNormalisation:
 
 
 class TestForwardReturns:
+    def test_incomplete_windows_are_nan_not_censored(self):
+        # Lead's toy reproduction, verbatim: close grows 1%/day for 120
+        # days, fire on day 100, ask for a 90-day window.  The target
+        # date (day 190) is beyond the data (last index day 119), so the
+        # answer must be NaN.  The old pad-lookup returned 0.2081 - a
+        # 19-day return dressed up as a 90-day one.
+        n = 120
+        idx = pd.date_range("2020-01-01", periods=n, freq="D", name="ts")
+        close = pd.Series(1.01 ** np.arange(n), index=idx)
+        fire = pd.Series(False, index=idx)
+        fire.iloc[100] = True
+        fr = forward_returns(
+            fire,
+            close,
+            pd.DataFrame({"bottom_date": [idx[50]], "confirm_date": [idx[70]]}),
+            windows=(90,),
+        )
+        assert np.isnan(fr.episode_returns.loc[idx[100], 90])
+        # Unconditional set: anchors 0..29 have day+90 <= 119 -> valid;
+        # the remaining 90 anchors are right-censored and must be NaN.
+        vals = fr.unconditional_returns[90]
+        assert int(vals.notna().sum()) == 30
+        assert vals.iloc[30:].isna().all()
+        # n_valid is reported next to the distribution, visible.
+        assert fr.unconditional_n_valid[90] == 30
+        assert fr.episode_n_valid[90] == 0
+
+    def test_incomplete_forward_window_marks_drawdown_incomplete(self):
+        # Episode near the end of data: the forward window is not fully
+        # observed, so further_drawdown must not report a partial-window
+        # worst value.
+        n = 120
+        idx = pd.date_range("2020-01-01", periods=n, freq="D", name="ts")
+        close = pd.Series(1.01 ** np.arange(n), index=idx)
+        fire = pd.Series(False, index=idx)
+        fire.iloc[100] = True
+        ev = pd.DataFrame(
+            {
+                "bottom_date": [idx[50], idx[110]],
+                "confirm_date": [idx[70], idx[115]],
+                "bottom_price": [0.5, 0.4],
+            }
+        )
+        fr = forward_returns(fire, close, ev, windows=(30,), forward_window=90)
+        # forward_window 90 from day 100 runs past day 119 -> incomplete.
+        assert np.isnan(fr.further_drawdown.loc[idx[100]])
+        assert fr.n_incomplete_drawdown == 1
+        # With a window that fits (day 100 + 15 <= 119), the worst
+        # bottom inside it is reported.
+        fr2 = forward_returns(fire, close, ev, windows=(30,), forward_window=15)
+        assert fr2.further_drawdown.loc[idx[100]] == pytest.approx(0.4 / (1.01**100) - 1.0)
+
     def test_values_and_overlap_counts(self):
         close = pd.Series(np.linspace(100.0, 200.0, N), index=IDX)  # +0.1%/day drift
         fire = fire_at([(100, 102), (110, 112), (900, 902)])

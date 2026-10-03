@@ -36,10 +36,15 @@ Design decisions (challenge these)
    drawdowns live.
 4. **Placebo, not p-values.**  The fire series is circularly shifted
    (autocorrelation and fire rate preserved; edge wrap-around is a
-   known, documented artefact) and the fraction of shifted copies
-   matching or beating the observed hits / lift is reported.  The
-   output itself states the resolution limit
-   (``max(1/shifts, 1/(n_events + 1))``).
+   known, documented artefact) and the add-one fraction
+   ``(1 + matches) / (1 + N)`` of shifted copies matching or beating
+   the observed hits / lift is reported, so exactly 0 is impossible.
+   Shifts are drawn only from offsets that displace the series at
+   least ``pre_window + cooldown`` days from zero in both directions:
+   near-zero shifts are near-copies of the observed alignment and
+   would contaminate the null.  The eligible count (and any fallback)
+   is stated in the output, along with the resolution limit
+   ``max(1/(shifts+1), 1/(n_events+1))``.
 5. **Pre-registration discipline.**  The PRIMARY analysis uses only
    the registry default thresholds (wave 1); the neighbourhood grid is
    robustness (median / min / max reported, never only the best cell)
@@ -51,10 +56,18 @@ Design decisions (challenge these)
 6. **Overlapping windows are flagged, never treated as independent.**
    Forward-return tables report counts and the number of overlapping
    episode pairs; the unconditional comparator overlaps by
-   construction and says so.
+   construction and says so.  A forward return whose window extends
+   past the last data date is NaN (right-censoring made explicit, with
+   ``n_valid`` per window) - never a padded short-window return under
+   a long-window label; the same rule marks incomplete further-drawdown
+   windows.
 7. **Purity.**  All functions are deterministic and side-effect free:
    no I/O, no network, no LLM endpoints; randomness only inside
-   ``placebo`` behind a fixed seed.
+   ``placebo`` behind a fixed seed (a stdlib ``warnings.warn`` on the
+   documented too-few-eligible-shifts fallback is the one exception).
+   Per-horizon study defaults (``HORIZON_DEFAULTS`` / ``config_for``)
+   keep ``pre_window`` / ``forward_window`` / ``cooldown`` honest for
+   cycle vs swing horizons; explicit caller keys always win.
 
 What this engine CANNOT tell you (read before quoting any number)
 ------------------------------------------------------------------
@@ -82,7 +95,8 @@ consumes any DataFrame with ``bottom_date`` / ``confirm_date``
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass
+import warnings
+from dataclasses import dataclass, field, fields, replace
 from typing import Any, Mapping, Sequence
 
 import numpy as np
@@ -90,10 +104,12 @@ import pandas as pd
 
 __all__ = [
     "StudyConfig",
+    "HORIZON_DEFAULTS",
     "EpisodeTable",
     "PlaceboResult",
     "SweepResult",
     "ForwardReport",
+    "config_for",
     "episodes",
     "evaluate",
     "summarise",
@@ -146,7 +162,70 @@ class StudyConfig:
             object.__setattr__(self, "post_window", self.forward_window)
 
 
+# Per-horizon study defaults (see config_for docstring for the reasoning).
+HORIZON_DEFAULTS: dict[str, StudyConfig] = {
+    "cycle": StudyConfig(pre_window=180, forward_window=180, cooldown=30),
+    "swing": StudyConfig(pre_window=30, forward_window=45, cooldown=10),
+}
+
+
+def config_for(horizon: str, **overrides: Any) -> StudyConfig:
+    """StudyConfig for a horizon, with caller overrides on top.
+
+    Justification for the shipped values (study defaults, not
+    calibrated truths - wave 2b sweeps them):
+
+    - ``cycle`` (pre 180 / forward 180 / cooldown 30): cycle lows are
+      multi-month processes; the signals that precede them (drawdown
+      depth, Mayer, weekly RSI) evolve over months, so a half-year
+      pre-window spans the typical decline phase; 180 days forward is
+      a quarter-plus of recovery; a 30-day cooldown merges monthly
+      re-tests of the same bottom.
+    - ``swing`` (pre 30 / forward 45 / cooldown 10): swing lows are
+      weeks; a month of pre-window and ~6 weeks forward keep the
+      question "did it call this swing, not the year"; a 10-day
+      cooldown merges re-tests within a fortnight.
+
+    Unknown horizons raise: the events contract fixes the vocabulary
+    to {"cycle", "swing"}, so a typo must fail loudly.
+    Explicit caller keys always win over the horizon defaults.
+    """
+    if horizon not in HORIZON_DEFAULTS:
+        raise ValueError(
+            f"unknown horizon {horizon!r}; known: {sorted(HORIZON_DEFAULTS)} (contract fixes the vocabulary)"
+        )
+    base = {f.name: getattr(HORIZON_DEFAULTS[horizon], f.name) for f in fields(StudyConfig)}
+    unknown = set(overrides) - set(base)
+    if unknown:
+        raise ValueError(f"unknown config keys: {sorted(unknown)}; known: {sorted(base)}")
+    return replace(HORIZON_DEFAULTS[horizon], **overrides)
+
+
+def _resolve_config(cfg: Mapping[str, Any] | None) -> StudyConfig:
+    """Config resolution shared by every entry point.
+
+    Precedence: caller's explicit keys > per-horizon defaults (when a
+    known ``horizon`` key is present) > StudyConfig defaults.  When the
+    caller passes a StudyConfig instance it is used as-is.
+    """
+    if isinstance(cfg, StudyConfig):
+        return cfg
+    cfg = dict(cfg or {})
+    horizon = cfg.get("horizon")
+    if horizon is not None:
+        if horizon not in HORIZON_DEFAULTS:
+            raise ValueError(
+                f"unknown horizon {horizon!r}; known: {sorted(HORIZON_DEFAULTS)} (contract fixes the vocabulary)"
+            )
+        # Horizon defaults as the base; explicit caller keys win.
+        base = {f.name: getattr(HORIZON_DEFAULTS[horizon], f.name) for f in fields(StudyConfig)}
+        base.update(cfg)
+        return _coerce_config(base)
+    return _coerce_config(cfg)
+
+
 def _coerce_config(cfg: Mapping[str, Any] | None) -> StudyConfig:
+    """Validate and build a StudyConfig from plain keys (no horizon logic)."""
     if cfg is None:
         return StudyConfig()
     if isinstance(cfg, StudyConfig):
@@ -283,7 +362,7 @@ def evaluate(
     ``precision``, ``base_rate_k``/``base_rate_n``/``base_rate``,
     ``lift``, plus the exclusion counts from event normalisation.
     """
-    conf = _coerce_config(dict(cfg) if cfg else None)
+    conf = _resolve_config(dict(cfg) if cfg else None)
     ev, excluded = _normalise_events(events, conf)
     eps = episodes(fire, conf.cooldown)
     s = fire.astype("boolean").fillna(False).astype(bool)
@@ -398,7 +477,9 @@ class PlaceboResult:
     p_hits: float
     p_lift: float
     n_lift_nan: int
-    power_note: str
+    power_note: str = ""
+    n_eligible_shifts: int = 0
+    exclusion_zone: int = 0
 
 
 def placebo(
@@ -416,57 +497,64 @@ def placebo(
     rate is shift-invariant and computed once.  Deterministic for a
     fixed seed.
     """
-    conf = _coerce_config(dict(cfg) if cfg else None)
-    observed = evaluate(
-        fire,
-        events,
-        **{
-            "pre_window": conf.pre_window,
-            "cooldown": conf.cooldown,
-            "forward_window": conf.forward_window,
-            "post_window": conf.post_window,
-            "horizon": conf.horizon,
-            "include_provisional": conf.include_provisional,
-        },
-    )
+    conf = _resolve_config(dict(cfg) if cfg else None)
+    observed = evaluate(fire, events, **_cfg_as_kwargs(conf))
     obs_hits = int(observed.metrics["n_covered"])
     obs_lift = observed.metrics["lift"]
 
     arr = fire.astype("boolean").fillna(False).astype(bool).to_numpy()
     n = len(arr)
     rng = np.random.default_rng(seed)
+    # Exclusion zone: tiny shifts leave the fire geometry nearly
+    # aligned with the real events (a near-copy of the observed
+    # alignment), contaminating the null in the conservative
+    # direction and inflating every p.  Eligible shifts displace the
+    # series at least pre_window + cooldown days from zero in BOTH
+    # directions (k and n-k, the wrap-around twin).
+    zone = conf.pre_window + conf.cooldown
+    lo, hi = zone, n - zone  # inclusive bounds on k
+    n_eligible = hi - lo + 1 if hi >= lo else 0
+    fell_back = False
+    if n_eligible < 20:
+        warnings.warn(
+            f"placebo: only {n_eligible} shifts outside the exclusion zone "
+            f"(zone={zone} days, series={n} days); falling back to all "
+            "shifts - p values are contaminated by near-copies",
+            stacklevel=2,
+        )
+        lo, hi, n_eligible, fell_back = 1, n - 1, n - 2, True
     shifted_hits = np.empty(shifts, dtype=int)
     shifted_lift = np.empty(shifts, dtype=float)
     for i in range(shifts):
-        k = int(rng.integers(1, n))
+        k = int(rng.integers(lo, hi + 1))
         shifted = pd.Series(np.roll(arr, k), index=fire.index)
-        m = evaluate(
-            shifted,
-            events,
-            **{
-                "pre_window": conf.pre_window,
-                "cooldown": conf.cooldown,
-                "forward_window": conf.forward_window,
-                "post_window": conf.post_window,
-                "horizon": conf.horizon,
-                "include_provisional": conf.include_provisional,
-            },
-        ).metrics
+        m = evaluate(shifted, events, **_cfg_as_kwargs(conf)).metrics
         shifted_hits[i] = int(m["n_covered"])
         shifted_lift[i] = m["lift"]
 
+    # Add-one form everywhere: (1 + #{shifted >= observed}) / (1 + N),
+    # so a p of exactly 0 is never printed (1.0 remains possible when
+    # every shifted copy matches or beats the observation).
     with np.errstate(invalid="ignore"):
-        p_hits = float(np.mean(shifted_hits >= obs_hits))
+        p_hits = float((1 + np.count_nonzero(shifted_hits >= obs_hits)) / (shifts + 1))
         finite = np.isfinite(shifted_lift)  # elementwise mask, no ambiguous `and`
         if np.isfinite(obs_lift) and finite.any():
-            p_lift = float(np.mean(shifted_lift[finite] >= obs_lift))
+            n_finite = int(np.count_nonzero(finite))
+            p_lift = float((1 + np.count_nonzero(shifted_lift[finite] >= obs_lift)) / (n_finite + 1))
         else:
             p_lift = float("nan")
     n_events = int(observed.metrics["n_events"])
-    resolution = max(1.0 / shifts, 1.0 / (n_events + 1))
+    resolution = max(1.0 / (shifts + 1), 1.0 / (n_events + 1))
+    zone_note = (
+        f" Shifts drawn from {n_eligible} eligible offsets outside a "
+        f"{zone}-day exclusion zone"
+        + (" (FELL BACK to all shifts - near-copy contamination)" if fell_back else "")
+        + "."
+    )
     note = (
         f"Placebo resolution is limited: smallest reportable fraction ~{resolution:.3f} "
-        f"({shifts} shifts, {n_events} events). This bounds luck given the signal's own "
+        f"({shifts} shifts, {n_events} events).{zone_note} Add-one form "
+        "(1 + matches) / (1 + N). This bounds luck given the signal's own "
         "autocorrelation and fire rate; it is not a p-value and proves nothing."
     )
     return PlaceboResult(
@@ -476,6 +564,8 @@ def placebo(
         p_hits=p_hits,
         p_lift=p_lift,
         n_lift_nan=int(np.count_nonzero(~np.isfinite(shifted_lift))),
+        n_eligible_shifts=n_eligible,
+        exclusion_zone=zone,
         power_note=note,
     )
 
@@ -618,7 +708,7 @@ def leave_one_out(fire: pd.Series, events: pd.DataFrame, **cfg: Any) -> pd.DataF
     the recomputed metrics on the remaining events.  With n=4 cycles
     this answers "did one cycle carry the result" and nothing more.
     """
-    conf = _coerce_config(dict(cfg) if cfg else None)
+    conf = _resolve_config(dict(cfg) if cfg else None)
     ev, _excluded = _normalise_events(events, conf)
     rows = []
     for i in range(len(ev)):
@@ -649,7 +739,7 @@ def latest_event_view(fire: pd.Series, events: pd.DataFrame, **cfg: Any) -> dict
     everyone tuned towards; it is reported separately and must never be
     used to pick thresholds.  The returned dict says so.
     """
-    conf = _coerce_config(dict(cfg) if cfg else None)
+    conf = _resolve_config(dict(cfg) if cfg else None)
     ev, _excluded = _normalise_events(events, conf)
     if ev.empty:
         return {"report_only": True, "note": "no events", "n_events": 0}
@@ -682,10 +772,18 @@ class ForwardReport:
 
     ``episode_returns`` / ``unconditional_returns``: DataFrames indexed
     by anchor day with the forward close-to-close return for each
-    window.  ``further_drawdown``: per episode, the worst bottom of the
-    horizon inside ``forward_window`` relative to the start close
-    (requires ``bottom_price`` in events; absent -> NaN with a note).
-    Overlap counts are reported, never divided away.
+    window.  A forward return is NaN unless the target date is <= the
+    last index date: incomplete windows are right-censored and marked
+    missing, never padded with the last close (which would silently
+    report a short-window return under a long-window label).
+    ``episode_n_valid`` / ``unconditional_n_valid`` report the valid
+    count per window so the censoring is visible next to every
+    distribution.  ``further_drawdown``: per episode, the worst bottom
+    of the horizon inside ``forward_window`` relative to the start
+    close; episodes whose forward window is not fully observed read
+    NaN (counted in ``n_incomplete_drawdown``) instead of a
+    partial-window worst value.  Overlap counts are reported, never
+    divided away.
     """
 
     windows: tuple[int, ...]
@@ -694,6 +792,9 @@ class ForwardReport:
     further_drawdown: pd.Series
     overlap_pairs: dict[int, int]
     unconditional_overlap_note: str
+    episode_n_valid: dict[int, int] = field(default_factory=dict)
+    unconditional_n_valid: dict[int, int] = field(default_factory=dict)
+    n_incomplete_drawdown: int = 0
 
 
 def forward_returns(
@@ -710,24 +811,29 @@ def forward_returns(
     count of overlapping pairs per window is reported and the
     distributions must not be read as n independent draws.
     """
-    conf = _coerce_config(dict(cfg) if cfg else None)
+    conf = _resolve_config(dict(cfg) if cfg else None)
     ev, _excluded = _normalise_events(events, conf)
     eps = episodes(fire, conf.cooldown)
     close = close.astype(float)
 
-    def _fwd(anchors: pd.DatetimeIndex) -> pd.DataFrame:
+    def _fwd(anchors: pd.DatetimeIndex) -> tuple[pd.DataFrame, dict[int, int]]:
+        """Exact-grid forward returns; NaN when the window is incomplete."""
         out = {}
+        n_valid: dict[int, int] = {}
         anchor_close = close.reindex(anchors)
+        last_date = close.index[-1]
         for w in windows:
-            shifted = close.reindex(
-                anchors + pd.Timedelta(days=w), method="pad"
-            )  # last close at or before the target day (daily grid)
-            out[w] = shifted.to_numpy() / anchor_close.to_numpy() - 1.0
-        return pd.DataFrame(out, index=anchors)
+            target = anchors + pd.Timedelta(days=w)
+            shifted = close.reindex(target)  # exact lookup: beyond-data -> NaN
+            vals = shifted.to_numpy() / anchor_close.to_numpy() - 1.0
+            vals[target > last_date] = np.nan  # censoring made explicit
+            out[w] = vals
+            n_valid[w] = int(np.count_nonzero(~np.isnan(vals)))
+        return pd.DataFrame(out, index=anchors), n_valid
 
     ep_anchors = pd.DatetimeIndex(eps["start"]) if len(eps) else pd.DatetimeIndex([])
-    episode_returns = _fwd(ep_anchors)
-    unconditional_returns = _fwd(close.index)
+    episode_returns, episode_n_valid = _fwd(ep_anchors)
+    unconditional_returns, unconditional_n_valid = _fwd(close.index)
 
     overlap: dict[int, int] = {}
     if len(ep_anchors) > 1:
@@ -737,13 +843,21 @@ def forward_returns(
             overlap[w] = int(np.count_nonzero((diffs > 0) & (diffs <= w)) // 2)
 
     # Further drawdown from each episode start to the next bottom.
+    # An episode whose forward window runs past the last data date is
+    # INCOMPLETE: report NaN (counted), not a partial-window worst.
+    last_date = close.index[-1]
+    n_incomplete = 0
     if len(eps) and "bottom_price" in ev.columns:
         starts_ord = eps["start"].values.astype("datetime64[D]").astype(np.int64)
+        last_ord = np.datetime64(last_date, "D").astype(np.int64)
         bottoms_ord = ev["bottom_date"].values.astype("datetime64[D]").astype(np.int64)
         prices = ev["bottom_price"].to_numpy(dtype=float)
         start_close = close.reindex(pd.DatetimeIndex(eps["start"])).to_numpy()
         worst = np.full(len(eps), np.nan)
         for i, (s, sc) in enumerate(zip(starts_ord, start_close, strict=True)):
+            if s + conf.forward_window > last_ord:
+                n_incomplete += 1
+                continue
             mask = (bottoms_ord >= s) & (bottoms_ord <= s + conf.forward_window)
             if mask.any() and np.isfinite(sc):
                 worst[i] = prices[mask].min() / sc - 1.0
@@ -760,8 +874,12 @@ def forward_returns(
         unconditional_overlap_note=(
             "Unconditional anchors are every calendar day: their windows overlap "
             "by construction. Episode anchors may overlap too (counts reported). "
-            "Neither distribution is n independent draws."
+            "Neither distribution is n independent draws. Windows extending past "
+            "the last data date are censored to NaN; n_valid is shown per window."
         ),
+        episode_n_valid=episode_n_valid,
+        unconditional_n_valid=unconditional_n_valid,
+        n_incomplete_drawdown=n_incomplete,
     )
 
 
