@@ -32,6 +32,9 @@ serving-path label on read, so synthetic data cannot be relabelled.
   ``allow_synthetic=True`` opt-in (tests, offline demos) and is **never
   written to the cache**. The pre-2026-10-03 code persisted the fallback and
   dropped ``source``, so the next call served a sine wave as ``"cache"``.
+  By default synthetic rows are also dropped on READ (legacy-detected or
+  tagged): a caller that forgets to filter on ``source`` still cannot
+  receive fabricated rows.
 - With no real data and no key, ``fetch_mvrv()``/``fetch_puell()`` return an
   **empty** frame (consumers already handle ``.empty``; ``OnChainGated``
   falls back to a 1.0× multiplier). Chosen over returning synthetic by
@@ -253,6 +256,38 @@ def _synthetic_puell(n_days: int = 2500, end: pd.Timestamp | None = None) -> pd.
 # ---------------------------------------------------------------------------
 
 
+def _enforce_opt_in(df: pd.DataFrame, path: Path, label: str, allow_synthetic: bool) -> pd.DataFrame:
+    """Default policy: synthetic rows are dropped before they reach the caller.
+
+    With ``allow_synthetic=False`` (the default) every row classified or
+    tagged ``synthetic`` is removed — a future consumer that forgets to
+    filter on ``source`` still cannot receive fabricated rows. The removal
+    is logged once, loudly, with the file path and the remedy. With
+    ``allow_synthetic=True`` the rows are returned tagged, unchanged.
+    The file on disk is never modified.
+    """
+    if allow_synthetic or df.empty or "source" not in df.columns:
+        return df
+    synthetic = df["source"] == "synthetic"
+    n_synthetic = int(synthetic.sum())
+    if not n_synthetic:
+        return df
+    if n_synthetic == len(df):
+        logger.warning(
+            f"{label}: cache {path} contains ONLY synthetic rows - ignored "
+            "by default (empty frame returned; file left in place). Delete "
+            "it or re-fetch with a real API key (force=True) to replace it. "
+            "Pass allow_synthetic=True to inspect the tagged rows."
+        )
+    else:
+        logger.warning(
+            f"{label}: dropping {n_synthetic}/{len(df)} synthetic rows from "
+            f"cache {path} (kept {len(df) - n_synthetic} real rows); "
+            "allow_synthetic=True returns them tagged."
+        )
+    return df[~synthetic].reset_index(drop=True)
+
+
 def _fallback_after_failure(
     label: str,
     path: Path,
@@ -268,7 +303,7 @@ def _fallback_after_failure(
     (provenance preserved by the reader), then opt-in synthetic, then empty.
     """
     if path.exists():
-        stale = read_cache(path)
+        stale = _enforce_opt_in(read_cache(path), path, label, allow_synthetic)
         if not stale.empty:
             logger.warning(f"{label}: returning stale cache due to fetch error")
             return stale
@@ -299,23 +334,21 @@ def fetch_mvrv(force: bool = False, allow_synthetic: bool = False) -> pd.DataFra
         and no key the frame is EMPTY (not synthetic) — consumers handle
         ``.empty`` and ``OnChainGated`` falls back to a 1.0× multiplier.
         Provenance survives the disk round trip: the persisted ``source``
-        column is served back unchanged, never relabelled "cache" (legacy
-        files without the column are classified; see module docstring).
+        column is served back unchanged, never relabelled "cache". By
+        default, synthetic rows (legacy-detected or tagged) are DROPPED
+        before the frame reaches the caller — an all-synthetic cache yields
+        an empty frame (after one API attempt, which self-heals keyed
+        callers); ``allow_synthetic=True`` returns them tagged instead.
     """
-    # Return cached data if available and not forced.
+    # Return cached data if available and not forced. Synthetic rows are
+    # dropped by default (see _enforce_opt_in); an all-synthetic cache
+    # therefore falls through to the API attempt below, which self-heals
+    # for keyed callers and ends in the honest empty frame for keyless ones.
     _seed_onchain_caches()
     if not force and MVRV_CSV.exists():
-        cached = _read_mvrv_cache(MVRV_CSV)
+        cached = _enforce_opt_in(_read_mvrv_cache(MVRV_CSV), MVRV_CSV, "MVRV", allow_synthetic)
         if not cached.empty:
-            n_synth = int((cached["source"] == "synthetic").sum())
-            if n_synth:
-                logger.warning(
-                    f"MVRV: returning {len(cached)} cached rows of which "
-                    f"{n_synth} are SYNTHETIC (consumers that filter on "
-                    "source will exclude them)"
-                )
-            else:
-                logger.info(f"MVRV: returning {len(cached)} rows from cache")
+            logger.info(f"MVRV: returning {len(cached)} rows from cache")
             return cached
 
     # Fetch from API.
@@ -370,7 +403,8 @@ def fetch_puell(force: bool = False, allow_synthetic: bool = False) -> pd.DataFr
     Same provenance contract as :func:`fetch_mvrv`: ``source`` survives the
     disk round trip ("real"/"synthetic", never relabelled "cache"),
     synthetic is opt-in via ``allow_synthetic=True`` and never persisted,
-    and with no real data and no key the frame is EMPTY.
+    synthetic rows (legacy-detected or tagged) are dropped by default, and
+    with no real data and no key the frame is EMPTY.
 
     Args:
         force: If ``True``, re-fetch from the API even if a cache exists.
@@ -382,20 +416,14 @@ def fetch_puell(force: bool = False, allow_synthetic: bool = False) -> pd.DataFr
         ``source`` (str: ``"real"`` or ``"synthetic"``); empty when no real
         data is available.
     """
-    # Return cached data if available and not forced.
+    # Return cached data if available and not forced. Synthetic rows are
+    # dropped by default (see _enforce_opt_in); an all-synthetic cache
+    # therefore falls through to the API attempt below.
     _seed_onchain_caches()
     if not force and PUELL_CSV.exists():
-        cached = _read_puell_cache(PUELL_CSV)
+        cached = _enforce_opt_in(_read_puell_cache(PUELL_CSV), PUELL_CSV, "Puell", allow_synthetic)
         if not cached.empty:
-            n_synth = int((cached["source"] == "synthetic").sum())
-            if n_synth:
-                logger.warning(
-                    f"Puell: returning {len(cached)} cached rows of which "
-                    f"{n_synth} are SYNTHETIC (consumers that filter on "
-                    "source will exclude them)"
-                )
-            else:
-                logger.info(f"Puell: returning {len(cached)} rows from cache")
+            logger.info(f"Puell: returning {len(cached)} rows from cache")
             return cached
 
     # Fetch from API.

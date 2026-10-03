@@ -229,32 +229,79 @@ def test_synthetic_puell_never_persisted_even_with_optin(tmp_data_dir, monkeypat
     assert df2.empty
 
 
-def test_legacy_synthetic_mvrv_file_detected_not_served_as_real(tmp_data_dir, monkeypatch):
-    """A legacy laundered file (no source column, values == the deterministic
-    generator for its row count) must be served tagged synthetic, not "cache".
-    Uses the REAL generator, exactly like the file the bug produced."""
+def test_legacy_synthetic_mvrv_file_ignored_by_default(tmp_data_dir, monkeypatch):
+    """Follow-up contract: by default a legacy laundered (all-synthetic)
+    file is IGNORED — empty frame, loud log — not merely served tagged.
+    Fails on the branch tip that only tagged the rows."""
     import src.research.data.on_chain as oc
 
-    legacy = oc._synthetic_mvrv(500)  # same generator, dates end "now" as the bug did
+    legacy = oc._synthetic_mvrv(500)
     legacy.to_csv(oc.MVRV_CSV, index=False)  # no source column — legacy format
 
     df = fetch_mvrv(force=False)
-    assert len(df) == 500
-    assert (df["source"] == "synthetic").all()
+    assert df.empty
+    assert list(df.columns) == ["ts", "mvrv_z", "source"]
     assert oc.MVRV_CSV.exists()  # the owner's file is left in place
 
 
-def test_legacy_synthetic_puell_file_detected_not_served_as_real(tmp_data_dir, monkeypatch):
-    """Same legacy detection for Puell."""
+def test_legacy_synthetic_mvrv_file_optin_returns_tagged(tmp_data_dir, monkeypatch):
+    """Same legacy file with allow_synthetic=True: rows are served tagged."""
+    import src.research.data.on_chain as oc
+
+    legacy = oc._synthetic_mvrv(500)
+    legacy.to_csv(oc.MVRV_CSV, index=False)
+
+    df = fetch_mvrv(force=False, allow_synthetic=True)
+    assert len(df) == 500
+    assert (df["source"] == "synthetic").all()
+
+
+def test_legacy_synthetic_puell_file_ignored_by_default(tmp_data_dir, monkeypatch):
+    """Puell follow-up contract: all-synthetic legacy file ignored by default."""
     import src.research.data.on_chain as oc
 
     legacy = oc._synthetic_puell(400)
     legacy.to_csv(oc.PUELL_CSV, index=False)
 
     df = fetch_puell(force=False)
+    assert df.empty
+    assert list(df.columns) == ["ts", "puell", "source"]
+    assert oc.PUELL_CSV.exists()
+
+
+def test_legacy_synthetic_puell_file_optin_returns_tagged(tmp_data_dir, monkeypatch):
+    """Same legacy Puell file with allow_synthetic=True: served tagged."""
+    import src.research.data.on_chain as oc
+
+    legacy = oc._synthetic_puell(400)
+    legacy.to_csv(oc.PUELL_CSV, index=False)
+
+    df = fetch_puell(force=False, allow_synthetic=True)
     assert len(df) == 400
     assert (df["source"] == "synthetic").all()
-    assert oc.PUELL_CSV.exists()
+
+
+def test_mixed_cache_real_rows_kept_synthetic_dropped_by_default(tmp_data_dir, monkeypatch):
+    """A cache mixing real and synthetic rows keeps only the real ones by
+    default (synthetic dropped, loudly), and everything with the opt-in."""
+    import src.research.data.on_chain as oc
+
+    mixed = pd.DataFrame(
+        {
+            "ts": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-02")],
+            "mvrv_z": [1.0, 2.0],
+            "source": ["real", "synthetic"],
+        }
+    )
+    mixed.to_csv(oc.MVRV_CSV, index=False)
+
+    df = fetch_mvrv(force=False)
+    assert len(df) == 1
+    assert df["mvrv_z"].iloc[0] == 1.0
+    assert (df["source"] == "real").all()
+
+    df_optin = fetch_mvrv(force=False, allow_synthetic=True)
+    assert len(df_optin) == 2
 
 
 def test_legacy_real_mvrv_file_served_as_real(tmp_data_dir, monkeypatch):
