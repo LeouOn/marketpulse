@@ -33,10 +33,10 @@ def client():
 def test_current_endpoint_returns_latest(client):
     with (
         patch("src.api.routers.yield_curve._get_history") as mock_h,
-        patch("src.api.routers.yield_curve._compute_staleness", return_value=(False, 0)),
+        patch("src.api.routers.yield_curve._compute_staleness", return_value=(False, 0, 0)),
     ):
         h = MagicMock()
-        h.get_history.return_value = [_mock_snap(date(2026, 6, 23))]
+        h.get_latest.return_value = _mock_snap(date(2026, 6, 23))
         mock_h.return_value = (h, MagicMock())
         r = client.get("/api/yield-curve/current")
     assert r.status_code == 200

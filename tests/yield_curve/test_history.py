@@ -70,6 +70,23 @@ def test_get_history_returns_n_most_recent(session):
     assert out[0].date >= out[-1].date  # descending
 
 
+def test_get_latest_has_no_date_floor(session):
+    """Round 3: the newest snapshot must be retrievable regardless of how far
+    the wall clock has moved (FRED's publication lag makes 1-6 day-old
+    snapshots the healthy norm)."""
+    h = YieldCurveHistory(session)
+    h.save_snapshot(_make_snapshot(date(2026, 6, 20), 10.0))
+    h.save_snapshot(_make_snapshot(date(2026, 6, 23), 12.0))
+    out = h.get_latest()
+    assert out is not None
+    assert out.date == date(2026, 6, 23)  # newest by observation date
+    assert out.spreads["2s10s"] == pytest.approx(12.0)
+
+
+def test_get_latest_empty_returns_none(session):
+    assert YieldCurveHistory(session).get_latest() is None
+
+
 def test_compute_deltas_5d_and_30d(session):
     h = YieldCurveHistory(session)
     base = date(2026, 6, 1)

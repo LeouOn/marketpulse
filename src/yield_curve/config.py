@@ -48,8 +48,13 @@ class YieldCurveConfig:
     # Anti-spam (hours)
     antispam_hours: int = 6
 
-    # Stale-data flag (calendar days)
-    stale_days: int = 3
+    # Stale-data flag: allowed number of missing US business days between
+    # the newest snapshot and the expected newest observation (the last
+    # business day strictly before today, reflecting FRED's one-business-day
+    # publication lag). Plain weekdays are counted, so a market holiday can
+    # add one day of slack. Default 2: tolerate a holiday plus one missed
+    # run without crying wolf on healthy weekends/Mondays.
+    stale_days: int = 2
 
     # Force-refresh override for backfill
     force_refresh: bool = False
@@ -66,7 +71,7 @@ def get_config() -> YieldCurveConfig:
         recession_prob_high=_get_float("YIELD_CURVE_RECESSION_PROB_HIGH", 0.50),
         recession_prob_low=_get_float("YIELD_CURVE_RECESSION_PROB_LOW", 0.25),
         antispam_hours=_get_int("YIELD_CURVE_ANTISPAM_HOURS", 6),
-        stale_days=_get_int("YIELD_CURVE_STALE_DAYS", 3),
+        stale_days=_get_int("YIELD_CURVE_STALE_DAYS", 2),
         force_refresh=os.getenv("YIELD_CURVE_FORCE_REFRESH", "0") == "1",
         cache_dir=os.getenv("YIELD_CURVE_CACHE_DIR", "data/macro/yield_curve"),
     )

@@ -69,13 +69,45 @@ def _get_alerts():
     return db.get_session()
 
 
-def _compute_staleness(latest_date: Optional[date]) -> tuple[bool, int]:
-    """Return (stale, days_since_update)."""
+def _last_weekday_strictly_before(d: date) -> date:
+    """Latest US weekday strictly before ``d`` (plain weekdays; holidays are
+    not modelled — a holiday can add one day of slack, accepted honestly)."""
+    prev = d - timedelta(days=1)
+    while prev.weekday() >= 5:  # Sat/Sun
+        prev -= timedelta(days=1)
+    return prev
+
+
+def _missing_business_days(snapshot_date: date, expected_newest: date) -> int:
+    """Count weekdays in ``(snapshot_date, expected_newest]``."""
+    count = 0
+    cur = snapshot_date + timedelta(days=1)
+    while cur <= expected_newest:
+        if cur.weekday() < 5:
+            count += 1
+        cur += timedelta(days=1)
+    return count
+
+
+def _compute_staleness(latest_date: Optional[date]) -> tuple[bool, int, int]:
+    """Return ``(stale, days_since_update, business_days_behind)``.
+
+    FRED publishes the daily treasury series one business day late, so the
+    *expected* newest observation is dated the last business day strictly
+    before today. ``stale`` means "behind that expectation by more than
+    ``cfg.stale_days`` business days" (env ``YIELD_CURVE_STALE_DAYS``;
+    default 2) — a healthy pipeline is at most one run behind and must not
+    cry wolf on weekends or Monday mornings. ``days_since_update`` stays a
+    plain calendar-day count for the user-facing honesty signal.
+    """
     if latest_date is None:
-        return True, -1
-    days = (date.today() - latest_date).days
+        return True, -1, -1
+    today = date.today()
+    days_since = (today - latest_date).days
+    expected_newest = _last_weekday_strictly_before(today)
+    behind = _missing_business_days(latest_date, expected_newest)
     cfg = get_config()
-    return days > cfg.stale_days, days
+    return behind > cfg.stale_days, days_since, behind
 
 
 # --- endpoints -------------------------------------------------------------
@@ -86,12 +118,11 @@ async def get_current():
     try:
         history, session = _get_history()
         try:
-            rows = history.get_history(days=1)
-            if not rows:
+            snap = history.get_latest()
+            if snap is None:
                 no_data, last_error = _no_data_reason(_load_status())
                 return _Envelope(success=True, data=None, no_data=no_data, last_error=last_error)
-            snap = rows[0]
-            stale, days_since = _compute_staleness(snap.date)
+            stale, days_since, behind = _compute_staleness(snap.date)
             return _Envelope(
                 success=True,
                 data={
@@ -108,6 +139,7 @@ async def get_current():
                     "zscore_2s10s_90d": snap.zscore_2s10s_90d,
                     "stale": stale,
                     "days_since_update": days_since,
+                    "business_days_behind": behind,
                 },
             )
         finally:
@@ -214,8 +246,10 @@ async def get_config_endpoint():
 async def refresh_pipeline(backfill_days: int = 0, force: bool = False):
     """Manual trigger for the pipeline (T6).
 
-    ``backfill_days=0`` fetches today only; ``backfill_days=130`` rebuilds
-    ~6 months of business-day snapshots. Runs are recorded in the
+    ``backfill_days=0`` snapshots the latest available FRED observation
+    (FRED publishes the daily treasury series one business day late, so
+    that is usually yesterday's curve); ``backfill_days=130`` rebuilds
+    ~6 months of observation-dated snapshots. Runs are recorded in the
     pipeline status file regardless of outcome.
     """
     from src.scheduler.yield_curve_job import run_yield_curve_pipeline

@@ -1,13 +1,35 @@
 """Daily yield-curve pipeline: fetch -> compute -> persist -> evaluate alerts.
 
-Registered into MarketScheduler via _register_jobs() (16:30 ET, after
-FRED publishes) and started by the app lifespan (T6). The lifespan also
-calls :func:`ensure_yield_curve_populated` once at startup so a fresh
-deployment backfills instead of serving ``data: null``.
+Registered into MarketScheduler via _register_jobs() (16:30 ET) and
+started by the app lifespan (T6). The lifespan also calls
+:func:`ensure_yield_curve_populated` once at startup so a fresh deployment
+backfills instead of serving ``data: null``.
+
+**Observation-driven policy (why snapshot dates come from the data).**
+FRED publishes the daily treasury (DGS*) series with a **one-business-day
+lag**: Tuesday's value first becomes visible on Wednesday, and over a
+weekend the newest visible observation is Thursday's (a three-calendar-
+day lag). A same-day fetch window is therefore always empty — the daily
+16:30 run used to ask for ``[today .. today]`` and record a failure on
+every single day. Instead, every run fetches a trailing window
+(``_OBSERVATION_LOOKBACK_DAYS`` calendar days; the fetcher's parquet
+cache makes repeat windows cheap) and dates its snapshots by the
+**observation dates actually present in the fetched data**:
+
+- a daily run snapshots the latest observation date with a full-curve
+  day (see ``_observation_dates``), skipping idempotently when that
+  snapshot already exists — so weekend, holiday and 16:30-weekday runs
+  are all successful no-ops or one-day catch-ups;
+- a backfill snapshots every observation date in its window, which also
+  means no snapshot is ever saved under a date FRED published nothing
+  (weekends, federal holidays *and* bond-market closures like Good
+  Friday — no calendar needs to be modelled);
+- ``ok=False`` is recorded only when the window contains no usable
+  observation at all (genuinely broken fetch / no data for ~10 days).
 
 Manual trigger::
 
-    python -m src.scheduler.yield_curve_job             # today only
+    python -m src.scheduler.yield_curve_job             # latest observation
     python -m src.scheduler.yield_curve_job --backfill 130
 
 or ``POST /api/yield-curve/refresh``.
@@ -44,17 +66,43 @@ def _own_session():
     return db.get_session()
 
 
-def _business_days(start: date, end: date) -> list[date]:
-    return [d.date() for d in pd.bdate_range(start, end)]
+#: Trailing calendar days a daily run fetches. FRED publishes the daily
+#: treasury (DGS*) series one business day late (Tuesday's value first
+#: appears Wednesday; over a weekend the lag is three calendar days), so a
+#: same-day window is always empty and the run must look back far enough
+#: to contain the latest *available* observation. Ten calendar days covers
+#: any weekend-plus-holiday stretch with margin.
+_OBSERVATION_LOOKBACK_DAYS = 10
 
 
-def _asof_value(df: pd.DataFrame, d: date) -> float | None:
-    """Value at-or-before ``d`` (FRED series have gaps on holidays)."""
+def _observation_dates(fetched: dict[str, pd.DataFrame]) -> list[date]:
+    """Sorted dates on which EVERY tenor has an exact observation.
+
+    Usability rule for a snapshot date: the full ``TENORS`` curve must be
+    present — spreads (2s10s/3m10y/2s30s), shape classification and the
+    NY Fed recession model each read several tenors, so a partial curve
+    would produce misleading derived fields. FRED's DGS family publishes
+    as a block, so the intersection costs nothing in practice; a single
+    tenor hiccup drops only that one day and never misdates anything.
+    """
+    if not fetched:
+        return []
+    date_sets = [set(pd.to_datetime(df["ts"]).dt.date) for df in fetched.values()]
+    return sorted(set.intersection(*date_sets))
+
+
+def _exact_value(df: pd.DataFrame, d: date) -> float | None:
+    """Exact observation for ``d`` (no as-of carry-forward)."""
     ts = pd.to_datetime(df["ts"])
-    mask = ts.dt.date <= d
-    if not mask.any():
-        return None
-    return float(df.loc[mask, "close"].iloc[-1])
+    rows = df.loc[ts.dt.date == d, "close"]
+    return float(rows.iloc[-1]) if len(rows) else None
+
+
+def _exact_value(df: pd.DataFrame, d: date) -> float | None:
+    """Exact observation for ``d`` (no as-of carry-forward)."""
+    ts = pd.to_datetime(df["ts"])
+    rows = df.loc[ts.dt.date == d, "close"]
+    return float(rows.iloc[-1]) if len(rows) else None
 
 
 def _delta_fields(dates: list[date], spread_by_date: dict[date, float | None], i: int) -> dict[str, float | None]:
@@ -102,9 +150,10 @@ async def run_yield_curve_pipeline(
             :class:`FredCurveFetcher`.
         status_store: injected status store (tests).
         backfill_days: when > 0, build snapshots for every business day in
-            ``[today - backfill_days, today]`` (deltas/z-scores need the
-            history). Default 0 = today only.
-        force: recompute today's snapshot even if it exists.
+            history from ``today - backfill_days``; snapshot dates are the
+            observation dates found in the data (deltas/z-scores need the
+            history). Default 0 = the latest available observation only.
+        force: recompute existing snapshots for those observation dates.
 
     Returns a summary dict ``{"saved": n, "date": ..., "error": ...}`` so
     the manual-trigger endpoint can report what happened.
@@ -125,37 +174,48 @@ async def run_yield_curve_pipeline(
         fetcher = FredCurveFetcher(cache_dir=cfg.cache_dir)
 
     today = date.today()
+    # Observation-driven policy (see module docstring): FRED publishes the
+    # daily treasury series one business day late, so the run fetches a
+    # trailing window and dates snapshots by the observation dates actually
+    # present in the data — never by the wall clock and never by a calendar
+    # (bond-market closures like Good Friday are handled for free).
     force = force or cfg.force_refresh
     history = YieldCurveHistory(session)
 
     try:
-        if backfill_days <= 0 and not force and history.get_snapshot(today) is not None:
-            logger.info(f"yield_curve: snapshot for {today} already exists; skipping")
-            store.record_run(ok=True, saved=0, snapshot_date=today)
-            return {"saved": 0, "date": today.isoformat(), "error": None}
-
-        window_start = today - timedelta(days=backfill_days) if backfill_days > 0 else today
-        dates = _business_days(window_start, today)
-        if not dates:
-            dates = [today]
+        span = backfill_days if backfill_days > 0 else _OBSERVATION_LOOKBACK_DAYS
+        window_start = today - timedelta(days=span)
 
         # 1. One range fetch per tenor (8 requests regardless of window).
         fetched = fetcher.fetch_tenors(list(TENORS.keys()), window_start, today)
         fetched = {t: df for t, df in (fetched or {}).items() if df is not None and not df.empty}
-        if not fetched:
-            msg = f"no tenor data fetched for [{window_start} .. {today}]"
+
+        # 2. Snapshot dates are the observation dates present in the data.
+        obs_dates = _observation_dates(fetched)
+        if not obs_dates:
+            msg = f"no tenor observations with full coverage in [{window_start} .. {today}]"
             logger.warning(f"yield_curve: {msg}")
             store.record_run(ok=False, error=msg)
             return {"saved": 0, "error": msg}
 
-        # 2. Per-day curve / spreads / shape over the window. A day before the first
-        #    observation (e.g. a leading holiday) has no curve; keep each curve paired
-        #    with its own date so skipping such days cannot shift the rest.
-        dated_curves: list[tuple[date, dict[str, float]]] = []
-        for d in dates:
-            curve = {tenor: v for tenor, df in fetched.items() if (v := _asof_value(df, d)) is not None}
-            if curve:
-                dated_curves.append((d, curve))
+        latest_obs = obs_dates[-1]
+        # Daily run: snapshot only the latest observation. Backfill: every
+        # observation date in the window. Existing snapshots are skipped
+        # (idempotent success) unless force is set.
+        dates = obs_dates if backfill_days > 0 else [latest_obs]
+        if not force:
+            missing = [d for d in dates if history.get_snapshot(d) is None]
+        else:
+            missing = dates
+        if not missing:
+            logger.info(f"yield_curve: snapshots through {latest_obs} already exist; skipping")
+            store.record_run(ok=True, saved=0, snapshot_date=latest_obs)
+            return {"saved": 0, "date": latest_obs.isoformat(), "error": None}
+        dates = missing
+
+        dated_curves: list[tuple[date, dict[str, float]]] = [
+            (d, {tenor: v for tenor, df in fetched.items() if (v := _exact_value(df, d)) is not None}) for d in dates
+        ]
         dates = [d for d, _ in dated_curves]
         curves = [c for _, c in dated_curves]
 
@@ -184,11 +244,11 @@ async def run_yield_curve_pipeline(
             latest_snap = snap
 
         logger.info(
-            f"yield_curve: saved {saved} snapshot(s) through {today} "
+            f"yield_curve: saved {saved} snapshot(s) through {latest_snap.date if latest_snap else latest_obs} "
             f"(shape={latest_snap.shape if latest_snap else '?'}, "
-            f"2s10s={spread_by_date.get(today)})"
+            f"2s10s={spread_by_date.get(latest_obs)})"
         )
-        store.record_run(ok=True, saved=saved, snapshot_date=today)
+        store.record_run(ok=True, saved=saved, snapshot_date=latest_snap.date if latest_snap else latest_obs)
 
         # 3. Evaluate alerts on the latest snapshot.
         if latest_snap is not None:
@@ -199,7 +259,7 @@ async def run_yield_curve_pipeline(
             except Exception as exc:
                 logger.error(f"yield_curve: alert evaluation failed: {exc}")
 
-        return {"saved": saved, "date": today.isoformat(), "error": None}
+        return {"saved": saved, "date": (latest_snap.date if latest_snap else latest_obs).isoformat(), "error": None}
     except Exception as exc:
         logger.error(f"yield_curve: pipeline failed: {exc}")
         store.record_run(ok=False, error=str(exc))
@@ -258,7 +318,7 @@ if __name__ == "__main__":  # manual trigger: python -m src.scheduler.yield_curv
         "--backfill",
         type=int,
         default=0,
-        help="backfill N calendar days of business-day snapshots (default: today only)",
+        help="snapshot the latest FRED observation (backfill N days of observation-dated snapshots)",
     )
     args = parser.parse_args()
     print(json.dumps(asyncio.run(run_yield_curve_pipeline(backfill_days=args.backfill)), indent=2))

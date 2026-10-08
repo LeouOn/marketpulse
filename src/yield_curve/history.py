@@ -88,6 +88,18 @@ class YieldCurveHistory:
         )
         return [self._row_to_data(r) for r in rows]
 
+    def get_latest(self) -> SnapshotData | None:
+        """Newest snapshot by observation date, with **no wall-clock floor**.
+
+        The pipeline dates snapshots by FRED observation and FRED publishes
+        one business day late (three calendar days over a weekend), so the
+        newest healthy snapshot is 1-6+ calendar days old at any moment. A
+        ``get_history(days=N)`` cutoff here would hide it — which is exactly
+        how ``/current`` used to show "no data" on healthy weekends.
+        """
+        row = self.session.query(YieldCurveSnapshot).order_by(YieldCurveSnapshot.date.desc()).first()
+        return self._row_to_data(row) if row is not None else None
+
     def compute_deltas(self, target_date: date) -> dict[str, Optional[float]]:
         """Compute 5d/30d deltas and 90d z-score of 2s10s for `target_date`."""
         target = self.get_snapshot(target_date)

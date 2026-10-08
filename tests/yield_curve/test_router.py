@@ -7,7 +7,7 @@ Offline: history and status are monkeypatched; no DB, no network.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -48,7 +48,13 @@ class _StubHistory:
         self._rows = rows
 
     def get_history(self, days=90):
-        return self._rows
+        """Mirrors the real DAO: wall-clock cutoff of ``today - days``."""
+        cutoff = date.today() - timedelta(days=days)
+        return [r for r in self._rows if r.date >= cutoff]
+
+    def get_latest(self):
+        """Newest row by date, no wall-clock floor (mirrors the real DAO)."""
+        return self._rows[0] if self._rows else None
 
 
 def _patch(monkeypatch, rows, status):
@@ -71,6 +77,85 @@ class TestCurrentEndpoint:
         assert body["data"]["spreads"]["2s10s"] == 65.0
         assert body["no_data"] is None
         assert body["last_error"] is None
+
+
+class TestCurrentServesLatestSnapshot:
+    """Round 3: /current must serve the newest stored snapshot with NO date
+    floor — FRED's one-business-day lag makes honestly-dated snapshots 1-6+
+    calendar days old on a healthy pipeline. Fails on a days=1 cutoff."""
+
+    @pytest.mark.parametrize("age_days", [1, 2, 4, 6])
+    def test_serves_snapshot_regardless_of_age(self, client, monkeypatch, age_days):
+        rows = _stub_rows(n=1)
+        rows[0].date = date.today() - timedelta(days=age_days)
+        _patch(monkeypatch, rows, None)
+        body = client.get("/api/yield-curve/current").json()
+        assert body["data"] is not None, body
+        assert body["data"]["date"] == rows[0].date.isoformat()
+        assert body["no_data"] is None
+
+    def test_no_data_only_when_table_truly_empty(self, client, monkeypatch):
+        _patch(monkeypatch, [], None)
+        body = client.get("/api/yield-curve/current").json()
+        assert body["data"] is None
+        assert body["no_data"]
+
+
+class TestStalenessInBusinessDays:
+    """'stale' means behind the expected newest observation (the last US
+    business day strictly before today, per FRED's one-day lag), counted in
+    missing business days (plain weekdays; a holiday adds one day of slack).
+    Healthy weekends/Mondays must NOT be stale; a week behind IS."""
+
+    @pytest.mark.parametrize(
+        ("case", "frozen", "snap_date", "stale", "behind"),
+        [
+            ("saturday_healthy", date(2026, 10, 3), date(2026, 10, 1), False, 1),
+            ("sunday_healthy", date(2026, 10, 4), date(2026, 10, 1), False, 1),
+            ("monday_morning_healthy", date(2026, 10, 5), date(2026, 10, 1), False, 1),
+            ("tuesday_after_holiday_healthy", date(2026, 1, 20), date(2026, 1, 16), False, 1),
+            ("week_behind_is_stale", date(2026, 10, 3), date(2026, 9, 24), True, 6),
+        ],
+        ids=[
+            "saturday_healthy",
+            "sunday_healthy",
+            "monday_morning_healthy",
+            "tuesday_after_holiday_healthy",
+            "week_behind_is_stale",
+        ],
+    )
+    def test_stale_flag_counts_missing_business_days(self, client, monkeypatch, case, frozen, snap_date, stale, behind):
+        class FrozenDate(date):
+            @classmethod
+            def today(cls):
+                return frozen
+
+        monkeypatch.setattr(ycr, "date", FrozenDate)
+        rows = _stub_rows(n=1)
+        rows[0].date = snap_date
+        _patch(monkeypatch, rows, None)
+        body = client.get("/api/yield-curve/current").json()
+        assert body["data"]["stale"] is stale, (case, body["data"])
+        assert body["data"]["business_days_behind"] == behind, (case, body["data"])
+        assert body["data"]["days_since_update"] == (frozen - snap_date).days
+
+    def test_stale_days_env_var_threshold(self, client, monkeypatch):
+        """YIELD_CURVE_STALE_DAYS keeps its name; new meaning = allowed missing
+        business days behind the expected newest observation."""
+
+        class FrozenDate(date):
+            @classmethod
+            def today(cls):
+                return date(2026, 10, 3)  # Saturday
+
+        monkeypatch.setattr(ycr, "date", FrozenDate)
+        monkeypatch.setenv("YIELD_CURVE_STALE_DAYS", "0")
+        rows = _stub_rows(n=1)
+        rows[0].date = date(2026, 10, 1)  # healthy Thursday snapshot, 1 bday behind
+        _patch(monkeypatch, rows, None)
+        body = client.get("/api/yield-curve/current").json()
+        assert body["data"]["business_days_behind"] == 1
+        assert body["data"]["stale"] is True  # threshold 0
 
     def test_no_data_never_run(self, client, monkeypatch):
         _patch(monkeypatch, [], None)
