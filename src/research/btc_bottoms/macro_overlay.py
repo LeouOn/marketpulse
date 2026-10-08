@@ -46,9 +46,11 @@ import subprocess
 import time
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from src.research.btc_bottoms.frame import asof
+from src.research.btc_bottoms.labels import label  # g4's frozen section-6 rule
 
 __all__ = [
     "COMBINATIONS",
@@ -86,21 +88,11 @@ CONDITION_DEFS: dict[str, str] = {
 }
 
 _EXPECTED_SHA = "7e1107e2e653e493af552efdc516e99dd020a0855e73d3b4d1d917dc8247087e"
-_PENDING = "PENDING(labels.py not on main)"
 
 
 def label_inputs(**kwargs) -> dict[str, object]:
     """Collect the section-6 label arguments for one evaluated series."""
     return dict(kwargs)
-
-
-def label(**kwargs) -> str:  # noqa: ARG001 - fixed signature, plan rule 7
-    """Delegate to g4's ``labels.label``; stub-marked until it lands on main."""
-    try:
-        from src.research.btc_bottoms.labels import label as _real  # type: ignore
-    except ImportError:
-        return _PENDING
-    return _real(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +291,10 @@ def _evaluate_side(
 ) -> list[dict[str, object]]:
     from src.research.btc_bottoms import study
 
+    # diagnostics computed once on the whole frame (not per set)
+    years = max((fire.index[-1] - fire.index[0]).days / 365.25, 1e-9)
+    fire_day_share = float(fire.fillna(False).astype(bool).mean())
+
     rows: list[dict[str, object]] = []
     for set_name, ev, horizon in sets:
         if len(ev) == 0:
@@ -317,6 +313,8 @@ def _evaluate_side(
             {
                 "series": name,
                 "set": set_name,
+                "fire_day_share": fire_day_share,
+                "episodes_per_year": float(tab.metrics["n_episodes"]) / years,
                 **{k: tab.metrics[k] for k in _METRIC_KEYS},
                 "placebo_p_lift": plac.p_lift,
                 "loo_min_hit_rate": loo_min,
@@ -423,6 +421,98 @@ def run_all(
 
 
 # ---------------------------------------------------------------------------
+# Post-plan extras (decided after seeing results; CANNOT change any label)
+# ---------------------------------------------------------------------------
+
+
+def combination_robustness_sweep(
+    asof_frame: pd.DataFrame,
+    cond: pd.Series,
+    signal_name: str,
+    events: pd.DataFrame,
+    horizon: str = "cycle",
+) -> dict[str, object]:
+    """Sweep the FIRST signal's registry grid with the macro gate held fixed.
+
+    POST-PLAN EXTRA, decided after seeing results: the plan registered no
+    grid for combinations, so their ``sweep_median_lift`` input is NaN and
+    the frozen rule reads such combinations as "cannot evaluate". This
+    sweep is reported as extra context ONLY -- it is not a label input and
+    cannot rescue one.
+
+    Returns the number of grid cells tried and median / min / max lift of
+    the gated series across them (NaN lifts -- never-firing cells -- are
+    excluded from the summary, which is stated in the doc).
+    """
+    import itertools
+
+    from src.research.btc_bottoms import study
+    from src.research.btc_bottoms.signals import SIGNAL_REGISTRY, compute_signals
+
+    kind, _default, grid = SIGNAL_REGISTRY[signal_name]
+    fire_col = signal_name if kind == "boolean" else f"{signal_name}_fire"
+    keys = sorted(grid)
+    cells = [dict(zip(keys, values, strict=True)) for values in itertools.product(*(grid[k] for k in keys))]
+
+    conf = study.config_for(horizon)
+    kw = {"pre_window": conf.pre_window, "cooldown": conf.cooldown, "forward_window": conf.forward_window}
+    lifts: list[float] = []
+    for cell in cells:
+        sig = compute_signals(asof_frame, params={signal_name: cell})
+        gated = _and_boolean(sig[fire_col], cond.astype("boolean"))
+        m = study.evaluate(gated, events, **kw).metrics
+        lift = float(m["lift"])
+        if lift == lift:  # NaN (never firing) cells are excluded, counted below
+            lifts.append(lift)
+    n_nan = len(cells) - len(lifts)
+    return {
+        "n_cells": len(cells),
+        "n_never_firing": n_nan,
+        "median_lift": float(np.median(lifts)) if lifts else float("nan"),
+        "min_lift": float(np.min(lifts)) if lifts else float("nan"),
+        "max_lift": float(np.max(lifts)) if lifts else float("nan"),
+    }
+
+
+def episode_view(
+    fire: pd.Series,
+    close: pd.Series,
+    peak: pd.Timestamp,
+    low: pd.Timestamp,
+    confirm: pd.Timestamp,
+) -> dict[str, object]:
+    """Set-P (2026) report-only view: fires inside the episode span.
+
+    Mirrors g4's convention (``run_study.py``): "inside the episode" = fire
+    days within ``[peak_date, confirm_date]``. P never enters any rate,
+    lift, placebo or label.
+    """
+    span = fire.loc[peak:confirm].fillna(False).astype(bool)
+    n_days = int(span.sum())
+    if n_days == 0:
+        return {
+            "fire_days": 0,
+            "first_fire": None,
+            "days_before_low": None,
+            "days_before_confirm": None,
+            "close_at_first_fire": None,
+            "low_close": float(close.loc[low]),
+            "ret_first_fire_to_last": None,
+        }
+    first = span[span].index.min()
+    last = close.index.max()
+    return {
+        "fire_days": n_days,
+        "first_fire": first,
+        "days_before_low": int((low - first).days),
+        "days_before_confirm": int((confirm - first).days),
+        "close_at_first_fire": float(close.loc[first]),
+        "low_close": float(close.loc[low]),
+        "ret_first_fire_to_last": float(close.loc[last] / close.loc[first] - 1.0),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Runner: frozen frame, offline, hash-checked
 # ---------------------------------------------------------------------------
 
@@ -479,6 +569,60 @@ def main() -> int:
 
     print("\n== combos and first signals alone (macro family denominator: 6 conditions + 6 combinations) ==")
     print(out["combos"].to_string(index=False))
+
+    p_ev = cyc[cyc["provisional"]]
+    if len(p_ev):
+        prow = p_ev.iloc[0]
+        peak, low, confirm = prow["peak_date"], prow["bottom_date"], prow["confirm_date"]
+        af = out["macro_frame"]
+        conds = out["conditions"]
+        from src.research.btc_bottoms.signals import compute_signals
+
+        sig = compute_signals(af)
+        print(
+            f"\n== set P (2026 episode, report-only; peak {peak.date()} low {low.date()} confirm {confirm.date()}) =="
+        )
+        rows = []
+        seen: set[str] = set()
+        for cid, (signal_name, cond_col) in COMBINATIONS.items():
+            rows.append(
+                {
+                    "series": f"{cid} ({signal_name} & {cond_col})",
+                    **episode_view(
+                        _and_boolean(_fire_of(sig, signal_name), conds[cond_col].astype("boolean")),
+                        af["close"],
+                        peak,
+                        low,
+                        confirm,
+                    ),
+                }
+            )
+            if signal_name not in seen:
+                seen.add(signal_name)
+                rows.append(
+                    {
+                        "series": f"{signal_name} (alone)",
+                        **episode_view(_fire_of(sig, signal_name), af["close"], peak, low, confirm),
+                    }
+                )
+        print(pd.DataFrame(rows).to_string(index=False))
+
+    print(
+        "\n== POST-PLAN EXTRA (decided after results; NOT a label and cannot change one): "
+        "combo robustness -- first signal's registry grid swept, macro gate fixed, set A =="
+    )
+    a_ev = cyc[(cyc["severity"] == "bear_bottom") & (~cyc["provisional"])]
+    extra_rows = []
+    for cid, (signal_name, cond_col) in COMBINATIONS.items():
+        extra_rows.append(
+            {
+                "combo": cid,
+                "signal": signal_name,
+                "gate": cond_col,
+                **combination_robustness_sweep(out["macro_frame"], out["conditions"][cond_col], signal_name, a_ev),
+            }
+        )
+    print(pd.DataFrame(extra_rows).to_string(index=False))
 
     print("\n== last-row condition values (for the case-file author) ==")
     print({k: (None if v != v else v) for k, v in out["last_row"].items()})

@@ -235,3 +235,84 @@ class TestCombinations:
         # low-to-last mean over available days, counts reported
         assert out["n_days"] > 0
         assert out["mean_daily"] == pytest.approx(1e-4)
+
+
+class TestEpisodeView:
+    def _world(self):
+        idx = pd.date_range("2025-10-01", "2026-09-30", freq="D", name="ts")
+        fire = pd.Series(False, index=idx, dtype="boolean")
+        fire.loc[pd.Timestamp("2026-06-27") : pd.Timestamp("2026-06-30")] = True  # 4 days, 3 before the low
+        close = pd.Series(np.linspace(120_000.0, 90_000.0, len(idx)), index=idx)
+        close.loc[pd.Timestamp("2026-06-30")] = 58_559.0
+        return fire, close
+
+    def test_fires_and_offsets(self):
+        from src.research.btc_bottoms.macro_overlay import episode_view
+
+        fire, close = self._world()
+        out = episode_view(
+            fire,
+            close,
+            peak=pd.Timestamp("2025-10-06"),
+            low=pd.Timestamp("2026-06-30"),
+            confirm=pd.Timestamp("2026-08-21"),
+        )
+        assert out["fire_days"] == 4
+        assert out["first_fire"] == pd.Timestamp("2026-06-27")
+        assert out["days_before_low"] == 3
+        assert out["days_before_confirm"] == 55
+        assert out["close_at_first_fire"] == close.loc[pd.Timestamp("2026-06-27")]
+        assert out["ret_first_fire_to_last"] == close.iloc[-1] / close.loc[pd.Timestamp("2026-06-27")] - 1.0
+
+    def test_zero_fires_reports_absence_not_error(self):
+        from src.research.btc_bottoms.macro_overlay import episode_view
+
+        fire, close = self._world()
+        out = episode_view(
+            pd.Series(False, index=fire.index, dtype="boolean"),
+            close,
+            peak=pd.Timestamp("2025-10-06"),
+            low=pd.Timestamp("2026-06-30"),
+            confirm=pd.Timestamp("2026-08-21"),
+        )
+        assert out["fire_days"] == 0 and out["first_fire"] is None and out["ret_first_fire_to_last"] is None
+
+
+class TestDiagnosticsColumns:
+    def test_fire_day_share_and_episodes_per_year_present(self):
+        # structural: the evaluated rows carry the two new diagnostic columns
+        from pathlib import Path
+
+        import src.research.btc_bottoms.macro_overlay as mo
+
+        src = Path(mo.__file__).read_text()
+        assert '"fire_day_share"' in src and '"episodes_per_year"' in src
+
+
+class TestCombinationRobustnessSweep:
+    def test_cells_counted_and_lifts_reported(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MARKETPULSE_DATA_DIR", str(tmp_path))
+        from src.research.btc_bottoms import macro_overlay as mo
+
+        toy = _toy_asof_frame()
+        conds = macro_conditions(toy)
+        events = pd.DataFrame(
+            {
+                "horizon": ["cycle", "cycle"],
+                "bottom_date": [CAL[120], CAL[180]],
+                "confirm_date": [CAL[130], CAL[190]],
+                "provisional": [False, False],
+            }
+        )
+        out = mo.combination_robustness_sweep(toy, conds["m3b"], "mayer_multiple", events)
+        assert out["n_cells"] > 1
+        assert out["n_never_firing"] >= 0
+        assert out["n_cells"] >= 1
+        # the sweep must have tried the registry grid (mayer has a threshold grid)
+        from src.research.btc_bottoms.signals import SIGNAL_REGISTRY
+
+        grid = SIGNAL_REGISTRY["mayer_multiple"][2]
+        expected_cells = 1
+        for k in grid:
+            expected_cells *= len(grid[k])
+        assert out["n_cells"] == expected_cells
