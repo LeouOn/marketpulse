@@ -8,7 +8,8 @@ recommendation. The current reading is explicitly **not a forecast**.
 - Frame: `data/cache/btc_bottoms/frame.parquet`, sha256
   `7e1107e2e653e493af552efdc516e99dd020a0855e73d3b4d1d917dc8247087e` (verified before generation;
   the generator refuses to run on any other hash).
-- `main` at generation: `34af52282d3e9135d13a18dae779fb2ad160b242` (pre-registered plan commit).
+- Base at generation: `integrate/macro` @ `fb73daf` (main `f811014` + g1's macro commits;
+  the pre-registered plan lives at `34af522`).
 - Module: `src/research/btc_bottoms/dossiers.py` (branch `feat/btc-bottoms-case-files`).
 - Reproduce the tables:
   `MARKETPULSE_DATA_DIR=$PWD/data/cache python -m src.research.btc_bottoms.dossiers --out tables.md`
@@ -70,17 +71,16 @@ for the still-open 2026 episode even the current confirmation carries that same 
 
 | condition | peak | bottom-90 | bottom-60 | bottom-30 | bottom-7 | bottom | confirm | last |
 |---|---|---|---|---|---|---|---|---|
-| M1_real_yield_easing | no | yes | no | no | yes | yes | yes | no |
+| M1_real_yield_easing | n/a | yes | no | no | yes | yes | yes | no |
 | M2_dollar_easing | n/a | yes | no | no | no | no | no | no |
-| M3a_vix_fade | no | no | no | no | no | no | no | no |
-| M3b_credit_easing | no | no | no | no | yes | no | no | yes |
+| M3a_vix_fade | n/a | no | no | no | no | no | no | no |
+| M3b_credit_easing | n/a | no | no | no | yes | no | no | yes |
 | M4_liquidity_up | n/a | n/a | n/a | yes | no | no | no | no |
 | M5_valuation_low | no | no | no | no | yes | yes | yes | no |
 
 False confirmations (0, events.false_confirms=0):
 
 (none)
-
 
 **What a person saw on that day.** The peak row is the first day of the data
 (2014-09-17, censored: the true Dec-2013 high is outside the window, so the -61% is measured
@@ -144,7 +144,6 @@ False confirmations (3, events.false_confirms=3):
 | 2018-04-06 | 6,636 | 2018-04-20 | 8,846 | 2018-06-12 | 6,582 |
 | 2018-06-28 | 5,903 | 2018-07-23 | 7,711 | 2018-11-14 | 5,738 |
 
-
 **What a person saw on that day.** A year of decline with three separate
 "+30% off the low" rallies that all failed (the three traps below: February, April and July
 2018). On 2018-12-15 itself: -83.4% from the 2017 peak, MVRV-Z -0.49, Fear & Greed 11, RSI deep
@@ -201,7 +200,6 @@ times first.
 False confirmations (0, events.false_confirms=0):
 
 (none)
-
 
 **What a person saw on that day.** A mid-bull correction, not a bear market:
 -53.1% in three months, then a V. At the low MVRV-Z was still +1.13 (M5 never came on in this
@@ -260,7 +258,6 @@ False confirmations (1, events.false_confirms=1):
 | low_date | low_close | confirm_date | confirm_close | broken_date | broken_close |
 |---|---|---|---|---|---|
 | 2022-01-22 | 35,030 | 2022-03-27 | 46,820 | 2022-05-08 | 34,059 |
-
 
 **What a person saw on that day.** One prior trap: the March 2022 bounce off
 the January low ($35,030 -> $46,820, +34%) broke in May (Terra) and the market ground to a final
@@ -343,7 +340,6 @@ Live view for the provisional episode (the 2026 question, as a case file):
 | fgi_mean_30 | yes | 2026-06-30 | 58,559 | no |
 | washout_stabilise | no | 2026-07-10 | 64,127 | no |
 
-
 **What a person saw on that day.** The episode the owner lived. One prior
 trap: the +31% bounce off the February low confirmed on 2026-05-10 at $82,139 and broke on
 2026-06-05 at $60,923, three weeks before the actual low. On 2026-06-30 itself ($58,559,
@@ -390,7 +386,6 @@ Signals on: **1 of 19**; macro conditions on: **1 of 6**.
 | M3b_credit_easing | yes | 38 | yes |
 | M4_liquidity_up | no | 0 | no |
 | M5_valuation_low | no | 0 | no |
-
 
 **Reading it plainly.** Of the 19 registry signals only `days_since_low_90` is on
 (74 days): price has been rising off a 90-day low for ~11 weeks and nothing in the

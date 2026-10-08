@@ -5,7 +5,7 @@ Plan section 5 deliverables, pre-registered in ``docs/btc-bottom-study/00-plan.m
 * :func:`dossier` -- for one cycle event, a snapshot table across eight stages
   (``peak``, ``bottom-90/60/30/7``, ``bottom``, ``confirm``, ``last``) with
   close, drawdown from ATH, all 19 registry signal readings and their fire
-  flags (``compute_signals`` on ``asof(frame, 5)`` at registry defaults), the
+  flags (``compute_signals`` on the prepared frame at registry defaults), the
   six macro conditions M1-M5 and the valuation/liquidity context
   (``mvrv_z``, ``fgi_value``, real-yield level, ``baa10y``, ``net_liquidity``).
 * :func:`false_confirm_timeline` -- the dated trap lines behind
@@ -22,10 +22,12 @@ Design decisions
 * **Stage snapping is causal.** ``bottom-N`` is the last frame row on or
   before ``bottom_date - N days``; a stage that predates the data is an
   all-NaN row (the 2015 event's ``bottom-90`` does not exist).
-* **Macro conditions are recomputed here** from ``asof`` columns with the
-  plan's exact definitions (section 4), including ``net_liquidity`` rebuilt
-  after ``asof`` from the filled components. When g1's ``macro_overlay``
-  lands, a pinned test asserts both implementations agree.
+* **Macro conditions come from g1's ``macro_overlay``** (single source of
+  truth): ``prepare_macro_frame`` (asof(5) + ``net_liquidity`` rebuilt from
+  the filled components) + ``macro_conditions``, adapted here to nullable
+  booleans with this module's M-labels. NaN (warm-up, coverage gap) is NA,
+  never False-by-default; row-for-row equality with g1's output -- including
+  the NaN pattern -- is pinned by tests.
 * **NaN is preserved.** Conditions are nullable booleans; a missing input is
   NA (``n/a``), never silently ``False``. Rendering says why (series start).
 * This module never mutates its inputs and never touches the network; the CLI
@@ -51,8 +53,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from src.research.btc_bottoms import macro_overlay
 from src.research.btc_bottoms.events import find_bottoms
-from src.research.btc_bottoms.frame import asof, build_frame
+from src.research.btc_bottoms.frame import build_frame
 from src.research.btc_bottoms.signals import SIGNAL_REGISTRY, compute_signals
 
 __all__ = [
@@ -92,6 +95,17 @@ MACRO_COLUMNS: list[str] = [
     "M5_valuation_low",
 ]
 
+#: Map from this module's condition labels to g1's ``macro_overlay`` columns
+#: (the single source of truth for the definitions since wave-2b review).
+MACRO_TO_G1: dict[str, str] = {
+    "M1_real_yield_easing": "m1",
+    "M2_dollar_easing": "m2",
+    "M3a_vix_fade": "m3a",
+    "M3b_credit_easing": "m3b",
+    "M4_liquidity_up": "m4",
+    "M5_valuation_low": "m5",
+}
+
 #: Rebound that marks a confirmation (matches events defaults; see the plan).
 CONFIRM_REBOUND = 0.30
 
@@ -101,46 +115,27 @@ CONFIRM_REBOUND = 0.30
 # ---------------------------------------------------------------------------
 
 
-def _net_liquidity(a: pd.DataFrame) -> pd.Series:
-    """Net liquidity ($mn) rebuilt from asof-filled components, per the plan."""
-    return a["walcl"] - a["wtregen"] - 1_000.0 * a["rrp_onday"]
+def _as_boolean(values: pd.Series) -> pd.Series:
+    """g1's 1.0/0.0/NaN condition floats -> nullable True/False/NA."""
+    return values.map({1.0: True, 0.0: False}).astype("boolean")
 
 
-def _flag(values: pd.Series, condition: pd.Series) -> pd.Series:
-    """Nullable boolean: NA where any input is NA, else the comparison."""
-    return condition.astype("boolean").where(values.notna())
+def macro_conditions(frame: pd.DataFrame) -> pd.DataFrame:
+    """M1-M5 as nullable booleans, delegated to g1's ``macro_overlay``.
 
-
-def macro_conditions(a: pd.DataFrame) -> pd.DataFrame:
-    """M1-M5 as nullable booleans on the asof frame (plan section 4).
-
-    * M1 real_yield_easing: ``dfii10`` 21-day change < 0
-    * M2 dollar_easing: ``dxy_ice`` 21-day percent change < 0
-    * M3a vix_fade: ``vix`` <= 0.8 x its trailing 21-day maximum
-    * M3b credit_easing: ``baa10y`` 21-day change < 0
-    * M4 liquidity_up: ``net_liquidity`` (rebuilt above) 63-day change > 0
-    * M5 valuation_low: ``mvrv_z`` < 0
-
-    NaN inputs stay NA; the 21-day trailing window for M3a is causal
-    (``min_periods=1`` -- defined from the first observation).
+    ``frame`` must be a PREPARED frame (``macro_overlay.prepare_macro_frame``:
+    asof(5) with ``net_liquidity`` rebuilt from the filled components).
+    Definitions and NaN semantics are g1's -- the single source of truth:
+    1.0/0.0 become True/False and NaN (warm-up window, coverage gap) becomes
+    NA, never False-by-default (plan section 4; pinned by tests that compare
+    every row, including the NaN pattern, against ``macro_overlay`` itself).
     """
-    nl = _net_liquidity(a)
-    dfii = a["dfii10"]
-    dxy = a["dxy_ice"]
-    vix = a["vix"]
-    baa = a["baa10y"]
-    mvrv_z = a["mvrv_z"]
-    m = pd.DataFrame(index=a.index)
-    m["M1_real_yield_easing"] = _flag(dfii, dfii.diff(21) < 0)
-    dxy_chg = dxy.pct_change(21, fill_method=None)
-    m["M2_dollar_easing"] = _flag(dxy_chg, dxy_chg < 0)
-    vix_bound = 0.8 * vix.rolling(21, min_periods=1).max()
-    m["M3a_vix_fade"] = _flag(vix, (vix <= vix_bound) & vix_bound.notna())
-    m["M3b_credit_easing"] = _flag(baa, baa.diff(21) < 0)
-    nl_chg = nl.diff(63)
-    m["M4_liquidity_up"] = _flag(nl_chg, nl_chg > 0)
-    m["M5_valuation_low"] = _flag(mvrv_z, mvrv_z < 0)
-    return m
+    g1 = macro_overlay.macro_conditions(frame)
+    out = pd.DataFrame(
+        {label: _as_boolean(g1[column]) for label, column in MACRO_TO_G1.items()},
+        index=frame.index,
+    )
+    return out[MACRO_COLUMNS]
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +210,8 @@ def _stage_position(idx: pd.DatetimeIndex, target: pd.Timestamp | None) -> int |
 def dossier(frame: pd.DataFrame, events: pd.DataFrame, event_index: int) -> pd.DataFrame:
     """Snapshot table (plan section 5) for ``events.iloc[event_index]``.
 
-    ``frame`` must be the asof frame (``asof(build_frame(refresh=False), 5)``).
+    ``frame`` must be the prepared frame
+    (``macro_overlay.prepare_macro_frame(build_frame(refresh=False))``).
     Rows are the eight :data:`SNAPSHOT_STAGES`; columns are the date, close,
     the 19 signal readings (``dd_ath`` among them is the drawdown from ATH),
     their fire flags (boolean signals repeat their reading), the six macro
@@ -238,7 +234,6 @@ def dossier(frame: pd.DataFrame, events: pd.DataFrame, event_index: int) -> pd.D
 
     signals = compute_signals(frame)
     macro = macro_conditions(frame)
-    nl = _net_liquidity(frame)
 
     columns = (
         ["date", "close"]
@@ -264,7 +259,7 @@ def dossier(frame: pd.DataFrame, events: pd.DataFrame, event_index: int) -> pd.D
         out.loc[stage, "fgi_value"] = frame["fgi_value"].iloc[pos]
         out.loc[stage, "real_yield"] = frame["dfii10"].iloc[pos]
         out.loc[stage, "baa10y"] = frame["baa10y"].iloc[pos]
-        out.loc[stage, "net_liquidity"] = nl.iloc[pos]
+        out.loc[stage, "net_liquidity"] = frame["net_liquidity"].iloc[pos]
     return out
 
 
@@ -527,7 +522,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     digest = _verify_frame()
-    frame = asof(build_frame(refresh=False), 5)
+    frame = macro_overlay.prepare_macro_frame(build_frame(refresh=False))
     events = find_bottoms(frame, "cycle")
     text = _render_tables(frame, events)
     header = (

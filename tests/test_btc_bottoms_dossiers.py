@@ -25,6 +25,7 @@ import pytest
 
 from src.research.btc_bottoms import dossiers as dos
 from src.research.btc_bottoms import events as ev
+from src.research.btc_bottoms.frame import build_frame
 
 _REAL_CACHE = Path(os.environ.get("MARKETPULSE_DATA_DIR") or "data/cache") / "btc_bottoms" / "frame.parquet"
 
@@ -68,9 +69,18 @@ def _synth(n: int = 400, start: str = "2020-01-01") -> pd.DataFrame:
     return df
 
 
+def _prepared(n: int = 400) -> pd.DataFrame:
+    """A synthetic frame run through g1's prepare (asof + net_liquidity)."""
+    from src.research.btc_bottoms import macro_overlay
+
+    return macro_overlay.prepare_macro_frame(_synth(n))
+
+
 class TestMacroConditions:
     def test_definitions_on_flat_synthetic_frame(self):
-        m = dos.macro_conditions(_synth())
+        from src.research.btc_bottoms import macro_overlay
+
+        m = dos.macro_conditions(macro_overlay.prepare_macro_frame(_synth()))
         assert list(m.columns) == [
             "M1_real_yield_easing",
             "M2_dollar_easing",
@@ -93,7 +103,9 @@ class TestMacroConditions:
         vix[100:121] = 30.0  # spike
         vix[121:] = 22.0  # fade to 0.733x of the spike
         df["vix"] = vix
-        m = dos.macro_conditions(df)
+        from src.research.btc_bottoms import macro_overlay
+
+        m = dos.macro_conditions(macro_overlay.prepare_macro_frame(df))
         # At day 125 the 21-day window still holds the 30-spike: 22 <= 24.
         assert bool(m["M3a_vix_fade"].iloc[125]) is True
         # During the spike the vix sits at its own maximum: no fade.
@@ -103,29 +115,58 @@ class TestMacroConditions:
 
     def test_nan_inputs_stay_na_not_false(self):
         df = _synth()
-        df.loc[df.index[-1], "dfii10"] = np.nan
-        df.loc[df.index[-1], "vix"] = np.nan
-        m = dos.macro_conditions(df)
+        # Gaps longer than the 5-day asof bridge stay NaN through prepare.
+        df.loc[df.index[-6] :, "dfii10"] = np.nan
+        df.loc[df.index[-6] :, "vix"] = np.nan
+        from src.research.btc_bottoms import macro_overlay
+
+        prepared = macro_overlay.prepare_macro_frame(df)
+        m = dos.macro_conditions(prepared)
         assert pd.isna(m["M1_real_yield_easing"].iloc[-1])
         assert pd.isna(m["M3a_vix_fade"].iloc[-1])
 
-    def test_net_liquidity_recomputed_from_filled_columns(self):
-        df = _synth()
-        # Sunday-style gap in walcl: recomputation must bridge it (asof-filled).
-        df.loc[df.index[-2] :, "walcl"] = np.nan
-        df.loc[df.index[-1], "walcl"] = 8_200_000.0
-        m = dos.macro_conditions(df.ffill())
-        assert bool(m["M4_liquidity_up"].iloc[-1]) is True
-
-    def test_matches_g1_macro_overlay_when_present(self):
-        """Pin agreement with g1's macro_overlay (activates when it lands)."""
-        pytest.importorskip("src.research.btc_bottoms.macro_overlay")
+    def test_net_liquidity_recomputed_by_prepare(self):
         from src.research.btc_bottoms import macro_overlay
 
         df = _synth()
-        mine = dos.macro_conditions(df)
-        theirs = macro_overlay.macro_conditions(df)
-        pd.testing.assert_frame_equal(mine, theirs)
+        # Sunday-style gap in rrp_onday (an asof column): prepare bridges it
+        # and net_liquidity is rebuilt from the filled components. A gap in a
+        # weekly, non-asof component (walcl) honestly stays NaN.
+        df.loc[df.index[-2], "rrp_onday"] = np.nan
+        df.loc[df.index[-3], "walcl"] = np.nan
+        prepared = macro_overlay.prepare_macro_frame(df)
+        assert not pd.isna(prepared["net_liquidity"].iloc[-2])
+        assert pd.isna(prepared["net_liquidity"].iloc[-3])
+        m = dos.macro_conditions(prepared)
+        assert bool(m["M4_liquidity_up"].iloc[-1]) is True
+
+    def test_conditions_delegate_to_g1_exactly(self):
+        """Single source of truth: values AND NaN pattern equal g1's module."""
+        from src.research.btc_bottoms import macro_overlay
+
+        prepared = macro_overlay.prepare_macro_frame(_synth())
+        mine = dos.macro_conditions(prepared)
+        theirs = macro_overlay.macro_conditions(prepared)
+        for mine_col, g1_col in dos.MACRO_TO_G1.items():
+            mine_f = mine[mine_col].astype("float")  # True->1.0, NA->NaN
+            assert mine_f.equals(theirs[g1_col]), f"{mine_col} drifted from {g1_col}"
+
+    def test_warmup_rows_are_na_not_false(self):
+        """Plan rule: NaN is never False-by-default; warm-up rows are NA."""
+        from src.research.btc_bottoms import macro_overlay
+
+        prepared = macro_overlay.prepare_macro_frame(_synth())
+        m = dos.macro_conditions(prepared)
+        # diff(21) conditions need 21 prior rows: NA for the first 21 rows.
+        for col in ("M1_real_yield_easing", "M3b_credit_easing"):
+            assert m[col].iloc[:21].isna().all(), f"{col} must be NA during warm-up"
+            assert m[col].iloc[21:].notna().all(), f"{col} should be defined after warm-up"
+        # rolling(21) reaches a full window one row earlier.
+        assert m["M3a_vix_fade"].iloc[:20].isna().all()
+        assert m["M3a_vix_fade"].iloc[20:].notna().all()
+        # M4 needs a 63-day change; M5 needs no window at all.
+        assert m["M4_liquidity_up"].iloc[:63].isna().all()
+        assert m["M5_valuation_low"].notna().all()
 
 
 class TestFalseConfirmTimeline:
@@ -176,7 +217,7 @@ class TestFalseConfirmTimeline:
 
 class TestDossier:
     def test_snapshot_stages_and_dates_on_synthetic_path(self):
-        df = _synth()
+        df = _prepared()
         events = ev.find_bottoms(df, "cycle")
         assert len(events) == 1
         d = dos.dossier(df, events, 0)
@@ -205,7 +246,7 @@ class TestDossier:
         fall = np.linspace(220.0, 99.0, 41)
         rise = np.linspace(99.0, 200.0, n - 41)
         closes = np.concatenate([fall, rise])
-        df = _synth(n=n)
+        df = _prepared(n=n)
         df["close"] = closes
         events = ev.find_bottoms(df, "cycle")
         assert len(events) == 1
@@ -217,7 +258,7 @@ class TestDossier:
         assert d.loc["bottom", "date"] == events.iloc[0]["bottom_date"]
 
     def test_macro_columns_in_table(self):
-        df = _synth()
+        df = _prepared()
         events = ev.find_bottoms(df, "cycle")
         d = dos.dossier(df, events, 0)
         for col in dos.MACRO_COLUMNS:
@@ -226,7 +267,7 @@ class TestDossier:
             assert col in d.columns
 
     def test_nan_signal_stays_nan(self):
-        df = _synth()
+        df = _prepared()
         df.loc[:, "fgi_value"] = np.nan  # FGI missing entirely
         events = ev.find_bottoms(df, "cycle")
         d = dos.dossier(df, events, 0)
@@ -234,7 +275,7 @@ class TestDossier:
         assert pd.isna(d.loc["bottom", "fgi_fire"])
 
     def test_deterministic(self):
-        df = _synth(n=500)
+        df = _prepared(n=500)
         events = ev.find_bottoms(df, "cycle")
         a = dos.dossier(df, events, 0)
         b = dos.dossier(df, events, 0)
@@ -243,7 +284,7 @@ class TestDossier:
 
 class TestCurrentReading:
     def test_counts_and_days_on_synthetic(self):
-        df = _synth()
+        df = _prepared()
         reading = dos.current_reading(df)
         assert reading["as_of"] == df.index[-1]
         sig = reading["signals"]
@@ -260,7 +301,7 @@ class TestCurrentReading:
         assert reading["counts"]["macro_total"] == 6
 
     def test_days_on_counts_trailing_run(self):
-        df = _synth()
+        df = _prepared()
         # Make M5 true only for the last 10 rows.
         df.loc[df.index[-10] :, "mvrv_z"] = -0.5
         reading = dos.current_reading(df)
@@ -268,13 +309,13 @@ class TestCurrentReading:
         assert reading["macro"].loc["M5_valuation_low", "days_on"] == 10
 
     def test_not_on_gives_zero_days(self):
-        df = _synth()
+        df = _prepared()
         reading = dos.current_reading(df)
         m2 = reading["macro"].loc["M2_dollar_easing"]
         assert bool(m2["on"]) is False and m2["days_on"] == 0
 
     def test_deterministic(self):
-        df = _synth(n=450)
+        df = _prepared(n=450)
         a = dos.current_reading(df)
         b = dos.current_reading(df)
         pd.testing.assert_frame_equal(a["signals"], b["signals"])
@@ -293,9 +334,9 @@ class TestFirstFireAfter:
 @pytest.mark.skipif(not _REAL_CACHE.exists(), reason="frozen frame cache not present")
 class TestRealFrame:
     def test_dossier_dates_on_frozen_frame(self):
-        from src.research.btc_bottoms.frame import asof, build_frame
+        from src.research.btc_bottoms import macro_overlay
 
-        frame = asof(build_frame(refresh=False), 5)
+        frame = macro_overlay.prepare_macro_frame(build_frame(refresh=False))
         events = ev.find_bottoms(frame, "cycle")
         assert len(events) == 5
         d2018 = dos.dossier(frame, events, 1)
@@ -304,10 +345,25 @@ class TestRealFrame:
         d2026 = dos.dossier(frame, events, 4)
         assert d2026.loc["bottom", "date"] == pd.Timestamp("2026-06-30")
 
-    def test_false_confirm_counts_match_events_module(self):
-        from src.research.btc_bottoms.frame import asof, build_frame
+    def test_conditions_match_g1_on_whole_frozen_history(self):
+        """Every row of the real frame: zero value and NaN-pattern drift."""
+        from src.research.btc_bottoms import macro_overlay
 
-        frame = asof(build_frame(refresh=False), 5)
+        prepared = macro_overlay.prepare_macro_frame(build_frame(refresh=False))
+        mine = dos.macro_conditions(prepared)
+        theirs = macro_overlay.macro_conditions(prepared)
+        for mine_col, g1_col in dos.MACRO_TO_G1.items():
+            assert mine[mine_col].astype("float").equals(theirs[g1_col]), mine_col
+        # The plan rule the defect was about: warm-up is NA, not False.
+        # diff(21) conditions: 21 warm-up rows; rolling(21) (M3a): 20.
+        assert mine["M1_real_yield_easing"].iloc[:21].isna().all()
+        assert mine["M3b_credit_easing"].iloc[:21].isna().all()
+        assert mine["M3a_vix_fade"].iloc[:20].isna().all()
+
+    def test_false_confirm_counts_match_events_module(self):
+        from src.research.btc_bottoms import macro_overlay
+
+        frame = macro_overlay.prepare_macro_frame(build_frame(refresh=False))
         events = ev.find_bottoms(frame, "cycle")
         for _i, row in events.iterrows():
             tl = dos.false_confirm_timeline(frame, row)
