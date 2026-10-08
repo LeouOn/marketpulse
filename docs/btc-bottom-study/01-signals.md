@@ -7,7 +7,7 @@ pre-registered plan.
   `7e1107e2e653e493af552efdc516e99dd020a0855e73d3b4d1d917dc8247087e` (4399 rows, 2014-09-17 to 2026-10-02).
 - Ran on `feat/btc-bottoms-run-study` @ `d75a07e` (branch from `main` @ `34af522`).
 - Reproduce:
-  `MARKETPULSE_DATA_DIR=/home/yl/proj/marketpulse/data/cache python -m src.research.btc_bottoms.run_study`
+  `MARKETPULSE_DATA_DIR=$PWD/data/cache python -m src.research.btc_bottoms.run_study`
   (runtime ≈ 3 min 40 s; results also written to `data/cache/btc_bottoms/results/signals.json`).
 - Primary family: **38 cells** (19 signals × 2 horizons); the sweep tried **176 cells** (robustness only).
 

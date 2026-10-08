@@ -9,9 +9,9 @@ recommendation. The current reading is explicitly **not a forecast**.
   `7e1107e2e653e493af552efdc516e99dd020a0855e73d3b4d1d917dc8247087e` (verified before generation;
   the generator refuses to run on any other hash).
 - `main` at generation: `34af52282d3e9135d13a18dae779fb2ad160b242` (pre-registered plan commit).
-- Module: `src/research.btc_bottoms/dossiers.py` (branch `feat/btc-bottoms-case-files`).
+- Module: `src/research/btc_bottoms/dossiers.py` (branch `feat/btc-bottoms-case-files`).
 - Reproduce the tables:
-  `MARKETPULSE_DATA_DIR=/home/yl/proj/marketpulse/data/cache python -m src.research.btc_bottoms.dossiers --out tables.md`
+  `MARKETPULSE_DATA_DIR=$PWD/data/cache python -m src.research.btc_bottoms.dossiers --out tables.md`
 - Runtime: about 1 second (frame load + all five dossiers + current reading).
 
 ## Standing limits (plan section 7 -- read first)

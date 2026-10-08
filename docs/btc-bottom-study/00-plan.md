@@ -18,7 +18,7 @@ cherry-picking from the sweep, not independence from the data. Every report repe
 
 - Frame: `data/cache/btc_bottoms/frame.parquet`, **sha256 `7e1107e2e653e493af552efdc516e99dd020a0855e73d3b4d1d917dc8247087e`**, 4399 rows,
   2014-09-17 to 2026-10-02, 31 columns. All three analyses read this same file. **Never refresh it during the study** (`build_frame(refresh=False)`).
-  Set `MARKETPULSE_DATA_DIR=/home/yl/proj/marketpulse/data/cache` so every worktree sees the same cache. Verify the hash at the start of every run and
+  Set `MARKETPULSE_DATA_DIR=<repo>/data/cache` so every worktree sees the same cache. Verify the hash at the start of every run and
   print it in every output.
 - Build inputs: events = `find_bottoms(frame, horizon)` with defaults; signals = `compute_signals(asof(frame, 5))`; macro conditions are computed
   from `asof(frame, 5)` columns; `net_liquidity` is recomputed AFTER `asof` from the filled columns (the stored column is empty on Sundays and

@@ -16,6 +16,7 @@ Metrics restates its latest days; BTC prices come from Yahoo.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -25,7 +26,7 @@ import pytest
 from src.research.btc_bottoms import dossiers as dos
 from src.research.btc_bottoms import events as ev
 
-_REAL_CACHE = Path("/home/yl/proj/marketpulse/data/cache/btc_bottoms/frame.parquet")
+_REAL_CACHE = Path(os.environ.get("MARKETPULSE_DATA_DIR") or "data/cache") / "btc_bottoms" / "frame.parquet"
 
 
 # ---------------------------------------------------------------------------
